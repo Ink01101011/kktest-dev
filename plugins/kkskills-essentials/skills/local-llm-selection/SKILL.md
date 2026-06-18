@@ -38,7 +38,7 @@ savings at your volume. Often the right answer is **hosted for production, local
 
 Be honest about the savings vs complexity: if self-hosting saves a little but adds real ops burden, it's
 usually a **reject** for production — keep hosted, use local only for offline/dev. (Verify the cost math
-with real numbers — [[api-cost-probing]].)
+with real numbers, not vendor-page assumptions — [[feedback-verify-with-real-data]].)
 
 ### Step 2 — Size the model to your VRAM
 

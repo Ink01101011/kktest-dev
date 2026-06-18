@@ -115,9 +115,9 @@ Newest entry on top. One line per change. Always say *why* / where it came from.
 
 ## Examples
 
-**Scenario:** You learn FMP doesn't honor `Accept-Encoding: gzip` (wasted header).
-→ Target `[[api-cost-probing]]`. Add a Rule "don't send Accept-Encoding to providers that don't
-compress; verify per provider." Changelog: `0.2.0 — added per-provider gzip verification — source: provider probe round 3`. Bump minor.
+**Scenario:** You learn a provider doesn't honor `Accept-Encoding: gzip` (wasted header).
+→ Target `[[feedback-verify-with-real-data]]`. Add a Rule "verify per-provider gzip support with a real
+probe before assuming it." Changelog: `0.2.0 — added per-provider gzip verification — source: provider probe round 3`. Bump minor.
 
 **Scenario:** The user says "ทำไมไม่เตือน task ที่ค้างตอนจบ branch".
 → Target `[[proactive-task-reminders]]`. Add the branch-return trigger to the trigger list + a Rule.
