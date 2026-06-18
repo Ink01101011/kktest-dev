@@ -85,4 +85,6 @@ edited**. `archive --auto` uses a heuristic; always dry-run and review before ap
 plain files under git, so changes are diffable and revertible.
 
 See `../../docs/memory-keeper/CONCEPTS.md` for the full concept + walkthrough and
-`../../docs/memory-keeper/SPEC.md` for the formal spec.
+`../../docs/memory-keeper/SPEC.md` for the formal spec. For how auto-compact behaves across
+Claude Code, Cowork, and the Claude Desktop chat tab — and how it differs from Claude Code's own
+`/compact` — see `../../docs/memory-keeper/RUNTIMES.md`.

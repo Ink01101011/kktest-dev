@@ -15,7 +15,7 @@
       "name": "memory-keeper",
       "source": "./plugins/memory-keeper",
       "description": "Keep file-based agent memory lean and durable: compact the index, archive done/stale memories to cold storage, and lint the index against a byte budget.",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "author": {
         "name": "Ink",
         "email": "supakit.kitj@gmail.com"

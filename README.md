@@ -46,6 +46,7 @@ Per-plugin guides live under [`docs/`](./docs), one folder per plugin.
 
 - [Concepts, usage & installation](./docs/memory-keeper/CONCEPTS.md)
 - [Full specification](./docs/memory-keeper/SPEC.md)
+- [Where it runs & the two meanings of "compact"](./docs/memory-keeper/RUNTIMES.md)
 
 **focus-notify**
 
