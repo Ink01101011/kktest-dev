@@ -84,5 +84,5 @@ Common flags / tool args: `--dir`/`dir`, `--budget`/`budget` (default 24000),
 edited**. `archive --auto` uses a heuristic; always dry-run and review before applying. Everything is
 plain files under git, so changes are diffable and revertible.
 
-See `../../docs/CONCEPTS.md` for the full concept + walkthrough and `../../docs/SPEC.md` for the
-formal spec.
+See `../../docs/memory-keeper/CONCEPTS.md` for the full concept + walkthrough and
+`../../docs/memory-keeper/SPEC.md` for the formal spec.
