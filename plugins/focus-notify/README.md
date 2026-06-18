@@ -34,6 +34,9 @@ Clicking a notification brings the originating terminal back to the front.
 
 That's it — hooks register automatically. No `settings.json` editing.
 
+> Full guides: [Concepts, usage & every option explained](../../docs/focus-notify/CONCEPTS.md) ·
+> [Specification](../../docs/focus-notify/SPEC.md)
+
 ## Requirements
 
 - **macOS**: works out of the box via `osascript`. For nicer icons/subtitles **and click-to-focus**, `brew install terminal-notifier` (optional — the script falls back to `osascript`, which notifies but isn't clickable, if it's missing).

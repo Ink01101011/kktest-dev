@@ -31,7 +31,7 @@
       "name": "focus-notify",
       "source": "./plugins/focus-notify",
       "description": "Focus-aware desktop notifications for Claude Code. Notify only when your terminal is NOT the frontmost app. Three kinds (finished, approve, question), each with its own message and sound, plus click-to-focus on macOS/Linux.",
-      "version": "1.1.1",
+      "version": "1.1.2",
       "author": {
         "name": "Ink",
         "email": "supakit.kitj@gmail.com"
