@@ -14,14 +14,14 @@ memory hygiene.
 Add the marketplace, then install a plugin:
 
 ```shell
-/plugin marketplace add YOUR_GH_USERNAME/kktest-dev
+/plugin marketplace add https://github.com/Ink01101011/kktest-dev
 /plugin install memory-keeper@kktest-dev
 ```
 
-(Replace `YOUR_GH_USERNAME` with the GitHub account hosting this repo.) Or from the CLI:
+Or from the CLI:
 
 ```bash
-claude plugin marketplace add YOUR_GH_USERNAME/kktest-dev
+claude plugin marketplace add https://github.com/Ink01101011/kktest-dev
 claude plugin install memory-keeper@kktest-dev
 ```
 
@@ -30,7 +30,7 @@ Update later with `/plugin marketplace update kktest-dev`.
 ## Local development / testing
 
 ```bash
-git clone [https://github.com/Ink01101011/kktest-dev](https://github.com/Ink01101011/kktest-dev.git)
+git clone https://github.com/Ink01101011/kktest-dev.git
 claude plugin marketplace add ./kktest-dev
 claude plugin install memory-keeper@kktest-dev
 claude plugin validate ./kktest-dev                 # validate marketplace
