@@ -8,6 +8,7 @@ memory hygiene.
 | Plugin | Description |
 |---|---|
 | [memory-keeper](./plugins/memory-keeper) | Keep file-based agent memory lean and durable — compact the index, archive done/stale memories to cold storage, lint against a byte budget. Ships a skill, slash commands, a zero-dependency MCP server, and a stdlib CLI. |
+| [focus-notify](./plugins/focus-notify) | Focus-aware desktop notifications for Claude Code on macOS, Linux & Windows — notify only when your terminal is *not* the frontmost app. Three kinds (finished, approve, question), each with its own sound, plus click-to-focus. |
 
 ## Install
 
@@ -39,8 +40,17 @@ claude plugin validate ./kktest-dev/plugins/memory-keeper   # validate the plugi
 
 ## Docs
 
-- [Concepts, usage & installation](./docs/CONCEPTS.md)
-- [Full specification](./docs/SPEC.md)
+Per-plugin guides live under [`docs/`](./docs), one folder per plugin.
+
+**memory-keeper**
+
+- [Concepts, usage & installation](./docs/memory-keeper/CONCEPTS.md)
+- [Full specification](./docs/memory-keeper/SPEC.md)
+
+**focus-notify**
+
+- [Concepts, usage & installation](./docs/focus-notify/CONCEPTS.md)
+- [Full specification](./docs/focus-notify/SPEC.md)
 
 ## License
 
