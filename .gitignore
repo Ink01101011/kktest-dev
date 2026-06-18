@@ -15,3 +15,6 @@ Thumbs.db
 # Local memory test fixtures
 *.local/
 scratch/
+
+# Claude Code local settings
+.claude/settings.local.json
