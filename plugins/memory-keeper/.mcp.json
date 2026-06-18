@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "memory-keeper": {
+      "command": "python3",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/server/memory_keeper_server.py"],
+      "env": {
+        "MEMCTL_PATH": "${CLAUDE_PLUGIN_ROOT}/scripts/memctl.py"
+      }
+    }
+  }
+}

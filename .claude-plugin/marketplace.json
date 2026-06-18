@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "kktest-dev",
+  "owner": {
+    "name": "Ink",
+    "email": "supakit.kitj@gmail.com"
+  },
+  "description": "kktest-dev plugins for Claude Code & Cowork. Developer-grade automation, starting with memory-keeper.",
+  "metadata": {
+    "pluginRoot": "./plugins"
+  },
+  "plugins": [
+    {
+      "name": "memory-keeper",
+      "source": "./plugins/memory-keeper",
+      "description": "Keep file-based agent memory lean and durable: compact the index, archive done/stale memories to cold storage, and lint the index against a byte budget.",
+      "version": "0.1.0",
+      "author": {
+        "name": "Ink",
+        "email": "supakit.kitj@gmail.com"
+      },
+      "homepage": "https://github.com/OWNER/kktest-dev/tree/main/plugins/memory-keeper",
+      "repository": "https://github.com/OWNER/kktest-dev",
+      "license": "MIT",
+      "category": "productivity",
+      "keywords": ["memory", "context", "maintenance", "index", "archive", "mcp"],
+      "tags": ["memory", "context-engineering", "agent-memory", "cli", "mcp"]
+    }
+  ]
+}

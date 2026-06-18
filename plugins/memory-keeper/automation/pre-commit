@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# memory-keeper pre-commit hook — fail the commit if the memory index is over budget.
+#
+# Install (plain git):
+#   cp automation/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+# Install (husky): add this line to .husky/pre-commit:
+#   bash "$(dirname "$0")/../plugins/memory-keeper/automation/pre-commit"
+#
+# Configure: set MEMCTL_DIR (and optionally MEMCTL_BUDGET / MEMCTL) in your shell or here.
+set -euo pipefail
+
+MEMCTL="${MEMCTL:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/scripts/memctl.py}"
+MEMCTL_DIR="${MEMCTL_DIR:-}"
+MEMCTL_BUDGET="${MEMCTL_BUDGET:-24000}"
+
+if [ -z "$MEMCTL_DIR" ]; then
+  echo "memory-keeper: MEMCTL_DIR not set — skipping memory lint." >&2
+  exit 0
+fi
+
+if ! python3 "$MEMCTL" lint --dir "$MEMCTL_DIR" --budget "$MEMCTL_BUDGET"; then
+  echo "" >&2
+  echo "memory index over budget. Fix before committing:" >&2
+  echo "  python3 \"$MEMCTL\" compact --dir \"$MEMCTL_DIR\"" >&2
+  echo "  python3 \"$MEMCTL\" archive --dir \"$MEMCTL_DIR\" --auto   # if still over" >&2
+  exit 1
+fi

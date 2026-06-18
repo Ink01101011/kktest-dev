@@ -1,0 +1,14 @@
+{
+  "name": "memory-keeper",
+  "version": "0.1.0",
+  "description": "Keep file-based agent memory lean and durable: compact the index, archive done/stale memories to cold storage, and lint the index against a byte budget. Ships a skill, slash commands, a zero-dependency MCP server, and a stdlib CLI sharing one engine.",
+  "author": {
+    "name": "Ink",
+    "email": "supakit.kitj@gmail.com"
+  },
+  "homepage": "https://github.com/OWNER/kktest-dev/tree/main/plugins/memory-keeper",
+  "repository": "https://github.com/OWNER/kktest-dev",
+  "license": "MIT",
+  "keywords": ["memory", "context", "maintenance", "index", "archive", "mcp"],
+  "mcpServers": "./.mcp.json"
+}
