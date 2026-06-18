@@ -1,0 +1,13 @@
+{
+  "name": "PLUGIN_NAME",
+  "version": "0.1.0",
+  "description": "ONE_LINE_DESCRIPTION",
+  "author": {
+    "name": "Ink",
+    "email": "supakit.kitj@gmail.com"
+  },
+  "homepage": "https://github.com/Ink01101011/kktest-dev/tree/main/plugins/PLUGIN_NAME",
+  "repository": "https://github.com/Ink01101011/kktest-dev",
+  "license": "MIT",
+  "keywords": []
+}
