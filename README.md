@@ -30,7 +30,7 @@ Update later with `/plugin marketplace update kktest-dev`.
 ## Local development / testing
 
 ```bash
-git clone https://github.com/YOUR_GH_USERNAME/kktest-dev
+git clone [https://github.com/Ink01101011/kktest-dev](https://github.com/Ink01101011/kktest-dev.git)
 claude plugin marketplace add ./kktest-dev
 claude plugin install memory-keeper@kktest-dev
 claude plugin validate ./kktest-dev                 # validate marketplace
