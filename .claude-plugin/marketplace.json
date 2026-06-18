@@ -19,8 +19,8 @@
         "name": "Ink",
         "email": "supakit.kitj@gmail.com"
       },
-      "homepage": "https://github.com/OWNER/kktest-dev/tree/main/plugins/memory-keeper",
-      "repository": "https://github.com/OWNER/kktest-dev",
+      "homepage": "https://github.com/YOUR_GH_USERNAME/kktest-dev/tree/main/plugins/memory-keeper",
+      "repository": "https://github.com/YOUR_GH_USERNAME/kktest-dev",
       "license": "MIT",
       "category": "productivity",
       "keywords": ["memory", "context", "maintenance", "index", "archive", "mcp"],

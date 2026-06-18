@@ -17,6 +17,7 @@ cold storage, and **lint** the index against a byte budget so bloat can't return
 | Slash commands | `/memory-keeper:memory-analyze`, `:memory-compact`, `:memory-archive`, `:memory-lint` |
 | MCP server `memory-keeper` | Tools `memory_analyze`, `memory_compact`, `memory_archive`, `memory_lint` (zero-dependency, stdlib stdio server) |
 | CLI `scripts/memctl.py` | The shared engine — stdlib only; usable standalone and in pre-commit/CI |
+| Hooks (auto) | `hooks/` — PostToolUse + SessionEnd auto-run `compact` after memory writes, so the index stays self-healing with zero config |
 | Automation | `automation/pre-commit` lint hook + `automation/scheduled-task.md` weekly upkeep template |
 
 All four surfaces share one engine (`memctl.py`), so behavior is identical however you invoke it.
@@ -33,6 +34,19 @@ export MEMCTL_DIR="$HOME/.claude/projects/<your-project>/memory"
 
 The MCP server reads `MEMCTL_DIR` from your environment (wired in `.mcp.json`). Per-call you can also
 pass `dir`. Optional env: `MEMCTL_BUDGET` (used by the pre-commit hook; default 24000).
+
+## Automatic mode (zero-config)
+
+Once installed, the plugin's hooks keep the index healthy on their own — no commands, no per-project
+setup. After the agent writes or edits a memory file (`PostToolUse`) and again at `SessionEnd`, the
+index is regenerated from frontmatter, so it can never drift or bloat. The hook auto-discovers the
+store from the written file's path (or `MEMCTL_DIR` / `./memory` / the standard
+`~/.claude/projects/<project>/memory`), only ever runs `compact` (safe and idempotent), and never
+blocks the agent. Archiving stays manual/reviewed by design. The commands and tools below are for
+on-demand use; you rarely need them once the hook is active.
+
+> Hooks run in Claude Code. In environments without hook support, use the slash commands or the weekly
+> scheduled task instead.
 
 ## Usage
 

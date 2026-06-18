@@ -99,14 +99,14 @@ Only **`python3`** on your PATH. No pip installs — the CLI and MCP server are 
 In Claude Code or Cowork:
 
 ```shell
-/plugin marketplace add OWNER/kktest-dev
+/plugin marketplace add YOUR_GH_USERNAME/kktest-dev
 /plugin install memory-keeper@kktest-dev
 ```
 
-Replace `OWNER` with the GitHub account hosting the `kktest-dev` repo. CLI equivalent:
+Replace `YOUR_GH_USERNAME` with the GitHub account hosting the `kktest-dev` repo. CLI equivalent:
 
 ```bash
-claude plugin marketplace add OWNER/kktest-dev
+claude plugin marketplace add YOUR_GH_USERNAME/kktest-dev
 claude plugin install memory-keeper@kktest-dev
 ```
 
@@ -125,7 +125,7 @@ The MCP server reads this from your environment. You can also pass `dir` per cal
 The engine is a single file — clone and run it:
 
 ```bash
-git clone https://github.com/OWNER/kktest-dev
+git clone https://github.com/YOUR_GH_USERNAME/kktest-dev
 python3 kktest-dev/plugins/memory-keeper/scripts/memctl.py analyze --dir /path/to/memory
 ```
 
@@ -233,6 +233,26 @@ the recommended flow always previews with `--dry-run` and lets you veto before a
 ---
 
 ## 6. Automation (keep it healthy automatically)
+
+### Automatic mode (zero-config, recommended)
+
+Installing the plugin is enough — its hooks keep the index clean with no commands and no per-project
+config. After the agent writes or edits a memory file (`PostToolUse`) and again at `SessionEnd`, the
+index is regenerated from frontmatter. So even when a session adds new memories the normal way (write
+a file, append a line to `MEMORY.md`), the hook immediately re-derives a clean, bounded index —
+manual additions get normalized, drift is impossible, and the index never re-bloats.
+
+How it stays safe and zero-config:
+
+- **Discovers the store automatically** from the written file's path, or `MEMCTL_DIR` / `./memory` /
+  the standard `~/.claude/projects/<project>/memory`.
+- **Compaction only.** It never archives (that's heuristic and stays reviewed) and never edits memory
+  bodies — it only regenerates the index.
+- **Never blocks.** The hook always exits 0; a maintenance failure can't interrupt the agent.
+- **No-ops on non-memory writes**, so editing code or docs costs nothing.
+
+> Hooks run in Claude Code. Where hooks aren't available, fall back to the slash commands or the weekly
+> scheduled task below.
 
 ### Pre-commit lint
 
