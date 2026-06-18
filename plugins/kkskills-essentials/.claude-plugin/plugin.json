@@ -1,8 +1,8 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "kkskills-essentials",
-  "version": "0.1.0",
-  "description": "Generic, project-agnostic working skills: feedback discipline (additive changes, additive-first migrations, no-duplicate-docs, full filenames, verify-with-real-data), clean-architecture and conventional-commits references, and a user-profile calibration skill.",
+  "version": "0.2.0",
+  "description": "Generic, project-agnostic working skills (15) that self-improve over time: feedback discipline, clean-architecture & conventional-commits references, proactive task reminders, secret hygiene, concurrency/race-conditions, MCP server authoring, timezone handling, local-LLM selection — plus a meta-skill that folds new learnings back into the right skill (versioned, changelogged, self-contained).",
   "author": {
     "name": "Ink",
     "email": "supakit.kitj@gmail.com"
@@ -10,5 +10,5 @@
   "homepage": "https://github.com/Ink01101011/kktest-dev/tree/main/plugins/kkskills-essentials",
   "repository": "https://github.com/Ink01101011/kktest-dev",
   "license": "MIT",
-  "keywords": ["skills", "workflow", "code-review", "architecture", "conventional-commits", "feedback"]
+  "keywords": ["skills", "workflow", "code-review", "architecture", "conventional-commits", "feedback", "self-improving", "mcp", "concurrency"]
 }

@@ -49,33 +49,59 @@ There is nothing to wire up — drop the folder under `skills/` and the host pic
 
 ## 3. The skill catalog
 
-Eight skills, grouped by prefix.
+Fifteen skills, grouped by role.
 
 ### `feedback-*` — working discipline
 
 | Skill | Enforces | Fires when |
 |---|---|---|
 | `feedback-additive-changes` | Prefer additive changes; don't do destructive refactors/deletions unless explicitly scoped | Proposing a refactor, cleanup, deletion, or migration |
-| `feedback-migrations-additive-first` | DB schema changes roll out additive-first across multiple deploys | Writing or reviewing a schema migration |
+| `feedback-migrations-additive-first` | DB schema changes roll out additive-first (expand-contract) across deploys | Writing or reviewing a schema migration |
 | `feedback-no-duplicate-docs` | Don't create a new tracking/checklist/TODO/audit doc when one already exists | About to spin up a new tracking document |
-| `feedback-use-full-filenames` | Reference project docs by full `DDMMYYYY_NAME.md` filename | Citing a project doc in chat |
+| `feedback-use-full-filenames` | Reference versioned docs by full, unambiguous (dated) filename | Citing a versioned doc in chat |
 | `feedback-verify-with-real-data` | Verify claims about code/API state against real data before asserting | About to make a factual claim about codebase or API behavior |
+| `proactive-task-reminders` | Keep a pending-work register; resurface deferred items at the right moment | Deferring work, hitting a fork, pausing, or resuming a project |
 
-### `reference-*` — reusable references
+### `reference-*` and patterns — reusable engineering references
 
 | Skill | Provides |
 |---|---|
 | `reference-clean-architecture` | Where business logic lives, dependency direction, and layering for a backend service |
 | `reference-conventional-commits` | Conventional Commits format for commit messages, PR titles, and changelogs |
+| `secret-hygiene` | Keep secrets out of repos/logs/CI; rotation-first response to a leak |
+| `concurrency-race-conditions` | Diagnose & prevent races — atomicity, locking, idempotency, live-DB repro harness |
+| `mcp-server-authoring` | Build MCP servers — stdio vs HTTP, tool-schema design, per-host config |
+| `timezone-handling` | Store UTC, convert at edges, IANA/DST, container TZ, market-hours |
+| `local-llm-selection` | Local vs hosted LLM, VRAM/quant sizing, prompt-before-finetune (QLoRA) |
 
-### `user-*` — collaboration
+### meta & template
 
 | Skill | Provides |
 |---|---|
-| `user-profile` | How to calibrate tone, depth, and delivery style when working with the user |
+| `meta-skill-self-improve` | The self-update discipline — fold new learnings into the right skill, versioned + changelogged |
+| `user-profile` | *(Template)* Calibrate tone, depth, delivery style — replace the specifics with your own |
 
-> Note: a few `feedback-*` descriptions name a specific codebase ("trader-platform") as an example
-> trigger. The underlying rule is general — adjust the trigger wording when adapting to your projects.
+> Note: a few skills name a specific codebase ("trader-platform") in examples. The underlying rules are
+> general — adjust example wording when adapting to your projects. `user-profile` is explicitly a
+> template to overwrite.
+
+---
+
+## 3b. Skills that get better over time (self-update)
+
+Every skill in this plugin is a **living document**:
+
+- **`version` + `updated:` in frontmatter** track each skill's maturity (SemVer for skills — patch =
+  clarify/example, minor = new step/section, major = reworked premise).
+- **A `## Changelog` at the end** records every change (date — what — why/source). Self-contained
+  history lives inside the skill, not in a separate file.
+- **`meta-skill-self-improve`** is the discipline that drives it: when you discover a new method, step,
+  edge case, or concept during real work, you fold it into the right skill **additively**
+  (see `feedback-additive-changes`), add a Changelog line, and bump the version. If a skill grows past
+  ~300 lines, its detail moves to `references/*.md` **inside the same folder**, keeping it
+  self-contained. Project-specific facts go to memory, not skills.
+
+The result: the library compounds — each expensive lesson is captured once and reused forever.
 
 ---
 
