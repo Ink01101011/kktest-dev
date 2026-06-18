@@ -9,6 +9,7 @@ memory hygiene.
 |---|---|
 | [memory-keeper](./plugins/memory-keeper) | Keep file-based agent memory lean and durable — compact the index, archive done/stale memories to cold storage, lint against a byte budget. Ships a skill, slash commands, a zero-dependency MCP server, and a stdlib CLI. |
 | [focus-notify](./plugins/focus-notify) | Focus-aware desktop notifications for Claude Code on macOS, Linux & Windows — notify only when your terminal is *not* the frontmost app. Three kinds (finished, approve, question), each with its own sound, plus click-to-focus. |
+| [kkskills-essentials](./plugins/kkskills-essentials) | Generic, project-agnostic working skills — feedback discipline (additive changes, verify-with-real-data, no-duplicate-docs), clean-architecture & conventional-commits references, and user-profile calibration. Skills-only. |
 
 ## Install
 
@@ -52,6 +53,10 @@ Per-plugin guides live under [`docs/`](./docs), one folder per plugin.
 
 - [Concepts, usage & installation](./docs/focus-notify/CONCEPTS.md)
 - [Full specification](./docs/focus-notify/SPEC.md)
+
+**kkskills-essentials**
+
+- [Concepts, usage & the skill catalog](./docs/kkskills-essentials/CONCEPTS.md)
 
 ## License
 
