@@ -59,7 +59,9 @@ Each skill is a folder under `skills/` containing a `SKILL.md` with YAML frontma
 frontmatter to decide when a skill applies, then follows the body. Nothing to configure.
 
 See [`../../docs/kkskills-essentials/CONCEPTS.md`](../../docs/kkskills-essentials/CONCEPTS.md) for the
-full concept, the skill catalog, and how to adapt these to your own projects.
+full concept, the skill catalog, and how to adapt these to your own projects, and
+[`../../docs/kkskills-essentials/SPEC.md`](../../docs/kkskills-essentials/SPEC.md) for the SKILL.md
+format contract, versioning, and curation rules.
 
 ## License
 

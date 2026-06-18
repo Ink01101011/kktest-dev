@@ -29,7 +29,8 @@ want it.
 Both skills carry `version` + `updated:` frontmatter and a `## Changelog`, and follow the
 self-improvement discipline from `kkskills-essentials`' `meta-skill-self-improve`.
 
-See [`../../docs/kkskills-personal/CONCEPTS.md`](../../docs/kkskills-personal/CONCEPTS.md).
+See [`../../docs/kkskills-personal/CONCEPTS.md`](../../docs/kkskills-personal/CONCEPTS.md) and
+[`../../docs/kkskills-personal/SPEC.md`](../../docs/kkskills-personal/SPEC.md).
 
 ## License
 

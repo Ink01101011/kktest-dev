@@ -58,10 +58,12 @@ Per-plugin guides live under [`docs/`](./docs), one folder per plugin.
 **kkskills-essentials**
 
 - [Concepts, usage & the skill catalog](./docs/kkskills-essentials/CONCEPTS.md)
+- [Specification](./docs/kkskills-essentials/SPEC.md)
 
 **kkskills-personal**
 
 - [Concepts & usage](./docs/kkskills-personal/CONCEPTS.md)
+- [Specification](./docs/kkskills-personal/SPEC.md)
 
 ## License
 
