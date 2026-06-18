@@ -1,0 +1,14 @@
+{
+  "name": "focus-notify",
+  "version": "1.1.1",
+  "description": "Focus-aware desktop notifications for Claude Code on macOS, Linux, and Windows. Fires only when your terminal is not the frontmost app, so you don't get spammed during short interactive turns. Three distinct kinds (finished, approve, question) each with its own message/sound, and click-to-focus to jump back to your terminal (macOS/Linux).",
+  "author": {
+    "name": "Ink",
+    "email": "supakit.kitj@gmail.com"
+  },
+  "homepage": "https://github.com/Ink01101011/kktest-dev/tree/main/plugins/focus-notify",
+  "repository": "https://github.com/Ink01101011/kktest-dev",
+  "license": "MIT",
+  "keywords": ["notification", "macos", "linux", "windows", "hooks", "focus", "terminal-notifier"],
+  "hooks": "./hooks/hooks.json"
+}
