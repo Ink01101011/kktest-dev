@@ -1,8 +1,8 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "kkskills-essentials",
-  "version": "0.2.0",
-  "description": "Generic, project-agnostic working skills (15) that self-improve over time: feedback discipline, clean-architecture & conventional-commits references, proactive task reminders, secret hygiene, concurrency/race-conditions, MCP server authoring, timezone handling, local-LLM selection — plus a meta-skill that folds new learnings back into the right skill (versioned, changelogged, self-contained).",
+  "version": "0.3.0",
+  "description": "Generic, project-agnostic working skills (13) that self-improve over time: feedback discipline, clean-architecture & conventional-commits references, proactive task reminders, secret hygiene, concurrency/race-conditions, MCP server authoring, timezone handling, local-LLM selection — plus a meta-skill that folds new learnings back into the right skill (versioned, changelogged, self-contained). Personal/project-specific skills live in kkskills-personal.",
   "author": {
     "name": "Ink",
     "email": "supakit.kitj@gmail.com"

@@ -4,10 +4,9 @@ Generic, **project-agnostic working skills** for Claude — a set of `SKILL.md` 
 working discipline (how to make changes, how to verify, how to commit) so Claude applies them
 consistently across sessions. Skills-only: no MCP server, hooks, or commands.
 
-> These skills come from Ink's personal working library. Some descriptions mention a specific
-> codebase as an example trigger; the *rules* they encode are general. Treat them as reference /
-> starter skills and edit triggers to fit your own projects. `user-profile` is a **template** —
-> replace it with your own.
+> These skills come from Ink's personal working library, kept **generic and project-agnostic**.
+> Personal and project-specific skills (a user profile, a private filename convention) live in the
+> sibling [`kkskills-personal`](../kkskills-personal) plugin instead.
 
 Every skill carries a `version` and `updated:` in its frontmatter and a `## Changelog` at the end, so
 it can be improved over time without drifting. See `meta-skill-self-improve` for the discipline that
@@ -22,7 +21,6 @@ folds new learnings back into the right skill — additively, versioned, and sel
 | `feedback-additive-changes` | Prefer additive changes; avoid destructive refactors/deletions unless explicitly scoped. |
 | `feedback-migrations-additive-first` | Roll out DB schema changes additive-first (expand-contract) across deploys. |
 | `feedback-no-duplicate-docs` | Don't spawn new tracking/checklist/TODO docs when one already exists. |
-| `feedback-use-full-filenames` | Reference versioned docs by their full, unambiguous (dated) filename. |
 | `feedback-verify-with-real-data` | Verify claims about code/API state against real data before asserting. |
 | `proactive-task-reminders` | Keep a pending-work register; surface deferred items on skip / condition-met / branch-return. |
 
@@ -38,12 +36,11 @@ folds new learnings back into the right skill — additively, versioned, and sel
 | `timezone-handling` | Store UTC, convert at edges, IANA/DST, container TZ, market-hours. |
 | `local-llm-selection` | Local vs hosted LLM, VRAM/quant sizing, prompt-before-finetune (QLoRA). |
 
-**Meta & template**
+**Meta**
 
 | Skill | Provides |
 |---|---|
-| `meta-skill-self-improve` | The self-update discipline: fold new learnings into the right skill, versioned + changelogged. |
-| `user-profile` | *(Template)* Calibrate tone, depth, delivery style — replace with your own profile. |
+| `meta-skill-self-improve` | The self-update discipline: fold new learnings into the right skill, versioned + changelogged, pressure-tested. |
 
 ## Install
 
