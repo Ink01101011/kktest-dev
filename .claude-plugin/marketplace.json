@@ -26,6 +26,22 @@
       "category": "productivity",
       "keywords": ["memory", "context", "maintenance", "index", "archive", "mcp"],
       "tags": ["memory", "context-engineering", "agent-memory", "cli", "mcp"]
+    },
+    {
+      "name": "focus-notify",
+      "source": "./plugins/focus-notify",
+      "description": "Focus-aware desktop notifications for Claude Code. Notify only when your terminal is NOT the frontmost app. Three kinds (finished, approve, question), each with its own message and sound, plus click-to-focus on macOS/Linux.",
+      "version": "1.1.2",
+      "author": {
+        "name": "Ink",
+        "email": "supakit.kitj@gmail.com"
+      },
+      "homepage": "https://github.com/Ink01101011/kktest-dev/tree/main/plugins/focus-notify",
+      "repository": "https://github.com/Ink01101011/kktest-dev",
+      "license": "MIT",
+      "category": "productivity",
+      "keywords": ["notification", "macos", "linux", "windows", "hooks", "focus", "terminal-notifier"],
+      "tags": ["notifications", "hooks", "desktop", "terminal", "dx"]
     }
   ]
 }
