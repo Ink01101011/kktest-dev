@@ -4,7 +4,7 @@ description: "Use this skill whenever you discover something that should make an
   Triggers include: the user corrects you ('ทำไมไม่...', 'next time do X'), you fixed a mistake a skill should have prevented, a technique just proved out in real work, you hit an edge case a skill's checklist missed, or you're wrapping up a task and notice a reusable lesson.
   Also use when a skill has grown too large and its detail should be split into self-contained reference files.
   Do NOT use for one-off project facts (those go to memory, not a skill) or for creating brand-new skills from scratch (use skill-creator for that)."
-version: "0.1.0"
+version: "0.2.0"
 updated: "2026-06-19"
 ---
 
@@ -83,6 +83,23 @@ A skill folder must carry everything it needs — no links into a specific repo.
 - ☐ Trigger (`description`) still accurately describes when to fire — update it if the scope changed.
 - ☐ No duplication introduced; cross-links (`[[...]]`) still resolve.
 
+### Step 8 — Pressure-test before "done" (TDD for skills)
+
+A skill is only as good as a subagent's willingness to actually follow it under pressure. Before
+considering a new or changed skill finished, **test it on a fresh subagent** the same way you'd write a
+failing test first (borrowed from `obra/superpowers`' skill-testing method).
+
+- ☐ Hand the skill to a subagent inside a **realistic, high-pressure scenario** — not a quiz. Use the
+  levers that make agents cut corners: time pressure ("prod is down, every minute costs $5k"), sunk cost
+  ("you already spent 45 min and it works"), and confidence ("you're experienced, just do it").
+- ☐ Watch whether the subagent **finds and follows** the skill, or rationalizes skipping it.
+- ☐ Each time it skips or misreads, **strengthen the weak spot** — sharpen the trigger, make a rule
+  imperative, add the missing edge case — then re-test. (RED → GREEN for skills.)
+- ☐ Stop when the subagent reliably complies under pressure. Record what you hardened in the Changelog.
+
+> Don't grade the subagent like a gameshow ("what does this skill say?"). Put it in a scenario where
+> *not* using the skill is tempting, and see what it actually does.
+
 ## Skill versioning rules (SemVer for skills)
 
 | Bump | When |
@@ -109,6 +126,7 @@ Newest entry on top. One line per change. Always say *why* / where it came from.
 - ALWAYS: additive edits — extend, don't rewrite validated guidance ([[feedback-additive-changes]]).
 - ALWAYS: Changelog entry + version bump on every skill change.
 - ALWAYS: keep the skill self-contained — references live in the folder, not the repo.
+- ALWAYS: pressure-test a new or changed skill on a fresh subagent before calling it done.
 - NEVER: put a project-specific fact into a skill — that's memory's job.
 - NEVER: let a skill silently drift — an undocumented change is a future contradiction.
 - NEVER: bloat a skill past readability — split into `references/` instead.
@@ -132,4 +150,5 @@ body. Changelog: `0.3.0 — split stack examples into references/ to keep SKILL.
 
 ## Changelog
 
+- 0.2.0 (2026-06-19) — added Step 8 "Pressure-test before done (TDD for skills)" + a rule — adapted from obra/superpowers' subagent skill-testing method.
 - 0.1.0 (2026-06-19) — initial version; defines the self-update discipline, skill SemVer, and Changelog format for kktest-dev/kkskills-essentials.

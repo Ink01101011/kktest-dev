@@ -1,10 +1,10 @@
 ---
 name: feedback-additive-changes
 description: "Use this skill whenever you're proposing a refactor, cleanup, deletion, or migration in an existing (production) codebase.
-  Triggers include: 'refactor X', 'clean up Y', 'remove dead code', 'delete unused Z', 'migrate this endpoint', 'while I'm here let me also...', any destructive change to `services/`, `routers/`, or existing migrations.
+  Triggers include: 'refactor X', 'clean up Y', 'remove dead code', 'delete unused Z', 'migrate this endpoint', 'while I'm here let me also...', any destructive change to code paths or data that something already depends on.
   Also use when scoping proof-of-concept work where additive is the explicit rule.
   Do NOT use for genuinely new features that don't touch existing flow at all — those are additive by default."
-version: "0.1.0"
+version: "0.2.0"
 updated: "2026-06-19"
 ---
 
@@ -12,13 +12,16 @@ updated: "2026-06-19"
 
 ## Overview
 
-When refactoring or adding capability, the default mode is **additive**: new endpoint alongside the old one, new column on the table, new directory next to the legacy one, new entity/use case. Do not modify the existing flow or delete dormant code unless explicitly asked.
+When refactoring or adding capability, the default mode is **additive**: a new endpoint alongside the
+old one, a new column on the table, a new directory next to the legacy one, a new entity/use case. Don't
+modify the existing flow or delete dormant code unless explicitly asked. Additive changes are reversible
+and low-blast-radius; destructive ones aren't.
 
 ## When to Use
 
 - ✅ Any refactor of code currently in production.
 - ✅ Any migration that changes existing tables.
-- ✅ Sprint 1 PoC work and the Clean Arch strangler-fig migration.
+- ✅ Proof-of-concept work, and any strangler-fig migration toward a new architecture.
 - ✅ When tempted to delete "unused" code.
 - ❌ Pure greenfield additions in new directories — already additive.
 
@@ -28,109 +31,90 @@ When refactoring or adding capability, the default mode is **additive**: new end
 
 Run this decision tree before writing any code:
 
-- ☐ Am I adding a brand-new endpoint at a path that doesn't exist yet? → Additive. Proceed.
-- ☐ Am I adding a new column with `ADD COLUMN ... NULL`? → Additive. Proceed.
-- ☐ Am I creating a new directory (`entities/`, `use_cases/`) next to existing ones? → Additive. Proceed.
-- ☐ Am I modifying an existing endpoint's request/response shape? → **Stop.** Re-scope as a new endpoint.
-- ☐ Am I dropping a column or making it `NOT NULL` without backfill? → **Stop.** Split into two migrations.
-- ☐ Am I deleting code that looks unused? → **Stop.** Go to Step 2.
+- ☐ Adding a brand-new endpoint at a path that doesn't exist yet? → Additive. Proceed.
+- ☐ Adding a new column with `ADD COLUMN ... NULL`? → Additive. Proceed.
+- ☐ Creating a new directory/module next to the existing ones? → Additive. Proceed.
+- ☐ Modifying an existing endpoint's request/response shape? → **Stop.** Re-scope as a new endpoint.
+- ☐ Dropping a column or making it `NOT NULL` without backfill? → **Stop.** See [[feedback-migrations-additive-first]].
+- ☐ Deleting code that looks unused? → **Stop.** Go to Step 2.
 
 ### Step 2 — Mark dormant code instead of deleting
 
-Concrete pattern that's already been validated in the project (`ws_price_manager.py`):
+Code that looks unused is often intentionally dormant (kept for a future provider, a feature flag, a
+planned integration). Annotate it rather than delete it, so the intent is explicit and the next person
+doesn't "clean it up" either.
 
 ```python
-# Class docstring
-"""
-WS price manager.
-
-Modes:
-  - Poll mode (ACTIVE) — fetches via REST every N seconds.
-  - Streaming mode (DORMANT) — original Twelve Data WS implementation,
-    kept for future provider streaming integration. The `start()` branch
-    that selects streaming is unreachable in the current release because
-    no connector named `ws_quotes` is registered → falls through to poll.
-"""
-
 # Module-level constant
-_WS_URL = "wss://ws.twelvedata.com/v1/quotes/price"
-# DORMANT — Twelve Data WS deprecated 2025; kept for future provider WS.
+_LEGACY_STREAM_URL = "wss://example.com/v1/stream"
+# DORMANT — legacy streaming endpoint; kept for a future provider integration.
 
-# Unreachable branch
 def start(self):
-    if connector_registry.has("ws_quotes"):
-        # DORMANT — no provider currently registers ws_quotes;
+    if connector_registry.has("stream_quotes"):
+        # DORMANT — no provider currently registers "stream_quotes";
         # this branch is unreachable but preserved for future providers.
         return self._start_streaming()
     return self._start_poll()
 ```
 
-- ☐ Add `DORMANT — <reason>` comment.
-- ☐ Mention dormant status in docstrings of the containing class/module.
-- ☐ Confirm tests still pass: `pytest <relevant_path> -q`.
-- ☐ Confirm linter clean: `ruff check <relevant_path>`.
-- ☐ Commit message: `docs(<area>): mark <feature> dormant — kept for <reason>`.
+- ☐ Add a `DORMANT — <reason>` comment at each kept-but-unreachable site.
+- ☐ Mention dormant status in the docstring of the containing class/module.
+- ☐ Confirm tests still pass and the linter is clean (zero behavior change).
+- ☐ Commit message: `docs(<area>): mark <feature> dormant — kept for <reason>` (comment-only diff).
 
-### Step 3 — Migrations: additive in two steps
+### Step 3 — Migrations are additive too
 
-Never combine `ADD COLUMN + NOT NULL + DROP COLUMN` in one migration. Split:
+The same rule applies to schema: add first, tighten/remove later, never in one migration. The full
+expand-contract playbook (nullable add → backfill → tighten → drop) lives in
+[[feedback-migrations-additive-first]]. Default to that; one migration that adds-and-tightens-and-drops
+is the smell.
 
-**Migration 1 (additive, ships first):**
-```sql
-ALTER TABLE stock_analyses ADD COLUMN dismissed_at TIMESTAMPTZ NULL;
-```
+### Step 4 — Proving a new pattern with low blast radius
 
-**Migration 2 (optional tightening, only after backfill is verified):**
-```sql
--- After all rows have been backfilled and code only writes via UoW:
-ALTER TABLE stock_analyses ALTER COLUMN dismissed_at SET DEFAULT NULL;
-```
+When introducing a new pattern (a Unit of Work, a new layering, a new persistence path):
 
-- ☐ Migration name follows `DDMMYYYY_<description>.sql`.
-- ☐ Migration is idempotent or guarded by `IF NOT EXISTS` where appropriate.
-- ☐ Existing reads/writes still work after the migration.
-
-### Step 4 — PoC pattern for new patterns
-
-When proving a new pattern (e.g. Sprint 1's `UnitOfWork` + entities):
-
-- ☐ Choose a trivial aggregate (`Signal`, not `Analysis`).
-- ☐ Pick a write use case that exercises commit path with low blast radius (`MarkSignalDismissedUseCase` with the new `dismissed_at` column).
-- ☐ Add only what's needed: new endpoints, new column, new directory.
-- ☐ Existing endpoints, existing `ensure_analysis` flow, existing user-facing behavior → **unchanged**.
-- ☐ Document the pattern in `CLAUDE.md` so the next sprint reuses it.
+- ☐ Choose a trivial aggregate, not your most central one — exercise the path, not the whole domain.
+- ☐ Pick a write use case with a small blast radius (e.g. a new "mark dismissed" action on a new column).
+- ☐ Add only what's needed: new endpoint, new column, new directory.
+- ☐ Leave existing endpoints, existing flows, and existing user-facing behavior **unchanged**.
+- ☐ Document the proven pattern (e.g. in `CLAUDE.md`) so the next iteration reuses it.
 
 ## Checklist Before Submitting a Refactor PR
 
 - ☐ No existing endpoint's request/response shape changed.
-- ☐ No `services/` file deleted (Sprint 7+ boy-scout only).
-- ☐ No migration drops or hard-constraints a column without prior backfill.
+- ☐ No legacy file deleted (boy-scout migrate only when feature work already touches it).
+- ☐ No migration drops or hard-constraints a column without prior backfill ([[feedback-migrations-additive-first]]).
 - ☐ Any "unused" code retained has `DORMANT — <reason>` comments.
-- ☐ Scope matches the current sprint's Goal; no "while I'm here" extras.
+- ☐ Scope matches the stated goal; no "while I'm here" extras.
 
 ## Rules & Constraints
 
 - ALWAYS: add a `DORMANT — <reason>` comment before considering deletion.
-- ALWAYS: migrations are `ADD COLUMN ... NULL` first; tighten constraints in a later migration after backfill.
-- ALWAYS: new endpoints get new paths; don't change semantics of existing paths.
+- ALWAYS: new endpoints get new paths; don't change the semantics of existing paths.
+- ALWAYS: migrations add first, tighten/drop later ([[feedback-migrations-additive-first]]).
 - NEVER: delete dormant-by-intent code without asking.
-- NEVER: do "while I'm here" cleanup outside the sprint scope.
-- NEVER: change existing endpoint behavior in a PoC sprint.
+- NEVER: do "while I'm here" cleanup outside the agreed scope.
+- NEVER: change existing endpoint behavior inside a proof-of-concept.
 
 ## Examples
 
-**Scenario:** WS streaming code in `ws_price_manager.py` looks unused.
+**Scenario:** A streaming code path looks unused.
 **Wrong:** Delete the streaming branch.
-**Right:** Add `DORMANT — Twelve Data WS deprecated, kept for future provider streaming` docstring on the class + on `_run_forever` + on `_WS_URL` + on the unreachable `start()` branch. Verify 9/9 tests pass, ruff clean, zero behavior change. Commit comment-only diff.
+**Right:** Add `DORMANT — legacy streaming, kept for a future provider` to the class docstring, the URL
+constant, and the unreachable branch. Verify tests pass, linter clean, zero behavior change. Commit the
+comment-only diff.
 
-**Scenario:** Sprint 1 PoC needs a write use case.
-**Wrong:** Refactor an existing endpoint.
-**Right:** Add `dismissed_at TIMESTAMPTZ NULL` column (1-line additive migration), build `MarkSignalDismissedUseCase` at a new endpoint `POST /api/analysis/{symbol}/signal/dismiss`, leave `ensure_analysis` and all existing flows untouched.
+**Scenario:** A PoC needs a write use case to prove a Unit-of-Work pattern.
+**Wrong:** Refactor an existing endpoint to use it.
+**Right:** Add a nullable column (1-line additive migration), build the use case behind a *new* endpoint,
+and leave all existing flows untouched.
 
-**Scenario:** Old `services/foo.py` overlaps with new `use_cases/foo.py`.
-**Wrong:** Delete `services/foo.py` because `use_cases/foo.py` exists.
-**Right:** Sprint 7+ boy-scout rule — migrate `services/foo.py` only when feature work touches it. Until then, it stays.
+**Scenario:** Legacy `services/foo.py` overlaps with new `use_cases/foo.py`.
+**Wrong:** Delete `services/foo.py` because the new one exists.
+**Right:** Boy-scout rule — migrate `services/foo.py` only when feature work actually touches it. Until
+then, it stays.
 
 ## Changelog
 
+- 0.2.0 (2026-06-19) — genericized examples (removed project-specific identifiers); collapsed the duplicated migrations step into a cross-link to [[feedback-migrations-additive-first]]. Source: superpowers-curation review.
 - 0.1.0 (2026-06-19) — initial version, vendored into kktest-dev/kkskills-essentials.

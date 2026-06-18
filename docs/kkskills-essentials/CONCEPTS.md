@@ -49,7 +49,9 @@ There is nothing to wire up — drop the folder under `skills/` and the host pic
 
 ## 3. The skill catalog
 
-Fifteen skills, grouped by role.
+Thirteen skills, grouped by role. (Two personal/project-specific skills — `user-profile` and
+`feedback-use-full-filenames` — were moved to the sibling `kkskills-personal` plugin so this plugin stays
+project-agnostic.)
 
 ### `feedback-*` — working discipline
 
@@ -58,7 +60,6 @@ Fifteen skills, grouped by role.
 | `feedback-additive-changes` | Prefer additive changes; don't do destructive refactors/deletions unless explicitly scoped | Proposing a refactor, cleanup, deletion, or migration |
 | `feedback-migrations-additive-first` | DB schema changes roll out additive-first (expand-contract) across deploys | Writing or reviewing a schema migration |
 | `feedback-no-duplicate-docs` | Don't create a new tracking/checklist/TODO/audit doc when one already exists | About to spin up a new tracking document |
-| `feedback-use-full-filenames` | Reference versioned docs by full, unambiguous (dated) filename | Citing a versioned doc in chat |
 | `feedback-verify-with-real-data` | Verify claims about code/API state against real data before asserting | About to make a factual claim about codebase or API behavior |
 | `proactive-task-reminders` | Keep a pending-work register; resurface deferred items at the right moment | Deferring work, hitting a fork, pausing, or resuming a project |
 
@@ -74,16 +75,15 @@ Fifteen skills, grouped by role.
 | `timezone-handling` | Store UTC, convert at edges, IANA/DST, container TZ, market-hours |
 | `local-llm-selection` | Local vs hosted LLM, VRAM/quant sizing, prompt-before-finetune (QLoRA) |
 
-### meta & template
+### meta
 
 | Skill | Provides |
 |---|---|
-| `meta-skill-self-improve` | The self-update discipline — fold new learnings into the right skill, versioned + changelogged |
-| `user-profile` | *(Template)* Calibrate tone, depth, delivery style — replace the specifics with your own |
+| `meta-skill-self-improve` | The self-update discipline — fold new learnings into the right skill, versioned + changelogged, pressure-tested |
 
-> Note: a few skills name a specific codebase ("trader-platform") in examples. The underlying rules are
-> general — adjust example wording when adapting to your projects. `user-profile` is explicitly a
-> template to overwrite.
+> Note: a few skills use a specific domain in their *examples*. The underlying rules are general —
+> adjust example wording when adapting to your projects. Personal/project-specific skills (a user
+> profile, a dated-filename convention) live in `kkskills-personal`, not here.
 
 ---
 

@@ -4,7 +4,7 @@ description: "Use this skill whenever you're about to create a new tracking, che
   Triggers include: phrases like 'create a checklist', 'write a TODO', 'track these tests', 'document the deferred items', 'make a regression list', or any time you're tempted to `Write` a new `.md` file at repo root or under `tasks/` or `docs/`.
   Also use when the user asks 'why didn't you update X' — that's a duplicate-doc miss.
   Do NOT use for genuinely new artifacts that cover a different angle than existing docs (e.g. SPRINT_ROADMAP.md was new because AUDIT.md and BUG.md covered different angles)."
-version: "0.1.0"
+version: "0.2.0"
 updated: "2026-06-19"
 ---
 
@@ -52,9 +52,9 @@ Run `Glob` for likely existing names. The candidate list depends on the work:
 
 If you've already written a duplicate (it happens):
 
-- ☐ Apologize briefly ("ขอโทษ — ควรอัพเดทที่นี่ตั้งแต่แรก").
-- ☐ Migrate the content from the new file to the existing doc with `Edit`.
-- ☐ Delete the duplicate (`mcp__cowork__allow_cowork_file_delete` then `rm`).
+- ☐ Apologize briefly and own the miss.
+- ☐ Migrate the content from the new file into the existing doc with `Edit`.
+- ☐ Delete the duplicate file.
 - ☐ Confirm with the user that the canonical doc is now the only source.
 
 ## Rules & Constraints
@@ -78,9 +78,10 @@ If you've already written a duplicate (it happens):
 **Scenario:** "I want a separate TESTING.md so it's easier to find."
 **Right:** Push back gently — single source of truth wins. Suggest a TOC entry or section header in `CHECKLIST.md` instead.
 
-**Recovery scenario:** You wrote `TESTING.md` at repo root. The user asks "ทำไมไม่กลับไปอัพเดตใน checklist.md".
-**Output:** "ขอโทษ — ควรอัพเดทที่นี่ตั้งแต่แรก แก้ให้เลย พร้อมลบ TESTING.md ที่สร้างไปโดยไม่จำเป็น" → migrate content → delete the duplicate.
+**Recovery scenario:** You wrote `TESTING.md` at repo root. The user asks "why didn't you update `CHECKLIST.md`?"
+**Output:** Own it briefly ("you're right — this belonged in CHECKLIST.md"), migrate the content there, delete the redundant `TESTING.md`, and confirm CHECKLIST.md is now the single source.
 
 ## Changelog
 
+- 0.2.0 (2026-06-19) — removed hardcoded Thai recovery lines and a cowork-specific delete reference; genericized recovery example. Source: superpowers-curation review.
 - 0.1.0 (2026-06-19) — initial version, vendored into kktest-dev/kkskills-essentials.
