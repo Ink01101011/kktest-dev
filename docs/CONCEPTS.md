@@ -99,14 +99,14 @@ Only **`python3`** on your PATH. No pip installs — the CLI and MCP server are 
 In Claude Code or Cowork:
 
 ```shell
-/plugin marketplace add YOUR_GH_USERNAME/kktest-dev
+/plugin marketplace add Ink01101011/kktest-dev
 /plugin install memory-keeper@kktest-dev
 ```
 
-Replace `YOUR_GH_USERNAME` with the GitHub account hosting the `kktest-dev` repo. CLI equivalent:
+Replace `Ink01101011` with the GitHub account hosting the `kktest-dev` repo. CLI equivalent:
 
 ```bash
-claude plugin marketplace add YOUR_GH_USERNAME/kktest-dev
+claude plugin marketplace add Ink01101011/kktest-dev
 claude plugin install memory-keeper@kktest-dev
 ```
 
@@ -125,7 +125,7 @@ The MCP server reads this from your environment. You can also pass `dir` per cal
 The engine is a single file — clone and run it:
 
 ```bash
-git clone https://github.com/YOUR_GH_USERNAME/kktest-dev
+git clone https://github.com/Ink01101011/kktest-dev
 python3 kktest-dev/plugins/memory-keeper/scripts/memctl.py analyze --dir /path/to/memory
 ```
 
