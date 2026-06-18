@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "kkskills-personal",
+  "version": "0.1.0",
+  "description": "Personal / project-specific working skills, split out from kkskills-essentials: a user-profile calibration skill and a versioned-filename (DDMMYYYY_NAME.md) reference convention. These encode one person's preferences and one project's conventions — fork and replace the specifics with your own.",
+  "author": {
+    "name": "Ink",
+    "email": "supakit.kitj@gmail.com"
+  },
+  "homepage": "https://github.com/Ink01101011/kktest-dev/tree/main/plugins/kkskills-personal",
+  "repository": "https://github.com/Ink01101011/kktest-dev",
+  "license": "MIT",
+  "keywords": ["skills", "personal", "preferences", "conventions", "template"]
+}
