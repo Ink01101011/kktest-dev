@@ -36,6 +36,12 @@ folds new learnings back into the right skill — additively, versioned, and sel
 | `timezone-handling` | Store UTC, convert at edges, IANA/DST, container TZ, market-hours. |
 | `local-llm-selection` | Local vs hosted LLM, VRAM/quant sizing, prompt-before-finetune (QLoRA). |
 
+**Workflow — planning & execution**
+
+| Skill | Provides |
+|---|---|
+| `plan-decompose-orchestrate` | When planning before code: explode each plan item into implement/test/review, orchestrate parallel-vs-sequential, and root-cause (deep-down) any failure. |
+
 **Meta**
 
 | Skill | Provides |

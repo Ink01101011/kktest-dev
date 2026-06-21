@@ -46,8 +46,8 @@
     {
       "name": "kkskills-essentials",
       "source": "./plugins/kkskills-essentials",
-      "description": "Generic, project-agnostic working skills (13) that self-improve over time — feedback discipline (additive changes, additive-first migrations, no-duplicate-docs, verify-with-real-data), clean-architecture & conventional-commits references, proactive task reminders, secret hygiene, concurrency/race-conditions, MCP server authoring, timezone handling, local-LLM selection, plus a meta-skill that folds new learnings back into the right skill (versioned, changelogged, self-contained). Skills-only.",
-      "version": "0.3.0",
+      "description": "Generic, project-agnostic working skills (14) that self-improve over time — feedback discipline (additive changes, additive-first migrations, no-duplicate-docs, verify-with-real-data), clean-architecture & conventional-commits references, proactive task reminders, secret hygiene, concurrency/race-conditions, MCP server authoring, timezone handling, local-LLM selection, plan decomposition & orchestration (implement/test/review + deep-down debugging), plus a meta-skill that folds new learnings back into the right skill (versioned, changelogged, self-contained). Skills-only.",
+      "version": "0.4.0",
       "author": {
         "name": "Ink",
         "email": "supakit.kitj@gmail.com"
