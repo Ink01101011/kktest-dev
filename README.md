@@ -11,6 +11,7 @@ memory hygiene.
 | [focus-notify](./plugins/focus-notify) | Focus-aware desktop notifications for Claude Code on macOS, Linux & Windows — notify only when your terminal is *not* the frontmost app. Three kinds (finished, approve, question), each with its own sound, plus click-to-focus. |
 | [kkskills-essentials](./plugins/kkskills-essentials) | 13 generic, **self-improving** working skills — feedback discipline, clean-architecture & conventional-commits references, proactive task reminders, secret hygiene, concurrency, MCP authoring, timezone & local-LLM selection, plus a meta-skill that folds new learnings back in (versioned + changelogged). Skills-only. |
 | [kkskills-personal](./plugins/kkskills-personal) | Personal / project-specific skills split out from essentials — a user-profile calibration skill and a dated-filename reference convention. Fork and replace the specifics with your own. Skills-only. |
+| [loop-ledger](./plugins/loop-ledger) | A guardrail for agent loops — a deterministic state machine (budget + stall-hash + exit predicate) that decides should-continue per iteration, plus an opt-in Stop hook that enforces it so the agent can neither quit early nor spin forever. Zero-dependency MCP server. |
 
 ## Install
 
@@ -64,6 +65,11 @@ Per-plugin guides live under [`docs/`](./docs), one folder per plugin.
 
 - [Concepts & usage](./docs/kkskills-personal/CONCEPTS.md)
 - [Specification](./docs/kkskills-personal/SPEC.md)
+
+**loop-ledger**
+
+- [Concepts, usage & installation](./docs/loop-ledger/CONCEPTS.md)
+- [Specification](./docs/loop-ledger/SPEC.md)
 
 ## License
 
