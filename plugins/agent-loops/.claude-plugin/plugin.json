@@ -1,0 +1,13 @@
+{
+  "name": "agent-loops",
+  "version": "0.1.1",
+  "description": "Playbook for the 5 categories of agent loop design patterns (Quality, Memory, Planning, Exploration, System Optimization) — when to use each, its minimal shape, and the exact loop-ledger brake to wire (exit_mode/target_value/direction/max_iterations or dry_rounds). Includes a loop-selector router skill. Skills-only; pairs with the loop-ledger plugin for enforcement.",
+  "author": {
+    "name": "Ink",
+    "email": "supakit.kitj@gmail.com"
+  },
+  "homepage": "https://github.com/Ink01101011/kktest-dev/tree/main/plugins/agent-loops",
+  "repository": "https://github.com/Ink01101011/kktest-dev",
+  "license": "MIT",
+  "keywords": ["loop", "agent", "self-improving", "patterns", "playbook", "skills", "mcp", "guardrail"]
+}
