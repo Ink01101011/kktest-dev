@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "reflexion": {
+      "command": "python3",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/server/reflexion_server.py"],
+      "env": {
+        "REFLEXIONCTL_PATH": "${CLAUDE_PLUGIN_ROOT}/scripts/reflexionctl.py"
+      }
+    }
+  }
+}

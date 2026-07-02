@@ -1,0 +1,14 @@
+{
+  "name": "reflexion",
+  "version": "0.1.0",
+  "description": "Self-improving agent memory built on memory-keeper: recall matching lessons before a task, reflect a new lesson after it, browse the error/success library, and compress recurring lessons into higher-level patterns.",
+  "author": {
+    "name": "Ink",
+    "email": "supakit.kitj@gmail.com"
+  },
+  "homepage": "https://github.com/Ink01101011/kktest-dev/tree/main/plugins/reflexion",
+  "repository": "https://github.com/Ink01101011/kktest-dev",
+  "license": "MIT",
+  "keywords": ["memory", "reflexion", "lessons", "self-improving", "mcp", "agent-loops"],
+  "mcpServers": "./.mcp.json"
+}

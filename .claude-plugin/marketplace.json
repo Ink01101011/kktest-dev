@@ -74,6 +74,22 @@
       "category": "productivity",
       "keywords": ["skills", "personal", "preferences", "conventions", "template"],
       "tags": ["skills", "personal", "preferences", "template"]
+    },
+    {
+      "name": "reflexion",
+      "source": "./plugins/reflexion",
+      "description": "Self-improving agent memory built on memory-keeper: recall matching lessons before a task, reflect a new lesson after it, browse the error/success library, and compress recurring lessons into higher-level patterns.",
+      "version": "0.1.0",
+      "author": {
+        "name": "Ink",
+        "email": "supakit.kitj@gmail.com"
+      },
+      "homepage": "https://github.com/Ink01101011/kktest-dev/tree/main/plugins/reflexion",
+      "repository": "https://github.com/Ink01101011/kktest-dev",
+      "license": "MIT",
+      "category": "productivity",
+      "keywords": ["memory", "reflexion", "lessons", "self-improving", "mcp", "agent-loops"],
+      "tags": ["memory", "agent-memory", "self-improving", "cli", "mcp"]
     }
   ]
 }
