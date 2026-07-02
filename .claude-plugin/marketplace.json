@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
   "name": "kktest-dev",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "owner": {
     "name": "Ink",
     "email": "supakit.kitj@gmail.com"
@@ -90,6 +90,70 @@
       "category": "productivity",
       "keywords": ["loop", "agent", "guardrail", "stop-hook", "budget", "stall-detection", "mcp", "enforcement"],
       "tags": ["loops", "agent", "guardrail", "hooks", "mcp", "enforcement"]
+    },
+    {
+      "name": "reflexion",
+      "source": "./plugins/reflexion",
+      "description": "Self-improving agent memory built on memory-keeper: recall matching lessons before a task, reflect a new lesson after it, browse the error/success library, and compress recurring lessons into higher-level patterns.",
+      "version": "0.1.0",
+      "author": {
+        "name": "Ink",
+        "email": "supakit.kitj@gmail.com"
+      },
+      "homepage": "https://github.com/Ink01101011/kktest-dev/tree/main/plugins/reflexion",
+      "repository": "https://github.com/Ink01101011/kktest-dev",
+      "license": "MIT",
+      "category": "productivity",
+      "keywords": ["memory", "reflexion", "lessons", "self-improving", "mcp", "agent-loops"],
+      "tags": ["memory", "agent-memory", "self-improving", "cli", "mcp"]
+    },
+    {
+      "name": "critique-gate",
+      "source": "./plugins/critique-gate",
+      "description": "A quality brake for agent output: generate, then a distinct critic role scores against a rubric and demands rewrites until the score clears a threshold or the retry budget (via loop-ledger) is exhausted. Four modes -- score-retry, multi-critic, adversarial, judge-ensemble. Skills-only; reuses loop-ledger's MCP tools and Stop hook for enforcement, no new server.",
+      "version": "0.1.1",
+      "author": {
+        "name": "Ink",
+        "email": "supakit.kitj@gmail.com"
+      },
+      "homepage": "https://github.com/Ink01101011/kktest-dev/tree/main/plugins/critique-gate",
+      "repository": "https://github.com/Ink01101011/kktest-dev",
+      "license": "MIT",
+      "category": "productivity",
+      "keywords": ["critique", "quality-gate", "self-improving", "agent-loops", "rubric", "adversarial", "judge-ensemble"],
+      "tags": ["quality", "agent-loops", "skills-only", "enforcement"]
+    },
+    {
+      "name": "prompt-evolve",
+      "source": "./plugins/prompt-evolve",
+      "description": "Evolve a prompt against a test set: run/score it, find where it fails, rewrite from those failures, repeat. Deterministic scorers (exact-match/regex/schema) plus a fully offline verification loop; stdlib CLI + skill, no model calls of its own.",
+      "version": "0.1.0",
+      "author": {
+        "name": "Ink",
+        "email": "supakit.kitj@gmail.com"
+      },
+      "homepage": "https://github.com/Ink01101011/kktest-dev/tree/main/plugins/prompt-evolve",
+      "repository": "https://github.com/Ink01101011/kktest-dev",
+      "license": "MIT",
+      "category": "productivity",
+      "keywords": ["prompt-optimization", "eval", "scoring", "prompt-engineering", "test-set", "self-improving", "cli"],
+      "tags": ["prompts", "evaluation", "optimization", "cli", "self-improving"]
+    },
+    {
+      "name": "agent-loops",
+      "source": "./plugins/agent-loops",
+      "description": "Playbook for the 5 categories of agent loop design patterns (Quality, Memory, Planning, Exploration, System Optimization) — when to use each, its minimal shape, and the exact loop-ledger brake to wire (exit_mode/target_value/direction/max_iterations or dry_rounds). Includes a loop-selector router skill. Skills-only; pairs with the loop-ledger plugin for enforcement.",
+      "version": "0.1.1",
+      "author": {
+        "name": "Ink",
+        "email": "supakit.kitj@gmail.com"
+      },
+      "homepage": "https://github.com/Ink01101011/kktest-dev/tree/main/plugins/agent-loops",
+      "repository": "https://github.com/Ink01101011/kktest-dev",
+      "license": "MIT",
+      "category": "productivity",
+      "keywords": ["loop", "agent", "self-improving", "patterns", "playbook", "skills", "mcp", "guardrail"],
+      "tags": ["loops", "agent", "skills", "playbook", "self-improving"]
     }
   ]
 }

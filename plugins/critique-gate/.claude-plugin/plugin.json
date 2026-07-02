@@ -1,0 +1,13 @@
+{
+  "name": "critique-gate",
+  "version": "0.1.1",
+  "description": "A quality brake for agent output: generate, then a distinct critic role scores against a rubric and demands rewrites until the score clears a threshold or the retry budget (via loop-ledger) is exhausted. Four modes -- score-retry, multi-critic, adversarial, judge-ensemble. Skills-only; reuses loop-ledger's MCP tools and Stop hook for enforcement, no new server.",
+  "author": {
+    "name": "Ink",
+    "email": "supakit.kitj@gmail.com"
+  },
+  "homepage": "https://github.com/Ink01101011/kktest-dev/tree/main/plugins/critique-gate",
+  "repository": "https://github.com/Ink01101011/kktest-dev",
+  "license": "MIT",
+  "keywords": ["critique", "quality-gate", "self-improving", "agent-loops", "rubric", "adversarial", "judge-ensemble"]
+}
