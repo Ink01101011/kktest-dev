@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
   "name": "kktest-dev",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "owner": {
     "name": "Ink",
     "email": "supakit.kitj@gmail.com"
@@ -74,6 +74,22 @@
       "category": "productivity",
       "keywords": ["skills", "personal", "preferences", "conventions", "template"],
       "tags": ["skills", "personal", "preferences", "template"]
+    },
+    {
+      "name": "loop-ledger",
+      "source": "./plugins/loop-ledger",
+      "description": "A guardrail for agent loops: a deterministic state machine (budget + stall-hash + exit predicate) that decides should-continue per iteration, plus an opt-in Stop hook that enforces it so the agent can neither quit early nor spin forever. Zero-dependency MCP server.",
+      "version": "0.1.0",
+      "author": {
+        "name": "Ink",
+        "email": "supakit.kitj@gmail.com"
+      },
+      "homepage": "https://github.com/Ink01101011/kktest-dev/tree/main/plugins/loop-ledger",
+      "repository": "https://github.com/Ink01101011/kktest-dev",
+      "license": "MIT",
+      "category": "productivity",
+      "keywords": ["loop", "agent", "guardrail", "stop-hook", "budget", "stall-detection", "mcp", "enforcement"],
+      "tags": ["loops", "agent", "guardrail", "hooks", "mcp", "enforcement"]
     },
     {
       "name": "reflexion",

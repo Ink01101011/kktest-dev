@@ -1,0 +1,14 @@
+{
+  "name": "loop-ledger",
+  "version": "0.1.0",
+  "description": "A guardrail for agent loops: a deterministic state machine (budget + stall-hash + exit predicate) that decides should-continue per iteration, plus an opt-in Stop hook that enforces it so the agent can neither quit early nor spin forever. Zero-dependency MCP server.",
+  "author": {
+    "name": "Ink",
+    "email": "supakit.kitj@gmail.com"
+  },
+  "homepage": "https://github.com/Ink01101011/kktest-dev/tree/main/plugins/loop-ledger",
+  "repository": "https://github.com/Ink01101011/kktest-dev",
+  "license": "MIT",
+  "keywords": ["loop", "agent", "guardrail", "stop-hook", "budget", "stall-detection", "mcp", "enforcement"],
+  "mcpServers": "./.mcp.json"
+}
