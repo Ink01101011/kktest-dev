@@ -1,6 +1,6 @@
 ---
 description: Score-retry mode — one critic scores a draft, retry until it clears threshold
-allowed-tools: mcp__loop-ledger__loop_start, mcp__loop-ledger__loop_tick, mcp__loop-ledger__loop_status, mcp__loop-ledger__loop_end
+allowed-tools: mcp__plugin_loop-ledger_loop-ledger__loop_start, mcp__plugin_loop-ledger_loop-ledger__loop_tick, mcp__plugin_loop-ledger_loop-ledger__loop_status, mcp__plugin_loop-ledger_loop-ledger__loop_end
 argument-hint: <what to critique> [--threshold 0.8] [--max-retries 3] [--enforce]
 ---
 

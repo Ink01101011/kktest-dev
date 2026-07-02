@@ -10,7 +10,7 @@ description: "Use this skill whenever output should not ship until a distinct cr
   with no quality score (that's just a `loop-ledger` target/manual loop) — use the broader
   `agent-loops` plugin's `quality-loops` skill instead if you only want the *pattern reference*, not a
   named, enforceable command per mode."
-version: "0.1.0"
+version: "0.1.1"
 updated: "2026-07-02"
 ---
 
@@ -220,6 +220,13 @@ judges disagreed sharply and consensus is weak, rather than presenting it as a c
 
 ## Changelog
 
+- 0.1.1 (2026-07-02) — fixed all 4 commands' `allowed-tools` frontmatter: it declared the bare
+  `mcp__loop-ledger__<tool>` form, but Claude Code namespaces plugin-bundled MCP tools as
+  `mcp__plugin_<plugin-name>_<server-name>__<tool-name>` (verified against Claude Code's own MCP docs;
+  no fuzzy/prefix matching), so pre-authorization silently never matched and every invocation fell back
+  to an interactive permission prompt. Found by dogfooding `/critique-gate:critique-score` after a real
+  `claude plugin install loop-ledger@kktest-dev` + `/reload-plugins` — a bug static review of the
+  server's own tool names couldn't have caught.
 - 0.1.0 (2026-07-02) — initial version; four modes (score-retry, multi-critic, adversarial,
   judge-ensemble), each wired to one `loop-ledger` `loop_start`/`loop_tick` pair. No new server, no new
   Stop hook — reuses `loop-ledger`'s enforcement verbatim. Dogfooded score-retry mode end to end against

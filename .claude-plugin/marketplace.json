@@ -111,7 +111,7 @@
       "name": "critique-gate",
       "source": "./plugins/critique-gate",
       "description": "A quality brake for agent output: generate, then a distinct critic role scores against a rubric and demands rewrites until the score clears a threshold or the retry budget (via loop-ledger) is exhausted. Four modes -- score-retry, multi-critic, adversarial, judge-ensemble. Skills-only; reuses loop-ledger's MCP tools and Stop hook for enforcement, no new server.",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "author": {
         "name": "Ink",
         "email": "supakit.kitj@gmail.com"
