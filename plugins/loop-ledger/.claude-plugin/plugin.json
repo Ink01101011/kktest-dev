@@ -1,6 +1,6 @@
 {
   "name": "loop-ledger",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A guardrail for agent loops: a deterministic state machine (budget + stall-hash + exit predicate) that decides should-continue per iteration, plus an opt-in Stop hook that enforces it so the agent can neither quit early nor spin forever. Zero-dependency MCP server.",
   "author": {
     "name": "Ink",
