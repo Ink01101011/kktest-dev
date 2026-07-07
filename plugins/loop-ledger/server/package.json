@@ -1,0 +1,5 @@
+{
+  "name": "loop-ledger-server",
+  "private": true,
+  "type": "module"
+}
