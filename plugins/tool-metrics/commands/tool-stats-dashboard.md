@@ -1,7 +1,7 @@
 ---
 description: Build an HTML dashboard of tool/MCP/skill/agent usage and publish it as an Artifact
 allowed-tools: Bash, Read, Write, Edit, Skill, Artifact
-argument-hint: [--since 30d] [--project SUBSTR]
+argument-hint: "[--since 30d] [--project SUBSTR]"
 ---
 
 Build a usage dashboard. Steps:

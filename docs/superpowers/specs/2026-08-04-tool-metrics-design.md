@@ -1,7 +1,7 @@
 # tool-metrics — Design
 
 **Date:** 2026-08-04
-**Status:** Draft (pending user approval)
+**Status:** Approved — implemented 2026-08-04
 **Target:** new plugin `plugins/tool-metrics` in the `kktest-dev` marketplace
 
 ## Purpose

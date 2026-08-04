@@ -16,6 +16,7 @@ memory hygiene.
 | [critique-gate](./plugins/critique-gate) | A quality brake for agent output — generate, critic scores against a rubric, rewrite, re-score, wired to loop-ledger's retry-count backstop. Four modes: score-retry, multi-critic, adversarial, judge-ensemble. Skills-only, no new server. |
 | [prompt-evolve](./plugins/prompt-evolve) | Evolve a prompt against a test set — run it, score every output, rewrite the prompt from its failures, repeat. Deterministic scorers (exact-match/regex/schema) plus a fully offline verification loop; stdlib CLI + skill, no model calls of its own. |
 | [agent-loops](./plugins/agent-loops) | Playbook for the 5 categories of agent loop design patterns (Quality, Memory, Planning, Exploration, System Optimization) — when to use each, its minimal shape, and the exact `loop-ledger` brake to wire. Plus a `loop-selector` router skill. Skills-only; pairs with `loop-ledger` for enforcement. |
+| [tool-metrics](./plugins/tool-metrics) | Count Claude Code tool usage across every session — built-in tools, MCP tools grouped by server, skill invocations and subagent spawns. Merges session transcripts with a durable `PostToolUse` event log; `/tool-stats` prints a terminal table, `/tool-stats-dashboard` publishes an HTML dashboard. Stdlib-only, no dependencies. |
 
 Together with `loop-ledger` and `memory-keeper`, these plugins complete the "self-improvement chain" —
 see [docs/proposals/SELF-IMPROVEMENT-CHAIN_SPEC.md](./docs/proposals/SELF-IMPROVEMENT-CHAIN_SPEC.md) for

@@ -1,7 +1,7 @@
 ---
 description: Show tool/MCP/skill/agent usage counts across all Claude Code sessions
 allowed-tools: Bash
-argument-hint: [--since 7d] [--project SUBSTR] [--group tool|server|project|day|skill|agent]
+argument-hint: "[--since 7d] [--project SUBSTR] [--group tool|server|project|day|skill|agent]"
 ---
 
 Tool usage stats (all sessions on this machine):
