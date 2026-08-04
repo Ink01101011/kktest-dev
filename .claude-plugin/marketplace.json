@@ -154,6 +154,22 @@
       "category": "productivity",
       "keywords": ["loop", "agent", "self-improving", "patterns", "playbook", "skills", "mcp", "guardrail"],
       "tags": ["loops", "agent", "skills", "playbook", "self-improving"]
+    },
+    {
+      "name": "tool-metrics",
+      "source": "./plugins/tool-metrics",
+      "description": "Count Claude Code tool usage across all sessions: built-in tools, MCP tools by server, skill invocations, and subagent spawns — /tool-stats terminal table plus an HTML dashboard.",
+      "version": "0.1.0",
+      "author": {
+        "name": "Ink",
+        "email": "supakit.kitj@gmail.com"
+      },
+      "homepage": "https://github.com/Ink01101011/kktest-dev/tree/main/plugins/tool-metrics",
+      "repository": "https://github.com/Ink01101011/kktest-dev",
+      "license": "MIT",
+      "category": "productivity",
+      "keywords": ["metrics", "monitoring", "usage", "mcp", "hooks", "statistics"],
+      "tags": ["metrics", "monitoring", "usage", "hooks", "dx"]
     }
   ]
 }

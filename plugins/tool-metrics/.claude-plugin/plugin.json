@@ -1,0 +1,13 @@
+{
+  "name": "tool-metrics",
+  "version": "0.1.0",
+  "description": "Count Claude Code tool usage across all sessions: built-in tools, MCP tools (grouped by server), skill invocations, and subagent spawns. Merges session transcripts with a durable PostToolUse event log, viewable via /tool-stats (terminal table) and /tool-stats-dashboard (HTML artifact).",
+  "author": {
+    "name": "Ink",
+    "email": "supakit.kitj@gmail.com"
+  },
+  "homepage": "https://github.com/Ink01101011/kktest-dev/tree/main/plugins/tool-metrics",
+  "repository": "https://github.com/Ink01101011/kktest-dev",
+  "license": "MIT",
+  "keywords": ["metrics", "monitoring", "usage", "mcp", "hooks", "statistics"]
+}
