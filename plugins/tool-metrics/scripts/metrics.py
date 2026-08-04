@@ -44,10 +44,25 @@ def detail_of(tool, tool_input):
     return ""
 
 
-def extract_transcript_events(path):
+def project_of(path, root=None):
+    """Project name for a transcript = first path component under the root.
+
+    Transcripts nest arbitrarily deep (<project>/<session>/subagents/*.jsonl),
+    so the parent directory is not the project for anything but top-level
+    session files.
+    """
+    if root is not None:
+        try:
+            return path.relative_to(root).parts[0]
+        except ValueError:
+            pass
+    return path.parent.name
+
+
+def extract_transcript_events(path, root=None):
     """Parse one transcript file -> (session_id, [events], skipped_lines)."""
     events, session, skipped = [], None, 0
-    project = path.parent.name
+    project = project_of(path, root)
     with open(path, errors="replace") as fh:
         for line in fh:
             if not line.strip():
@@ -78,7 +93,7 @@ def extract_transcript_events(path):
     return session or path.stem, events, skipped
 
 
-def cached_transcript_events(path):
+def cached_transcript_events(path, root=None):
     """extract_transcript_events() with a (mtime, size)-keyed JSON cache."""
     cache_dir = metrics_dir() / "cache"
     cache_file = cache_dir / (hashlib.sha1(str(path).encode()).hexdigest() + ".json")
@@ -87,11 +102,13 @@ def cached_transcript_events(path):
     if cache_file.exists():
         try:
             cached = json.loads(cache_file.read_text())
-            if cached.get("stamp") == stamp:
+            # A tampered/foreign cache may hold valid JSON that is not an
+            # object; treat anything but a dict as a miss and re-parse.
+            if isinstance(cached, dict) and cached.get("stamp") == stamp:
                 return cached["session"], cached["events"], cached.get("skipped", 0)
         except (json.JSONDecodeError, KeyError, OSError):
             pass
-    session, events, skipped = extract_transcript_events(path)
+    session, events, skipped = extract_transcript_events(path, root)
     cache_dir.mkdir(parents=True, exist_ok=True)
     tmp = cache_file.with_suffix(".tmp")
     tmp.write_text(json.dumps({"stamp": stamp, "session": session,
@@ -126,13 +143,22 @@ def collect():
     Dedupe rule: a session with a transcript on disk is counted from the
     transcript only; events.jsonl covers sessions whose transcripts were
     cleaned up by retention.
+
+    Transcripts are found recursively: besides <project>/<session>.jsonl,
+    subagent runs live at <project>/<session>/subagents/*.jsonl and deeper.
+    Nested files carry the parent sessionId, so session dedupe still holds.
     """
     all_events, skipped = [], 0
     transcript_sessions = set()
     root = projects_dir()
     if root.is_dir():
-        for path in sorted(root.glob("*/*.jsonl")):
-            session, events, s = cached_transcript_events(path)
+        for path in sorted(root.rglob("*.jsonl")):
+            try:
+                session, events, s = cached_transcript_events(path, root)
+            except OSError:
+                # Unreadable or deleted between glob and read: skip, but count.
+                skipped += 1
+                continue
             transcript_sessions.add(session)
             all_events.extend(events)
             skipped += s
