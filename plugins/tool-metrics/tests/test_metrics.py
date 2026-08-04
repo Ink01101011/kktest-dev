@@ -80,6 +80,35 @@ def test_table_output():
         assert "(1 lines skipped)" in proc.stdout
 
 
+def test_events_jsonl_dedupe():
+    """events.jsonl rows count only for sessions with no transcript on disk."""
+    with tempfile.TemporaryDirectory() as td:
+        events_file = Path(td) / "events.jsonl"
+        rows = [
+            # same session as fixture transcript -> must be IGNORED
+            {"ts": "2026-08-01T10:00:05+00:00", "session": "aaaa-1111",
+             "project": "-test-proj", "tool": "Bash", "server": "builtin", "detail": ""},
+            # unknown session (transcript cleaned up) -> must be COUNTED
+            {"ts": "2026-07-01T08:00:00+00:00", "session": "gone-9999",
+             "project": "-old-proj", "tool": "Edit", "server": "builtin", "detail": ""},
+        ]
+        events_file.write_text("".join(json.dumps(r) + "\n" for r in rows))
+        out = run_stats(FIXTURE_PROJECTS, td)
+        assert out["counts"].get("Edit") == 1
+        assert out["counts"]["Bash"] == 3  # unchanged, no double count
+        assert out["total"] == 9
+        assert out["sessions"] == 2
+
+
+def test_cache_created_and_correct():
+    with tempfile.TemporaryDirectory() as td:
+        first = run_stats(FIXTURE_PROJECTS, td)
+        cache_files = list((Path(td) / "cache").glob("*.json"))
+        assert len(cache_files) == 1
+        second = run_stats(FIXTURE_PROJECTS, td)  # served from cache
+        assert second == first
+
+
 if __name__ == "__main__":
     test_counts_by_tool()
     test_group_server()
@@ -87,4 +116,6 @@ if __name__ == "__main__":
     test_since_filter()
     test_project_filter()
     test_table_output()
+    test_events_jsonl_dedupe()
+    test_cache_created_and_correct()
     print("OK test_metrics")

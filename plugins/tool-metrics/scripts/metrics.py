@@ -6,6 +6,7 @@ present) + events.jsonl written by the PostToolUse hook (durable copy, used
 in Task 4 for sessions whose transcripts were cleaned up). Stdlib only.
 """
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -77,15 +78,67 @@ def extract_transcript_events(path):
     return session or path.stem, events, skipped
 
 
+def cached_transcript_events(path):
+    """extract_transcript_events() with a (mtime, size)-keyed JSON cache."""
+    cache_dir = metrics_dir() / "cache"
+    cache_file = cache_dir / (hashlib.sha1(str(path).encode()).hexdigest() + ".json")
+    st = path.stat()
+    stamp = [st.st_mtime, st.st_size]
+    if cache_file.exists():
+        try:
+            cached = json.loads(cache_file.read_text())
+            if cached.get("stamp") == stamp:
+                return cached["session"], cached["events"], cached.get("skipped", 0)
+        except (json.JSONDecodeError, KeyError, OSError):
+            pass
+    session, events, skipped = extract_transcript_events(path)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    tmp = cache_file.with_suffix(".tmp")
+    tmp.write_text(json.dumps({"stamp": stamp, "session": session,
+                               "events": events, "skipped": skipped}))
+    tmp.replace(cache_file)
+    return session, events, skipped
+
+
+def live_events(transcript_sessions):
+    """Rows from events.jsonl for sessions with no transcript on disk."""
+    events, skipped = [], 0
+    events_file = metrics_dir() / "events.jsonl"
+    if not events_file.exists():
+        return events, skipped
+    with open(events_file, errors="replace") as fh:
+        for line in fh:
+            if not line.strip():
+                continue
+            try:
+                ev = json.loads(line)
+            except json.JSONDecodeError:
+                skipped += 1
+                continue
+            if ev.get("session") not in transcript_sessions:
+                events.append(ev)
+    return events, skipped
+
+
 def collect():
-    """Gather events from all transcripts -> (events, skipped_lines)."""
+    """Gather events from transcripts + events.jsonl -> (events, skipped).
+
+    Dedupe rule: a session with a transcript on disk is counted from the
+    transcript only; events.jsonl covers sessions whose transcripts were
+    cleaned up by retention.
+    """
     all_events, skipped = [], 0
+    transcript_sessions = set()
     root = projects_dir()
     if root.is_dir():
         for path in sorted(root.glob("*/*.jsonl")):
-            _session, events, s = extract_transcript_events(path)
+            session, events, s = cached_transcript_events(path)
+            transcript_sessions.add(session)
             all_events.extend(events)
             skipped += s
+    extra, s = live_events(transcript_sessions)
+    all_events.extend(extra)
+    skipped += s
     return all_events, skipped
 
 
