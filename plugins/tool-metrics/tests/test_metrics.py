@@ -109,6 +109,38 @@ def test_cache_created_and_correct():
         assert second == first
 
 
+def test_naive_timestamp_with_since():
+    """An offset-naive transcript timestamp must not break --since."""
+    with tempfile.TemporaryDirectory() as td:
+        projects = Path(td) / "projects"
+        (projects / "-naive-proj").mkdir(parents=True)
+        line = {
+            "sessionId": "naive-0001",
+            "timestamp": "2026-08-01 10:00:00",
+            "message": {"content": [{"type": "tool_use", "name": "Bash",
+                                     "input": {}}]},
+        }
+        (projects / "-naive-proj" / "naive-0001.jsonl").write_text(
+            json.dumps(line) + "\n")
+        # run_stats asserts returncode == 0
+        run_stats(projects, Path(td) / "metrics", "--since", "7d")
+
+
+def test_bad_since_value_errors_cleanly():
+    """An unparseable --since exits nonzero with an argparse-style message."""
+    with tempfile.TemporaryDirectory() as td:
+        env = dict(os.environ,
+                   CLAUDE_PROJECTS_DIR=str(FIXTURE_PROJECTS),
+                   TOOL_METRICS_DIR=str(td))
+        proc = subprocess.run(
+            [sys.executable, str(SCRIPT), "stats", "--json",
+             "--since", "yesterday"],
+            env=env, capture_output=True, text=True)
+        assert proc.returncode != 0
+        assert "invalid --since" in proc.stderr
+        assert "Traceback" not in proc.stderr
+
+
 if __name__ == "__main__":
     test_counts_by_tool()
     test_group_server()
@@ -118,4 +150,6 @@ if __name__ == "__main__":
     test_table_output()
     test_events_jsonl_dedupe()
     test_cache_created_and_correct()
+    test_naive_timestamp_with_since()
+    test_bad_since_value_errors_cleanly()
     print("OK test_metrics")

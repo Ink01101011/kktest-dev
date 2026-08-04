@@ -156,9 +156,11 @@ def parse_since(value):
 def event_time(ev):
     ts = str(ev.get("ts", ""))
     try:
-        return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        t = datetime.fromisoformat(ts.replace("Z", "+00:00"))
     except ValueError:
         return None
+    # Offset-naive timestamps are assumed UTC so they stay comparable.
+    return t.replace(tzinfo=timezone.utc) if t.tzinfo is None else t
 
 
 def group_key(ev, group):
@@ -205,7 +207,10 @@ def main(argv=None):
 
     events, skipped = collect()
     if args.since:
-        cutoff = parse_since(args.since)
+        try:
+            cutoff = parse_since(args.since)
+        except ValueError:
+            ap.error(f"invalid --since value: {args.since!r}")
         events = [e for e in events
                   if (t := event_time(e)) is not None and t >= cutoff]
     if args.project:
