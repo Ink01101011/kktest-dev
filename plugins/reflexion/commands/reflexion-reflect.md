@@ -1,7 +1,7 @@
 ---
 description: Write what/why/how as a new lesson after a task
 allowed-tools: Bash, Read
-argument-hint: [memory-dir]
+argument-hint: "[memory-dir]"
 ---
 
 Reflect on the task that just finished and write one lesson. Extract from the transcript:

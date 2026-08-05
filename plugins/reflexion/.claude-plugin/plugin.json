@@ -1,6 +1,6 @@
 {
   "name": "reflexion",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Self-improving agent memory built on memory-keeper: recall matching lessons before a task, reflect a new lesson after it, browse the error/success library, and compress recurring lessons into higher-level patterns.",
   "author": {
     "name": "Ink",

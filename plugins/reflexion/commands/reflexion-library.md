@@ -1,7 +1,7 @@
 ---
 description: Browse the error/success library
 allowed-tools: Bash, Read
-argument-hint: [--loop error|success] [memory-dir]
+argument-hint: "[--loop error|success] [memory-dir]"
 ---
 
 List lessons from the memory-keeper store (read-only). Prefer the `reflexion_library` MCP tool if

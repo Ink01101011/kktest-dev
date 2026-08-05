@@ -95,7 +95,7 @@
       "name": "reflexion",
       "source": "./plugins/reflexion",
       "description": "Self-improving agent memory built on memory-keeper: recall matching lessons before a task, reflect a new lesson after it, browse the error/success library, and compress recurring lessons into higher-level patterns.",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "author": {
         "name": "Ink",
         "email": "supakit.kitj@gmail.com"
