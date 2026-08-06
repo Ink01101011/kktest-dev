@@ -27,9 +27,13 @@ def _is_store(d: Path) -> bool:
     random folder just because someone edited a .md there."""
     if not d.is_dir():
         return False
-    if not ((d / "MEMORY.md").exists() or d.name == "memory"):
+    # Compare real directory entries, not Path.exists(): on case-insensitive filesystems
+    # (macOS/Windows defaults) a docs/memory.md would satisfy an exists() check for MEMORY.md
+    # and get its content clobbered by compaction.
+    names = {p.name for p in d.glob("*.md")}
+    if not ("MEMORY.md" in names or d.name == "memory"):
         return False
-    return any(p.name != "MEMORY.md" for p in d.glob("*.md"))
+    return any(n != "MEMORY.md" for n in names)
 
 
 def _store_from_file(f: str) -> Path | None:
