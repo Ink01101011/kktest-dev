@@ -6,13 +6,16 @@ argument-hint: "[--since 30d] [--project SUBSTR]"
 
 Build a usage dashboard. Steps:
 
-1. Collect data (pass through any user arguments such as `--since` / `--project`):
+1. Collect data. Each panel needs its own fixed grouping, so `$ARGUMENTS` goes
+   BEFORE the `--group` flag: argparse takes the last occurrence, which keeps a
+   user-supplied `--group` from collapsing every panel into one grouping.
+   `--since` / `--project` still pass through as written.
 
-!`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/metrics.py stats --json $ARGUMENTS`
-!`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/metrics.py stats --json --group server $ARGUMENTS`
-!`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/metrics.py stats --json --group day $ARGUMENTS`
-!`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/metrics.py stats --json --group skill $ARGUMENTS`
-!`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/metrics.py stats --json --group agent $ARGUMENTS`
+!`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/metrics.py stats --json $ARGUMENTS --group tool`
+!`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/metrics.py stats --json $ARGUMENTS --group server`
+!`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/metrics.py stats --json $ARGUMENTS --group day`
+!`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/metrics.py stats --json $ARGUMENTS --group skill`
+!`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/metrics.py stats --json $ARGUMENTS --group agent`
 
 2. Load the `dataviz` skill (chart form/colors) and the `artifact-design` skill
    (page design) BEFORE writing any HTML.
