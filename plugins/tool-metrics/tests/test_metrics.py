@@ -5,6 +5,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -196,6 +197,173 @@ def test_tampered_cache_is_ignored():
         assert second == first
 
 
+def run_gc(projects_dir, metrics_dir, *args):
+    env = dict(os.environ,
+               CLAUDE_PROJECTS_DIR=str(projects_dir),
+               TOOL_METRICS_DIR=str(metrics_dir))
+    proc = subprocess.run(
+        [sys.executable, str(SCRIPT), "gc", "--json", *args],
+        env=env, capture_output=True, text=True)
+    assert proc.returncode == 0, proc.stderr
+    return json.loads(proc.stdout)
+
+
+def _dup_transcript(path, session, pairs):
+    """Write a transcript of (tool_use id, tool name) pairs, one per line."""
+    lines = []
+    for tid, name in pairs:
+        block = {"type": "tool_use", "name": name, "input": {}}
+        if tid is not None:
+            block["id"] = tid
+        lines.append(json.dumps({
+            "sessionId": session,
+            "timestamp": "2026-08-01T10:00:00.000Z",
+            "message": {"content": [block]},
+        }))
+    path.write_text("\n".join(lines) + "\n")
+
+
+def test_duplicate_tool_use_ids_counted_once():
+    """A resumed session replays earlier messages; one id must count once."""
+    with tempfile.TemporaryDirectory() as td:
+        projects = Path(td) / "projects"
+        (projects / "-dup-proj").mkdir(parents=True)
+        _dup_transcript(projects / "-dup-proj" / "dup-0001.jsonl", "dup-0001",
+                        [("toolu_a", "Bash"), ("toolu_a", "Bash"),
+                         ("toolu_b", "Read")])
+        out = run_stats(projects, Path(td) / "metrics")
+        assert out["counts"]["Bash"] == 1, out["counts"]
+        assert out["counts"]["Read"] == 1
+        assert out["total"] == 2
+
+
+def test_duplicate_tool_use_ids_across_files_counted_once():
+    """Resuming forks a NEW transcript that replays the old one's tool calls.
+
+    This is the dominant duplicate source in real data (cross-file, not
+    within-file), so dedupe has to be global rather than per-transcript.
+    """
+    with tempfile.TemporaryDirectory() as td:
+        projects = Path(td) / "projects"
+        (projects / "-dup-proj").mkdir(parents=True)
+        _dup_transcript(projects / "-dup-proj" / "aaa-0001.jsonl", "aaa-0001",
+                        [("toolu_x", "Bash"), ("toolu_y", "Read")])
+        # resumed session: replays both, then adds one of its own
+        _dup_transcript(projects / "-dup-proj" / "bbb-0002.jsonl", "bbb-0002",
+                        [("toolu_x", "Bash"), ("toolu_y", "Read"),
+                         ("toolu_z", "Edit")])
+        out = run_stats(projects, Path(td) / "metrics")
+        assert out["counts"]["Bash"] == 1, out["counts"]
+        assert out["counts"]["Read"] == 1
+        assert out["counts"]["Edit"] == 1
+        assert out["total"] == 3
+
+
+def test_blocks_without_ids_are_never_deduped():
+    """Dedupe keys on id only — id-less blocks stay distinct events."""
+    with tempfile.TemporaryDirectory() as td:
+        projects = Path(td) / "projects"
+        (projects / "-noid-proj").mkdir(parents=True)
+        _dup_transcript(projects / "-noid-proj" / "noid-0001.jsonl", "noid-0001",
+                        [(None, "Bash"), (None, "Bash"), (None, "Bash")])
+        out = run_stats(projects, Path(td) / "metrics")
+        assert out["counts"]["Bash"] == 3, out["counts"]
+
+
+def test_gc_removes_orphaned_cache_entries():
+    """Cache entries whose transcript is gone are pruned; live ones stay."""
+    with tempfile.TemporaryDirectory() as td:
+        projects = Path(td) / "projects"
+        (projects / "-gc-proj").mkdir(parents=True)
+        keep = projects / "-gc-proj" / "keep-0001.jsonl"
+        drop = projects / "-gc-proj" / "drop-0002.jsonl"
+        _dup_transcript(keep, "keep-0001", [("toolu_k", "Bash")])
+        _dup_transcript(drop, "drop-0002", [("toolu_d", "Read")])
+        metrics = Path(td) / "metrics"
+        run_stats(projects, metrics)
+        cache = metrics / "cache"
+        assert len(list(cache.glob("*.json"))) == 2
+        drop.unlink()  # transcript cleaned up by retention
+        out = run_gc(projects, metrics, "--grace-hours", "0")
+        assert out["removed"] == 1, out
+        assert out["kept"] == 1, out
+        remaining = list(cache.glob("*.json"))
+        assert len(remaining) == 1
+        # the surviving entry is the one keyed to the live transcript
+        import hashlib
+        assert remaining[0].stem == hashlib.sha1(str(keep).encode()).hexdigest()
+
+
+def test_gc_dry_run_reports_without_deleting():
+    with tempfile.TemporaryDirectory() as td:
+        projects = Path(td) / "projects"
+        (projects / "-gc-proj").mkdir(parents=True)
+        drop = projects / "-gc-proj" / "drop-0002.jsonl"
+        _dup_transcript(drop, "drop-0002", [("toolu_d", "Read")])
+        metrics = Path(td) / "metrics"
+        run_stats(projects, metrics)
+        drop.unlink()
+        out = run_gc(projects, metrics, "--grace-hours", "0", "--dry-run")
+        assert out["removed"] == 1
+        assert out["dry_run"] is True
+        assert len(list((metrics / "cache").glob("*.json"))) == 1  # still there
+
+
+def test_gc_grace_period_keeps_fresh_orphans():
+    """A just-written orphan is kept — never race a concurrent writer."""
+    with tempfile.TemporaryDirectory() as td:
+        projects = Path(td) / "projects"
+        (projects / "-gc-proj").mkdir(parents=True)
+        drop = projects / "-gc-proj" / "drop-0002.jsonl"
+        _dup_transcript(drop, "drop-0002", [("toolu_d", "Read")])
+        metrics = Path(td) / "metrics"
+        run_stats(projects, metrics)
+        drop.unlink()
+        out = run_gc(projects, metrics)  # default grace, entry is seconds old
+        assert out["removed"] == 0, out
+        assert len(list((metrics / "cache").glob("*.json"))) == 1
+
+
+def test_gc_skips_when_projects_dir_missing():
+    """A missing/misconfigured projects root must never empty the cache."""
+    with tempfile.TemporaryDirectory() as td:
+        projects = Path(td) / "projects"
+        (projects / "-gc-proj").mkdir(parents=True)
+        _dup_transcript(projects / "-gc-proj" / "keep-0001.jsonl", "keep-0001",
+                        [("toolu_k", "Bash")])
+        metrics = Path(td) / "metrics"
+        run_stats(projects, metrics)
+        assert len(list((metrics / "cache").glob("*.json"))) == 1
+        out = run_gc(Path(td) / "does-not-exist", metrics, "--grace-hours", "0")
+        assert out["removed"] == 0, out
+        assert out["skipped_no_projects_dir"] is True
+        assert len(list((metrics / "cache").glob("*.json"))) == 1
+
+
+def test_stats_prunes_orphans_automatically():
+    """A normal stats run GCs orphans it can prove are dead."""
+    with tempfile.TemporaryDirectory() as td:
+        projects = Path(td) / "projects"
+        (projects / "-gc-proj").mkdir(parents=True)
+        keep = projects / "-gc-proj" / "keep-0001.jsonl"
+        drop = projects / "-gc-proj" / "drop-0002.jsonl"
+        _dup_transcript(keep, "keep-0001", [("toolu_k", "Bash")])
+        _dup_transcript(drop, "drop-0002", [("toolu_d", "Read")])
+        metrics = Path(td) / "metrics"
+        run_stats(projects, metrics)
+        cache = metrics / "cache"
+        assert len(list(cache.glob("*.json"))) == 2
+        drop.unlink()
+        # age the cache entries past the grace period
+        old = time.time() - 90 * 24 * 3600
+        for f in cache.glob("*.json"):
+            os.utime(f, (old, old))
+        out = run_stats(projects, metrics)
+        assert out["counts"]["Bash"] == 1
+        assert "Read" not in out["counts"]
+        assert len(list(cache.glob("*.json"))) == 1
+
+
 if __name__ == "__main__":
     test_counts_by_tool()
     test_group_server()
@@ -210,4 +378,12 @@ if __name__ == "__main__":
     test_nested_subagent_transcript()
     test_unreadable_transcript_is_skipped()
     test_tampered_cache_is_ignored()
+    test_duplicate_tool_use_ids_counted_once()
+    test_duplicate_tool_use_ids_across_files_counted_once()
+    test_blocks_without_ids_are_never_deduped()
+    test_gc_removes_orphaned_cache_entries()
+    test_gc_dry_run_reports_without_deleting()
+    test_gc_grace_period_keeps_fresh_orphans()
+    test_gc_skips_when_projects_dir_missing()
+    test_stats_prunes_orphans_automatically()
     print("OK test_metrics")
