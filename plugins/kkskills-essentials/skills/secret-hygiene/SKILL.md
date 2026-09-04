@@ -1,12 +1,13 @@
 ---
 name: secret-hygiene
-description: "Use this skill whenever secrets (API keys, tokens, passwords, connection strings) are involved — adding one, logging near one, committing config, or reacting to a leak.
-  Triggers include: 'API key', 'token', '.env', 'secret', 'credentials', 'connection string', adding a provider integration, writing logging around an HTTP client, committing a config file, or discovering a key in a log / commit / screenshot.
-  Also use when scaffolding a new repo — wire .env.example, .gitignore, and CI secret scanning from day one.
-  Do NOT use for non-sensitive config (feature flags, public URLs, log levels)."
+description: "Use when secrets are involved — API keys, tokens, passwords, connection strings: adding one, logging near one, committing config, or reacting to a leak."
 version: "0.1.0"
 updated: "2026-06-19"
 ---
+
+## When to use
+
+Use this skill whenever secrets (API keys, tokens, passwords, connection strings) are involved — adding one, logging near one, committing config, or reacting to a leak. Triggers include: 'API key', 'token', '.env', 'secret', 'credentials', 'connection string', adding a provider integration, writing logging around an HTTP client, committing a config file, or discovering a key in a log / commit / screenshot. Also use when scaffolding a new repo — wire .env.example, .gitignore, and CI secret scanning from day one. Do NOT use for non-sensitive config (feature flags, public URLs, log levels).
 
 # Secret Hygiene
 

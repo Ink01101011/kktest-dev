@@ -1,12 +1,13 @@
 ---
 name: feedback-additive-changes
-description: "Use this skill whenever you're proposing a refactor, cleanup, deletion, or migration in an existing (production) codebase.
-  Triggers include: 'refactor X', 'clean up Y', 'remove dead code', 'delete unused Z', 'migrate this endpoint', 'while I'm here let me also...', any destructive change to code paths or data that something already depends on.
-  Also use when scoping proof-of-concept work where additive is the explicit rule.
-  Do NOT use for genuinely new features that don't touch existing flow at all — those are additive by default."
+description: "Use when proposing a refactor, cleanup, deletion, or migration in an existing codebase — any destructive change to code paths or data something already depends on."
 version: "0.2.0"
 updated: "2026-06-19"
 ---
+
+## When to use
+
+Use this skill whenever you're proposing a refactor, cleanup, deletion, or migration in an existing (production) codebase. Triggers include: 'refactor X', 'clean up Y', 'remove dead code', 'delete unused Z', 'migrate this endpoint', 'while I'm here let me also...', any destructive change to code paths or data that something already depends on. Also use when scoping proof-of-concept work where additive is the explicit rule. Do NOT use for genuinely new features that don't touch existing flow at all — those are additive by default.
 
 # Feedback — Additive Changes
 

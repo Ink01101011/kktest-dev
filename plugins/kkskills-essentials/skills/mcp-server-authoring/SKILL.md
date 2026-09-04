@@ -1,12 +1,13 @@
 ---
 name: mcp-server-authoring
-description: "Use this skill when building, structuring, or reviewing a Model Context Protocol (MCP) server — exposing tools/resources to MCP-aware hosts (Claude Desktop, Claude Code, Cursor, Copilot, Augment, claude.ai).
-  Triggers include: 'MCP server', 'expose as a tool', 'stdio transport', 'Streamable HTTP', 'tool schema', '@modelcontextprotocol/sdk', 'tools/list', 'register a tool', 'host config json', 'how do I let Claude call my X'.
-  Also use when writing host-config examples or deciding stdio vs HTTP transport.
-  Do NOT use for *calling* an existing MCP server, or for plain REST API design with no MCP involvement."
+description: "Use when building, structuring, or reviewing an MCP server — tool schemas, stdio vs Streamable HTTP transport, @modelcontextprotocol/sdk, host config. Not for calling one."
 version: "0.1.0"
 updated: "2026-06-19"
 ---
+
+## When to use
+
+Use this skill when building, structuring, or reviewing a Model Context Protocol (MCP) server — exposing tools/resources to MCP-aware hosts (Claude Desktop, Claude Code, Cursor, Copilot, Augment, claude.ai). Triggers include: 'MCP server', 'expose as a tool', 'stdio transport', 'Streamable HTTP', 'tool schema', '@modelcontextprotocol/sdk', 'tools/list', 'register a tool', 'host config json', 'how do I let Claude call my X'. Also use when writing host-config examples or deciding stdio vs HTTP transport. Do NOT use for *calling* an existing MCP server, or for plain REST API design with no MCP involvement.
 
 # Reference — MCP Server Authoring
 

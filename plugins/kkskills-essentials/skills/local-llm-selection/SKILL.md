@@ -1,12 +1,13 @@
 ---
 name: local-llm-selection
-description: "Use this skill when deciding whether to run an LLM locally (Ollama, llama.cpp, vLLM) vs a hosted API, which local model/quantization fits your hardware, or whether to fine-tune (e.g. QLoRA).
-  Triggers include: 'Ollama', 'local model', 'run it on my GPU', 'which model', 'quantization', 'Q4/Q5/Q8', 'VRAM', 'QLoRA', 'fine-tune', 'self-host LLM', 'local vs API cost', 'offline dev model'.
-  Also use when sizing a model against available VRAM or estimating local-vs-hosted cost trade-offs.
-  Do NOT use for prompt engineering or for picking between hosted-only models on quality alone (no local/hardware dimension)."
+description: "Use when choosing between a local LLM (Ollama, llama.cpp, vLLM) and a hosted API, sizing a model or quantization against VRAM, or deciding whether to fine-tune with QLoRA."
 version: "0.1.0"
 updated: "2026-06-19"
 ---
+
+## When to use
+
+Use this skill when deciding whether to run an LLM locally (Ollama, llama.cpp, vLLM) vs a hosted API, which local model/quantization fits your hardware, or whether to fine-tune (e.g. QLoRA). Triggers include: 'Ollama', 'local model', 'run it on my GPU', 'which model', 'quantization', 'Q4/Q5/Q8', 'VRAM', 'QLoRA', 'fine-tune', 'self-host LLM', 'local vs API cost', 'offline dev model'. Also use when sizing a model against available VRAM or estimating local-vs-hosted cost trade-offs. Do NOT use for prompt engineering or for picking between hosted-only models on quality alone (no local/hardware dimension).
 
 # Reference — Local LLM Selection
 

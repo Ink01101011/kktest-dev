@@ -1,12 +1,13 @@
 ---
 name: feedback-no-duplicate-docs
-description: "Use this skill whenever you're about to create a new tracking, checklist, TODO, testing, audit, or roadmap document.
-  Triggers include: phrases like 'create a checklist', 'write a TODO', 'track these tests', 'document the deferred items', 'make a regression list', or any time you're tempted to `Write` a new `.md` file at repo root or under `tasks/` or `docs/`.
-  Also use when the user asks 'why didn't you update X' — that's a duplicate-doc miss.
-  Do NOT use for genuinely new artifacts that cover a different angle than existing docs (e.g. SPRINT_ROADMAP.md was new because AUDIT.md and BUG.md covered different angles)."
+description: "Use before creating a new tracking, checklist, TODO, audit, or roadmap document — any new .md at repo root or under docs/ or tasks/ that may duplicate an existing one."
 version: "0.2.0"
 updated: "2026-06-19"
 ---
+
+## When to use
+
+Use this skill whenever you're about to create a new tracking, checklist, TODO, testing, audit, or roadmap document. Triggers include: phrases like 'create a checklist', 'write a TODO', 'track these tests', 'document the deferred items', 'make a regression list', or any time you're tempted to `Write` a new `.md` file at repo root or under `tasks/` or `docs/`. Also use when the user asks 'why didn't you update X' — that's a duplicate-doc miss. Do NOT use for genuinely new artifacts that cover a different angle than existing docs (e.g. SPRINT_ROADMAP.md was new because AUDIT.md and BUG.md covered different angles).
 
 # Feedback — No Duplicate Docs
 

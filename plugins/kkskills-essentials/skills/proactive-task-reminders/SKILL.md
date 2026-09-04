@@ -1,12 +1,13 @@
 ---
 name: proactive-task-reminders
-description: "Use this skill whenever you're working a long or multi-session project and need to keep deferred/pending work from being silently dropped.
-  Triggers include: the user defers something ('ไว้ก่อน', 'later', 'after X is online'), you reach a fork and the user picks one option (A/B/C → picks C), you're about to skip a step that was previously agreed, you hit a 'pause checkpoint', or you're resuming a session and need to surface what's still open.
-  Also use when the user asks 'why didn't you remind me about X' — that's a missed pending item.
-  Do NOT use for a single self-contained task with no deferred items or branches."
+description: "Use when deferred or pending work could be silently dropped — the user says 'later' or 'ไว้ก่อน', picks one option at a fork, or you resume a session with open items."
 version: "0.1.0"
 updated: "2026-06-19"
 ---
+
+## When to use
+
+Use this skill whenever you're working a long or multi-session project and need to keep deferred/pending work from being silently dropped. Triggers include: the user defers something ('ไว้ก่อน', 'later', 'after X is online'), you reach a fork and the user picks one option (A/B/C → picks C), you're about to skip a step that was previously agreed, you hit a 'pause checkpoint', or you're resuming a session and need to surface what's still open. Also use when the user asks 'why didn't you remind me about X' — that's a missed pending item. Do NOT use for a single self-contained task with no deferred items or branches.
 
 # Feedback — Proactive Task Reminders
 

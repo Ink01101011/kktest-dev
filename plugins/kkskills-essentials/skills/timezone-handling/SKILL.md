@@ -1,12 +1,13 @@
 ---
 name: timezone-handling
-description: "Use this skill whenever code stores, computes, compares, or displays dates and times — especially across servers, databases, containers, and users in different zones.
-  Triggers include: 'timezone', 'UTC', 'timestamp', 'DST', 'naive datetime', 'TIMESTAMPTZ vs TIMESTAMP', 'market hours', 'it shows the wrong time', 'off by N hours', scheduling/cron, container TZ, date-only vs datetime.
-  Also use when designing a DB schema with time columns or a scheduler.
-  Do NOT use for monotonic durations/elapsed-time measurement (use a monotonic clock, not wall-clock — but that's a different concern)."
+description: "Use when code stores, computes, compares, or displays dates and times across servers, databases, or users in different zones — UTC, DST, naive datetimes, TIMESTAMPTZ."
 version: "0.1.0"
 updated: "2026-06-19"
 ---
+
+## When to use
+
+Use this skill whenever code stores, computes, compares, or displays dates and times — especially across servers, databases, containers, and users in different zones. Triggers include: 'timezone', 'UTC', 'timestamp', 'DST', 'naive datetime', 'TIMESTAMPTZ vs TIMESTAMP', 'market hours', 'it shows the wrong time', 'off by N hours', scheduling/cron, container TZ, date-only vs datetime. Also use when designing a DB schema with time columns or a scheduler. Do NOT use for monotonic durations/elapsed-time measurement (use a monotonic clock, not wall-clock — but that's a different concern).
 
 # Reference — Timezone Handling
 
