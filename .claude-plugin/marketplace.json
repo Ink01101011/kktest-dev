@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
   "name": "kktest-dev",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "owner": {
     "name": "Ink",
     "email": "supakit.kitj@gmail.com"
@@ -24,8 +24,21 @@
       "repository": "https://github.com/Ink01101011/kktest-dev",
       "license": "MIT",
       "category": "productivity",
-      "keywords": ["memory", "context", "maintenance", "index", "archive", "mcp"],
-      "tags": ["memory", "context-engineering", "agent-memory", "cli", "mcp"]
+      "keywords": [
+        "memory",
+        "context",
+        "maintenance",
+        "index",
+        "archive",
+        "mcp"
+      ],
+      "tags": [
+        "memory",
+        "context-engineering",
+        "agent-memory",
+        "cli",
+        "mcp"
+      ]
     },
     {
       "name": "focus-notify",
@@ -40,13 +53,27 @@
       "repository": "https://github.com/Ink01101011/kktest-dev",
       "license": "MIT",
       "category": "productivity",
-      "keywords": ["notification", "macos", "linux", "windows", "hooks", "focus", "terminal-notifier"],
-      "tags": ["notifications", "hooks", "desktop", "terminal", "dx"]
+      "keywords": [
+        "notification",
+        "macos",
+        "linux",
+        "windows",
+        "hooks",
+        "focus",
+        "terminal-notifier"
+      ],
+      "tags": [
+        "notifications",
+        "hooks",
+        "desktop",
+        "terminal",
+        "dx"
+      ]
     },
     {
       "name": "kkskills-essentials",
       "source": "./plugins/kkskills-essentials",
-      "description": "Generic, project-agnostic working skills (5) that self-improve over time — additive-changes and no-duplicate-docs feedback discipline, proactive task reminders, a Conventional Commits reference, and plan decomposition & orchestration (implement/test/review plus deep-down debugging). Nine situational skills split out to kkskills-situational. Skills-only.",
+      "description": "Generic, project-agnostic working skills (5) that self-improve over time \u2014 additive-changes and no-duplicate-docs feedback discipline, proactive task reminders, a Conventional Commits reference, and plan decomposition & orchestration (implement/test/review plus deep-down debugging). Nine situational skills split out to kkskills-situational. Skills-only.",
       "version": "0.5.0",
       "author": {
         "name": "Ink",
@@ -56,13 +83,27 @@
       "repository": "https://github.com/Ink01101011/kktest-dev",
       "license": "MIT",
       "category": "productivity",
-      "keywords": ["skills", "workflow", "planning", "conventional-commits", "feedback", "self-improving", "reminders"],
-      "tags": ["skills", "workflow", "planning", "conventions", "self-improving"]
+      "keywords": [
+        "skills",
+        "workflow",
+        "planning",
+        "conventional-commits",
+        "feedback",
+        "self-improving",
+        "reminders"
+      ],
+      "tags": [
+        "skills",
+        "workflow",
+        "planning",
+        "conventions",
+        "self-improving"
+      ]
     },
     {
       "name": "kkskills-situational",
       "source": "./plugins/kkskills-situational",
-      "description": "Situational working skills (9) split out of kkskills-essentials — additive-first DB migrations, verify-with-real-data, clean architecture, secret hygiene, concurrency/race conditions, MCP server authoring, timezone handling, local-LLM selection, and the self-improve meta-skill. Correct but not everyday: enable the plugin when the work calls for them. Skills-only.",
+      "description": "Situational working skills (9) split out of kkskills-essentials \u2014 additive-first DB migrations, verify-with-real-data, clean architecture, secret hygiene, concurrency/race conditions, MCP server authoring, timezone handling, local-LLM selection, and the self-improve meta-skill. Correct but not everyday: enable the plugin when the work calls for them. Skills-only.",
       "version": "0.1.0",
       "author": {
         "name": "Ink",
@@ -72,13 +113,30 @@
       "repository": "https://github.com/Ink01101011/kktest-dev",
       "license": "MIT",
       "category": "productivity",
-      "keywords": ["skills", "situational", "on-demand", "architecture", "migrations", "concurrency", "secrets", "timezone", "mcp", "self-improving"],
-      "tags": ["skills", "situational", "on-demand", "architecture", "reference"]
+      "keywords": [
+        "skills",
+        "situational",
+        "on-demand",
+        "architecture",
+        "migrations",
+        "concurrency",
+        "secrets",
+        "timezone",
+        "mcp",
+        "self-improving"
+      ],
+      "tags": [
+        "skills",
+        "situational",
+        "on-demand",
+        "architecture",
+        "reference"
+      ]
     },
     {
       "name": "kkskills-personal",
       "source": "./plugins/kkskills-personal",
-      "description": "Personal / project-specific working skills split out from kkskills-essentials: a user-profile calibration skill and a versioned-filename (DDMMYYYY_NAME.md) reference convention. Encodes one person's preferences and one project's conventions — fork and replace the specifics. Skills-only.",
+      "description": "Personal / project-specific working skills split out from kkskills-essentials: a user-profile calibration skill and a versioned-filename (DDMMYYYY_NAME.md) reference convention. Encodes one person's preferences and one project's conventions \u2014 fork and replace the specifics. Skills-only.",
       "version": "0.1.0",
       "author": {
         "name": "Ink",
@@ -88,8 +146,19 @@
       "repository": "https://github.com/Ink01101011/kktest-dev",
       "license": "MIT",
       "category": "productivity",
-      "keywords": ["skills", "personal", "preferences", "conventions", "template"],
-      "tags": ["skills", "personal", "preferences", "template"]
+      "keywords": [
+        "skills",
+        "personal",
+        "preferences",
+        "conventions",
+        "template"
+      ],
+      "tags": [
+        "skills",
+        "personal",
+        "preferences",
+        "template"
+      ]
     },
     {
       "name": "loop-ledger",
@@ -104,8 +173,24 @@
       "repository": "https://github.com/Ink01101011/kktest-dev",
       "license": "MIT",
       "category": "productivity",
-      "keywords": ["loop", "agent", "guardrail", "stop-hook", "budget", "stall-detection", "mcp", "enforcement"],
-      "tags": ["loops", "agent", "guardrail", "hooks", "mcp", "enforcement"]
+      "keywords": [
+        "loop",
+        "agent",
+        "guardrail",
+        "stop-hook",
+        "budget",
+        "stall-detection",
+        "mcp",
+        "enforcement"
+      ],
+      "tags": [
+        "loops",
+        "agent",
+        "guardrail",
+        "hooks",
+        "mcp",
+        "enforcement"
+      ]
     },
     {
       "name": "reflexion",
@@ -120,8 +205,21 @@
       "repository": "https://github.com/Ink01101011/kktest-dev",
       "license": "MIT",
       "category": "productivity",
-      "keywords": ["memory", "reflexion", "lessons", "self-improving", "mcp", "agent-loops"],
-      "tags": ["memory", "agent-memory", "self-improving", "cli", "mcp"]
+      "keywords": [
+        "memory",
+        "reflexion",
+        "lessons",
+        "self-improving",
+        "mcp",
+        "agent-loops"
+      ],
+      "tags": [
+        "memory",
+        "agent-memory",
+        "self-improving",
+        "cli",
+        "mcp"
+      ]
     },
     {
       "name": "critique-gate",
@@ -136,8 +234,21 @@
       "repository": "https://github.com/Ink01101011/kktest-dev",
       "license": "MIT",
       "category": "productivity",
-      "keywords": ["critique", "quality-gate", "self-improving", "agent-loops", "rubric", "adversarial", "judge-ensemble"],
-      "tags": ["quality", "agent-loops", "skills-only", "enforcement"]
+      "keywords": [
+        "critique",
+        "quality-gate",
+        "self-improving",
+        "agent-loops",
+        "rubric",
+        "adversarial",
+        "judge-ensemble"
+      ],
+      "tags": [
+        "quality",
+        "agent-loops",
+        "skills-only",
+        "enforcement"
+      ]
     },
     {
       "name": "prompt-evolve",
@@ -152,13 +263,27 @@
       "repository": "https://github.com/Ink01101011/kktest-dev",
       "license": "MIT",
       "category": "productivity",
-      "keywords": ["prompt-optimization", "eval", "scoring", "prompt-engineering", "test-set", "self-improving", "cli"],
-      "tags": ["prompts", "evaluation", "optimization", "cli", "self-improving"]
+      "keywords": [
+        "prompt-optimization",
+        "eval",
+        "scoring",
+        "prompt-engineering",
+        "test-set",
+        "self-improving",
+        "cli"
+      ],
+      "tags": [
+        "prompts",
+        "evaluation",
+        "optimization",
+        "cli",
+        "self-improving"
+      ]
     },
     {
       "name": "agent-loops",
       "source": "./plugins/agent-loops",
-      "description": "Playbook for the 5 categories of agent loop design patterns (Quality, Memory, Planning, Exploration, System Optimization) — when to use each, its minimal shape, and the exact loop-ledger brake to wire (exit_mode/target_value/direction/max_iterations or dry_rounds). Includes a loop-selector router skill. Skills-only; pairs with the loop-ledger plugin for enforcement.",
+      "description": "Playbook for the 5 categories of agent loop design patterns (Quality, Memory, Planning, Exploration, System Optimization) \u2014 when to use each, its minimal shape, and the exact loop-ledger brake to wire (exit_mode/target_value/direction/max_iterations or dry_rounds). Includes a loop-selector router skill. Skills-only; pairs with the loop-ledger plugin for enforcement.",
       "version": "0.1.1",
       "author": {
         "name": "Ink",
@@ -168,13 +293,28 @@
       "repository": "https://github.com/Ink01101011/kktest-dev",
       "license": "MIT",
       "category": "productivity",
-      "keywords": ["loop", "agent", "self-improving", "patterns", "playbook", "skills", "mcp", "guardrail"],
-      "tags": ["loops", "agent", "skills", "playbook", "self-improving"]
+      "keywords": [
+        "loop",
+        "agent",
+        "self-improving",
+        "patterns",
+        "playbook",
+        "skills",
+        "mcp",
+        "guardrail"
+      ],
+      "tags": [
+        "loops",
+        "agent",
+        "skills",
+        "playbook",
+        "self-improving"
+      ]
     },
     {
       "name": "tool-metrics",
       "source": "./plugins/tool-metrics",
-      "description": "Count Claude Code tool usage across all sessions: built-in tools, MCP tools by server, skill invocations, and subagent spawns — /tool-stats terminal table plus an HTML dashboard.",
+      "description": "Count Claude Code tool usage across all sessions: built-in tools, MCP tools by server, skill invocations, and subagent spawns \u2014 /tool-stats terminal table plus an HTML dashboard.",
       "version": "0.1.0",
       "author": {
         "name": "Ink",
@@ -184,8 +324,21 @@
       "repository": "https://github.com/Ink01101011/kktest-dev",
       "license": "MIT",
       "category": "productivity",
-      "keywords": ["metrics", "monitoring", "usage", "mcp", "hooks", "statistics"],
-      "tags": ["metrics", "monitoring", "usage", "hooks", "dx"]
+      "keywords": [
+        "metrics",
+        "monitoring",
+        "usage",
+        "mcp",
+        "hooks",
+        "statistics"
+      ],
+      "tags": [
+        "metrics",
+        "monitoring",
+        "usage",
+        "hooks",
+        "dx"
+      ]
     }
   ]
 }
