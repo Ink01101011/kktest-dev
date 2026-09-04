@@ -6,11 +6,17 @@ consistently across sessions. Skills-only: no MCP server, hooks, or commands.
 
 > These skills come from Ink's personal working library, kept **generic and project-agnostic**.
 > Personal and project-specific skills (a user profile, a private filename convention) live in the
-> sibling [`kkskills-personal`](../kkskills-personal) plugin instead.
+> sibling [`kkskills-personal`](../kkskills-personal) plugin instead, and nine situational skills
+> (migrations, clean architecture, secrets, concurrency, timezones, MCP authoring, local-LLM
+> selection, verify-with-real-data, the self-improve meta-skill) live in
+> [`kkskills-situational`](../kkskills-situational) — correct skills that simply do not come up
+> every day, kept behind their own toggle because a skill's `description` costs context in every
+> session whether or not it fires.
 
 Every skill carries a `version` and `updated:` in its frontmatter and a `## Changelog` at the end, so
-it can be improved over time without drifting. See `meta-skill-self-improve` for the discipline that
-folds new learnings back into the right skill — additively, versioned, and self-contained.
+it can be improved over time without drifting. See `meta-skill-self-improve` in
+[`kkskills-situational`](../kkskills-situational) for the discipline that folds new learnings back
+into the right skill — additively, versioned, and self-contained.
 
 ## Skills
 
@@ -19,22 +25,14 @@ folds new learnings back into the right skill — additively, versioned, and sel
 | Skill | What it enforces |
 |---|---|
 | `feedback-additive-changes` | Prefer additive changes; avoid destructive refactors/deletions unless explicitly scoped. |
-| `feedback-migrations-additive-first` | Roll out DB schema changes additive-first (expand-contract) across deploys. |
 | `feedback-no-duplicate-docs` | Don't spawn new tracking/checklist/TODO docs when one already exists. |
-| `feedback-verify-with-real-data` | Verify claims about code/API state against real data before asserting. |
 | `proactive-task-reminders` | Keep a pending-work register; surface deferred items on skip / condition-met / branch-return. |
 
 **Reference — reusable patterns**
 
 | Skill | Provides |
 |---|---|
-| `reference-clean-architecture` | Where business logic lives, dependency direction, layering for backend services. |
 | `reference-conventional-commits` | Conventional Commits format for commit messages, PR titles, changelogs. |
-| `secret-hygiene` | Keep secrets out of repos/logs/CI; rotation-first response to a leak. |
-| `concurrency-race-conditions` | Diagnose & prevent races — atomicity, locking, idempotency, live-DB repro harness. |
-| `mcp-server-authoring` | Build MCP servers — stdio vs HTTP, tool-schema design, per-host config. |
-| `timezone-handling` | Store UTC, convert at edges, IANA/DST, container TZ, market-hours. |
-| `local-llm-selection` | Local vs hosted LLM, VRAM/quant sizing, prompt-before-finetune (QLoRA). |
 
 **Workflow — planning & execution**
 
@@ -42,11 +40,21 @@ folds new learnings back into the right skill — additively, versioned, and sel
 |---|---|
 | `plan-decompose-orchestrate` | When planning before code: explode each plan item into implement/test/review, orchestrate parallel-vs-sequential, and root-cause (deep-down) any failure. |
 
-**Meta**
+## Cross-links to kkskills-situational
 
-| Skill | Provides |
-|---|---|
-| `meta-skill-self-improve` | The self-update discipline: fold new learnings into the right skill, versioned + changelogged, pressure-tested. |
+`feedback-additive-changes`, `plan-decompose-orchestrate`, and `proactive-task-reminders` cross-link
+siblings with `[[skill-name]]`, and some of those siblings now live in
+[`kkskills-situational`](../kkskills-situational):
+
+- `feedback-additive-changes` → `[[feedback-migrations-additive-first]]` (×5)
+- `plan-decompose-orchestrate` → `[[concurrency-race-conditions]]` (×2), `[[feedback-verify-with-real-data]]` (×2), `[[reference-clean-architecture]]`, `[[timezone-handling]]`
+- `proactive-task-reminders` → `[[secret-hygiene]]`
+
+That is 11 link instances across 6 skill pairs, measured.
+
+`[[…]]` is a prose pointer, not a resolved link — nothing dereferences it, so nothing errors when the
+other plugin is off. Each skill's own guidance is self-contained; install both plugins if you want
+every pointer to name a skill Claude can actually load.
 
 ## Install
 

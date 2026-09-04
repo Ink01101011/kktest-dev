@@ -1,8 +1,8 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "kkskills-essentials",
-  "version": "0.4.0",
-  "description": "Generic, project-agnostic working skills (14) that self-improve over time: feedback discipline, clean-architecture & conventional-commits references, proactive task reminders, secret hygiene, concurrency/race-conditions, MCP server authoring, timezone handling, local-LLM selection, plan decomposition & orchestration (implement/test/review + deep-down debugging) — plus a meta-skill that folds new learnings back into the right skill (versioned, changelogged, self-contained). Personal/project-specific skills live in kkskills-personal.",
+  "version": "0.5.0",
+  "description": "Generic, project-agnostic working skills (5) that self-improve over time: additive-changes and no-duplicate-docs feedback discipline, proactive task reminders, the Conventional Commits reference, and plan decomposition & orchestration (implement/test/review + deep-down debugging). This is the everyday half; nine situational skills (migrations, clean architecture, secrets, concurrency, timezones, MCP authoring, local-LLM selection, verify-with-real-data, the self-improve meta-skill) moved to kkskills-situational, which you enable when the work calls for them. Personal/project-specific skills live in kkskills-personal.",
   "author": {
     "name": "Ink",
     "email": "supakit.kitj@gmail.com"
@@ -10,5 +10,5 @@
   "homepage": "https://github.com/Ink01101011/kktest-dev/tree/main/plugins/kkskills-essentials",
   "repository": "https://github.com/Ink01101011/kktest-dev",
   "license": "MIT",
-  "keywords": ["skills", "workflow", "code-review", "architecture", "conventional-commits", "feedback", "self-improving", "mcp", "concurrency"]
+  "keywords": ["skills", "workflow", "planning", "conventional-commits", "feedback", "self-improving", "reminders"]
 }

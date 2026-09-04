@@ -97,17 +97,23 @@ A skill qualifies for `kkskills-essentials` only if it is **reusable** (applies 
 test — a personal profile, a private filename scheme — are routed to `kkskills-personal`. (This mirrors
 how curated marketplaces keep only broadly-applicable techniques in their core.)
 
+A generic, reusable skill is then routed by a second, **measured** criterion: how often it actually
+fires. Because a skill's `description` costs context in every session and only whole plugins can be
+toggled, skills that fire routinely stay in `kkskills-essentials` and skills that wait for a matching
+task ship in `kkskills-situational`. Routing is by invocation count from real transcripts, never by
+opinion, and it is reversible — a situational skill that starts firing moves back.
+
 ## 8. Directory layout
 
 ```
-plugins/kkskills-essentials/
+plugins/kkskills-essentials/       # and, identically, plugins/kkskills-situational/
 ├── .claude-plugin/plugin.json     # name, version, description, keywords (skills-only)
 ├── README.md
 └── skills/
     └── <name>/
         ├── SKILL.md
         └── references/            # optional, only when SKILL.md would exceed ~300 lines
-docs/kkskills-essentials/
+docs/kkskills-essentials/          # covers both plugins
 ├── CONCEPTS.md                    # concept, usage, catalog
 └── SPEC.md                        # this file
 ```
@@ -129,8 +135,17 @@ docs/kkskills-essentials/
 
 Plain Markdown + YAML; no runtime, no dependencies.
 
-## 11. Relationship to kkskills-personal
+## 11. Relationship to kkskills-situational and kkskills-personal
 
-Same marketplace, same format contract and conventions. `kkskills-essentials` is the **generic core**;
-`kkskills-personal` holds the **bespoke** skills (a user profile, a dated-filename convention) that a
-user is expected to fork and replace. Install either or both. See `docs/kkskills-personal/SPEC.md`.
+Same marketplace, same format contract and conventions, three plugins.
+
+- `kkskills-essentials` — the **everyday** generic skills, always on.
+- `kkskills-situational` — generic skills that are correct but wait for a matching task, behind one
+  toggle so their descriptions leave context when they are not wanted. Split out of essentials; §7
+  gives the routing rule.
+- `kkskills-personal` — the **bespoke** skills (a user profile, a dated-filename convention) that a
+  user is expected to fork and replace. See `docs/kkskills-personal/SPEC.md`.
+
+Install any combination. Skills cross-link with `[[skill-name]]`, which is prose rather than a
+resolved link, so a pointer into a plugin you have not installed degrades to a dangling name and
+nothing breaks.

@@ -9,7 +9,8 @@ memory hygiene.
 |---|---|
 | [memory-keeper](./plugins/memory-keeper) | Keep file-based agent memory lean and durable — compact the index, archive done/stale memories to cold storage, lint against a byte budget. Ships a skill, slash commands, a zero-dependency MCP server, and a stdlib CLI. |
 | [focus-notify](./plugins/focus-notify) | Focus-aware desktop notifications for Claude Code on macOS, Linux & Windows — notify only when your terminal is *not* the frontmost app. Three kinds (finished, approve, question), each with its own sound, plus click-to-focus. |
-| [kkskills-essentials](./plugins/kkskills-essentials) | 13 generic, **self-improving** working skills — feedback discipline, clean-architecture & conventional-commits references, proactive task reminders, secret hygiene, concurrency, MCP authoring, timezone & local-LLM selection, plus a meta-skill that folds new learnings back in (versioned + changelogged). Skills-only. |
+| [kkskills-essentials](./plugins/kkskills-essentials) | 5 generic, **self-improving** everyday working skills — additive-changes & no-duplicate-docs feedback discipline, proactive task reminders, a Conventional Commits reference, and plan decomposition & orchestration (implement/test/review + deep-down debugging). Skills-only. |
+| [kkskills-situational](./plugins/kkskills-situational) | 9 generic working skills that are correct but not everyday — additive-first migrations, verify-with-real-data, clean architecture, secret hygiene, concurrency, MCP authoring, timezone & local-LLM selection, plus the meta-skill that folds new learnings back in. Split out of essentials so they can be toggled as a unit. Skills-only. |
 | [kkskills-personal](./plugins/kkskills-personal) | Personal / project-specific skills split out from essentials — a user-profile calibration skill and a dated-filename reference convention. Fork and replace the specifics with your own. Skills-only. |
 | [loop-ledger](./plugins/loop-ledger) | A guardrail for agent loops — a deterministic state machine (budget + stall-hash + exit predicate) that decides should-continue per iteration, plus an opt-in Stop hook that enforces it so the agent can neither quit early nor spin forever. Zero-dependency MCP server. |
 | [reflexion](./plugins/reflexion) | Self-improving agent memory built on memory-keeper — recall matching lessons before a task, reflect a new lesson after it, browse the error/success library, and compress recurring lessons into higher-level patterns. |
@@ -65,7 +66,7 @@ Per-plugin guides live under [`docs/`](./docs), one folder per plugin.
 - [Concepts, usage & installation](./docs/focus-notify/CONCEPTS.md)
 - [Full specification](./docs/focus-notify/SPEC.md)
 
-**kkskills-essentials**
+**kkskills-essentials** (and its `kkskills-situational` split-out)
 
 - [Concepts, usage & the skill catalog](./docs/kkskills-essentials/CONCEPTS.md)
 - [Specification](./docs/kkskills-essentials/SPEC.md)

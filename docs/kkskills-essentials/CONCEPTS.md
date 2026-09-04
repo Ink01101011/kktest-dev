@@ -1,7 +1,8 @@
 # kkskills-essentials — Concepts, Usage & the Skill Catalog
 
-A complete guide to the `kkskills-essentials` plugin: what it is, how skills work, the full catalog of
-shipped skills, how to use them, and how to adapt them to your own projects.
+A complete guide to the `kkskills-essentials` plugin and its situational split-out
+`kkskills-situational`: what they are, how skills work, the full catalog of shipped skills, how to use
+them, and how to adapt them to your own projects.
 
 ---
 
@@ -49,41 +50,62 @@ There is nothing to wire up — drop the folder under `skills/` and the host pic
 
 ## 3. The skill catalog
 
-Thirteen skills, grouped by role. (Two personal/project-specific skills — `user-profile` and
-`feedback-use-full-filenames` — were moved to the sibling `kkskills-personal` plugin so this plugin stays
-project-agnostic.)
+Fourteen skills, grouped by role, split across **two** plugins. (Two personal/project-specific
+skills — `user-profile` and `feedback-use-full-filenames` — were moved to the sibling
+`kkskills-personal` plugin so these stay project-agnostic.)
+
+A skill's `description` is loaded into context in **every** session, and Claude Code enables or
+disables whole *plugins*, never individual skills. So the fourteen are split by how often they
+actually fire: the five that fire routinely stay in `kkskills-essentials` (always on), and the nine
+that wait for a matching task live in `kkskills-situational` (one toggle). The nine are **correct and
+maintained** — `secret-hygiene` and `timezone-handling` are exactly right, they just have not come up.
+
+The **Plugin** column below says which one ships each skill.
 
 ### `feedback-*` — working discipline
 
-| Skill | Enforces | Fires when |
-|---|---|---|
-| `feedback-additive-changes` | Prefer additive changes; don't do destructive refactors/deletions unless explicitly scoped | Proposing a refactor, cleanup, deletion, or migration |
-| `feedback-migrations-additive-first` | DB schema changes roll out additive-first (expand-contract) across deploys | Writing or reviewing a schema migration |
-| `feedback-no-duplicate-docs` | Don't create a new tracking/checklist/TODO/audit doc when one already exists | About to spin up a new tracking document |
-| `feedback-verify-with-real-data` | Verify claims about code/API state against real data before asserting | About to make a factual claim about codebase or API behavior |
-| `proactive-task-reminders` | Keep a pending-work register; resurface deferred items at the right moment | Deferring work, hitting a fork, pausing, or resuming a project |
+| Skill | Plugin | Enforces | Fires when |
+|---|---|---|---|
+| `feedback-additive-changes` | essentials | Prefer additive changes; don't do destructive refactors/deletions unless explicitly scoped | Proposing a refactor, cleanup, deletion, or migration |
+| `feedback-migrations-additive-first` | situational | DB schema changes roll out additive-first (expand-contract) across deploys | Writing or reviewing a schema migration |
+| `feedback-no-duplicate-docs` | essentials | Don't create a new tracking/checklist/TODO/audit doc when one already exists | About to spin up a new tracking document |
+| `feedback-verify-with-real-data` | situational | Verify claims about code/API state against real data before asserting | About to make a factual claim about codebase or API behavior |
+| `proactive-task-reminders` | essentials | Keep a pending-work register; resurface deferred items at the right moment | Deferring work, hitting a fork, pausing, or resuming a project |
 
 ### `reference-*` and patterns — reusable engineering references
 
-| Skill | Provides |
-|---|---|
-| `reference-clean-architecture` | Where business logic lives, dependency direction, and layering for a backend service |
-| `reference-conventional-commits` | Conventional Commits format for commit messages, PR titles, and changelogs |
-| `secret-hygiene` | Keep secrets out of repos/logs/CI; rotation-first response to a leak |
-| `concurrency-race-conditions` | Diagnose & prevent races — atomicity, locking, idempotency, live-DB repro harness |
-| `mcp-server-authoring` | Build MCP servers — stdio vs HTTP, tool-schema design, per-host config |
-| `timezone-handling` | Store UTC, convert at edges, IANA/DST, container TZ, market-hours |
-| `local-llm-selection` | Local vs hosted LLM, VRAM/quant sizing, prompt-before-finetune (QLoRA) |
+| Skill | Plugin | Provides |
+|---|---|---|
+| `reference-conventional-commits` | essentials | Conventional Commits format for commit messages, PR titles, and changelogs |
+| `reference-clean-architecture` | situational | Where business logic lives, dependency direction, and layering for a backend service |
+| `secret-hygiene` | situational | Keep secrets out of repos/logs/CI; rotation-first response to a leak |
+| `concurrency-race-conditions` | situational | Diagnose & prevent races — atomicity, locking, idempotency, live-DB repro harness |
+| `mcp-server-authoring` | situational | Build MCP servers — stdio vs HTTP, tool-schema design, per-host config |
+| `timezone-handling` | situational | Store UTC, convert at edges, IANA/DST, container TZ, market-hours |
+| `local-llm-selection` | situational | Local vs hosted LLM, VRAM/quant sizing, prompt-before-finetune (QLoRA) |
+
+### workflow — planning & execution
+
+| Skill | Plugin | Provides |
+|---|---|---|
+| `plan-decompose-orchestrate` | essentials | Explode each plan item into implement/test/review, orchestrate parallel-vs-sequential, and root-cause (deep-down) any failure |
 
 ### meta
 
-| Skill | Provides |
-|---|---|
-| `meta-skill-self-improve` | The self-update discipline — fold new learnings into the right skill, versioned + changelogged, pressure-tested |
+| Skill | Plugin | Provides |
+|---|---|---|
+| `meta-skill-self-improve` | situational | The self-update discipline — fold new learnings into the right skill, versioned + changelogged, pressure-tested |
 
 > Note: a few skills use a specific domain in their *examples*. The underlying rules are general —
 > adjust example wording when adapting to your projects. Personal/project-specific skills (a user
 > profile, a dated-filename convention) live in `kkskills-personal`, not here.
+
+> Cross-links: skills point at each other with `[[skill-name]]`. Of the 31 resolvable `[[…]]`
+> instances across these fourteen skills, 20 now cross the plugin boundary — 11 essentials →
+> situational (6 skill pairs) and 9 situational → essentials (5 skill pairs). `[[…]]` is prose, not
+> a resolved link: nothing dereferences it, so nothing errors when only one plugin is installed.
+> Each skill's guidance stands on its own; install both if you want every pointer to name a loadable
+> skill. Each plugin's README lists its own outbound pairs.
 
 ---
 
@@ -110,6 +132,7 @@ The result: the library compounds — each expensive lesson is captured once and
 ```bash
 /plugin marketplace add Ink01101011/kktest-dev
 /plugin install kkskills-essentials@kktest-dev
+/plugin install kkskills-situational@kktest-dev   # optional — enable when the work calls for it
 ```
 
 After install:

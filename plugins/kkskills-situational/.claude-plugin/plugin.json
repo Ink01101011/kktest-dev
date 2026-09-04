@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "kkskills-situational",
+  "version": "0.1.0",
+  "description": "Situational working skills (9), split out of kkskills-essentials — enable the plugin when the work calls for them: additive-first DB migrations, verify-with-real-data, clean-architecture, secret hygiene, concurrency/race-conditions, MCP server authoring, timezone handling, local-LLM selection, and the meta-skill that folds new learnings back into a skill. Correct and maintained, just not everyday: every skill's description sits in context in every session, so these are kept behind one toggle. Skills-only.",
+  "author": {
+    "name": "Ink",
+    "email": "supakit.kitj@gmail.com"
+  },
+  "homepage": "https://github.com/Ink01101011/kktest-dev/tree/main/plugins/kkskills-situational",
+  "repository": "https://github.com/Ink01101011/kktest-dev",
+  "license": "MIT",
+  "keywords": ["skills", "situational", "on-demand", "architecture", "migrations", "concurrency", "secrets", "timezone", "mcp", "self-improving"]
+}
