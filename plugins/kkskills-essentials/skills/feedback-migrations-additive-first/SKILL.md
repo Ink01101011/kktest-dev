@@ -1,12 +1,13 @@
 ---
 name: feedback-migrations-additive-first
-description: "Use this skill whenever you're writing a database schema migration, reviewing one, or designing how a schema change will roll out across multiple deploys.
-  Triggers include: 'ALTER TABLE', 'ADD COLUMN', 'DROP COLUMN', 'RENAME COLUMN', 'NOT NULL', 'add an index', 'change column type', 'data migration', 'backfill', 'rename table', 'split table', 'merge tables', 'schema migration', 'breaking schema change'.
-  Also use when reviewing a PR that touches `db/migrations/`, `prisma/migrations/`, `alembic/versions/`, or any equivalent.
-  Do NOT use for application code changes that don't touch the database schema. See [[feedback-additive-changes]] for the broader additive principle applied to code."
+description: "Use when writing or reviewing a database schema migration — ALTER TABLE, ADD/DROP/RENAME COLUMN, NOT NULL, backfill, data migration, or a rollout across several deploys."
 version: "0.1.0"
 updated: "2026-06-19"
 ---
+
+## When to use
+
+Use this skill whenever you're writing a database schema migration, reviewing one, or designing how a schema change will roll out across multiple deploys. Triggers include: 'ALTER TABLE', 'ADD COLUMN', 'DROP COLUMN', 'RENAME COLUMN', 'NOT NULL', 'add an index', 'change column type', 'data migration', 'backfill', 'rename table', 'split table', 'merge tables', 'schema migration', 'breaking schema change'. Also use when reviewing a PR that touches `db/migrations/`, `prisma/migrations/`, `alembic/versions/`, or any equivalent. Do NOT use for application code changes that don't touch the database schema. See [[feedback-additive-changes]] for the broader additive principle applied to code.
 
 # Feedback — Migrations Additive First (expand-contract)
 

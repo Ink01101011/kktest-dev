@@ -1,12 +1,13 @@
 ---
 name: concurrency-race-conditions
-description: "Use this skill when designing, reviewing, or debugging code where two things can happen at once — concurrent writes, shared state, schedulers, queue consumers, or 'works locally, flaky in prod'.
-  Triggers include: 'race condition', 'deadlock', 'lost update', 'double-processing', 'idempotency', 'optimistic/pessimistic lock', 'SELECT FOR UPDATE', 'state machine', 'two requests at the same time', flaky/intermittent test failures, a duplicate-side-effect bug (charged twice, sent twice).
-  Also use when writing a test harness to reproduce a suspected race.
-  Do NOT use for purely single-threaded, single-writer code with no shared mutable state."
+description: "Use when two things can happen at once — race conditions, deadlocks, lost updates, idempotency, locking, queue consumers, or a test that is flaky only in prod."
 version: "0.1.0"
 updated: "2026-06-19"
 ---
+
+## When to use
+
+Use this skill when designing, reviewing, or debugging code where two things can happen at once — concurrent writes, shared state, schedulers, queue consumers, or 'works locally, flaky in prod'. Triggers include: 'race condition', 'deadlock', 'lost update', 'double-processing', 'idempotency', 'optimistic/pessimistic lock', 'SELECT FOR UPDATE', 'state machine', 'two requests at the same time', flaky/intermittent test failures, a duplicate-side-effect bug (charged twice, sent twice). Also use when writing a test harness to reproduce a suspected race. Do NOT use for purely single-threaded, single-writer code with no shared mutable state.
 
 # Concurrency — Race Conditions
 

@@ -1,12 +1,13 @@
 ---
 name: reference-clean-architecture
-description: "Use this skill when designing or reviewing the architecture of a backend service — deciding where business logic lives, what depends on what, how to enforce boundaries, and how to migrate a legacy 'everything in one file' codebase toward layered design.
-  Triggers include: 'Clean Architecture', 'hexagonal', 'ports and adapters', 'onion architecture', 'where does this logic go', 'entity vs DTO', 'repository pattern', 'use case', 'service vs use case', 'UnitOfWork' / 'UoW', 'import-linter', 'boundary enforcement', 'strangler fig', 'domain layer pure', 'controller too fat'.
-  Also use when scaffolding a new service from scratch — to get the directory layout and naming right on day one.
-  Do NOT use for tiny scripts, CLI utilities, throwaway prototypes, or pure UI work where the overhead isn't worth it. Layering small things is just overhead."
+description: "Use when designing or reviewing a backend service's architecture — where business logic lives, layer boundaries, repository and use-case patterns, or splitting a legacy monolith."
 version: "0.1.0"
 updated: "2026-06-19"
 ---
+
+## When to use
+
+Use this skill when designing or reviewing the architecture of a backend service — deciding where business logic lives, what depends on what, how to enforce boundaries, and how to migrate a legacy 'everything in one file' codebase toward layered design. Triggers include: 'Clean Architecture', 'hexagonal', 'ports and adapters', 'onion architecture', 'where does this logic go', 'entity vs DTO', 'repository pattern', 'use case', 'service vs use case', 'UnitOfWork' / 'UoW', 'import-linter', 'boundary enforcement', 'strangler fig', 'domain layer pure', 'controller too fat'. Also use when scaffolding a new service from scratch — to get the directory layout and naming right on day one. Do NOT use for tiny scripts, CLI utilities, throwaway prototypes, or pure UI work where the overhead isn't worth it. Layering small things is just overhead.
 
 # Reference — Clean Architecture (project-agnostic)
 

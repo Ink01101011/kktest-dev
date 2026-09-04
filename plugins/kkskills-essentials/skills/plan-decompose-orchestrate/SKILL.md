@@ -1,12 +1,13 @@
 ---
 name: plan-decompose-orchestrate
-description: "Use this skill whenever you plan before implementing — entering plan-mode, or any 'let me plan first / วางแผนก่อน / อย่าเพิ่งลงมือ' moment for a non-trivial feature or bugfix.
-  Triggers include: EnterPlanMode/ExitPlanMode, the user says 'plan first', 'แตก task', 'วางแผน', 'design before coding', a multi-step change that touches more than one file, or any plan that lists steps you're about to execute as one blob.
-  Also use when a bug surfaces during execution and you need a deep-down (root-cause, not symptom) debugging pass.
-  Do NOT use for a single trivial one-line edit, or a pure question with no implementation."
+description: "Use when planning before implementing — plan mode, 'plan first', 'วางแผนก่อน', or any multi-step change touching more than one file. Also for root-cause debugging passes."
 version: "0.1.0"
 updated: "2026-06-21"
 ---
+
+## When to use
+
+Use this skill whenever you plan before implementing — entering plan-mode, or any 'let me plan first / วางแผนก่อน / อย่าเพิ่งลงมือ' moment for a non-trivial feature or bugfix. Triggers include: EnterPlanMode/ExitPlanMode, the user says 'plan first', 'แตก task', 'วางแผน', 'design before coding', a multi-step change that touches more than one file, or any plan that lists steps you're about to execute as one blob. Also use when a bug surfaces during execution and you need a deep-down (root-cause, not symptom) debugging pass. Do NOT use for a single trivial one-line edit, or a pure question with no implementation.
 
 # Plan → Decompose → Orchestrate (Implement / Test / Review)
 

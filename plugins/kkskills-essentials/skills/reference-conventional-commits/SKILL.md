@@ -1,12 +1,13 @@
 ---
 name: reference-conventional-commits
-description: "Use this skill whenever you're about to write a git commit message, a PR title, or a changelog entry.
-  Triggers include: 'commit message', 'commit this', 'write a commit', 'PR title', 'changelog entry', 'how should I name this commit', any `git commit -m` invocation, any PR description that needs a one-line summary.
-  Also use when reviewing a draft commit — flag any that don't follow the format.
-  Do NOT use for casual chat-level summaries, blog posts, or anything that isn't going into git history."
+description: "Use when writing a git commit message, PR title, or changelog entry — anything going into git history."
 version: "0.1.0"
 updated: "2026-06-19"
 ---
+
+## When to use
+
+Use this skill whenever you're about to write a git commit message, a PR title, or a changelog entry. Triggers include: 'commit message', 'commit this', 'write a commit', 'PR title', 'changelog entry', 'how should I name this commit', any `git commit -m` invocation, any PR description that needs a one-line summary. Also use when reviewing a draft commit — flag any that don't follow the format. Do NOT use for casual chat-level summaries, blog posts, or anything that isn't going into git history.
 
 # Reference — Conventional Commits
 

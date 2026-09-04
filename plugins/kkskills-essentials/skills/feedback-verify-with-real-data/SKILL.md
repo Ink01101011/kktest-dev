@@ -1,12 +1,13 @@
 ---
 name: feedback-verify-with-real-data
-description: "Use this skill whenever you're about to make a claim about codebase state or external API behavior.
-  Triggers include: 'does X exist', 'is Y still used', 'does this endpoint work on the Starter plan', tier/quota questions about external APIs, planning a TODO consolidation, or any moment you'd otherwise say 'I think...' or 'should be...'.
-  Also use before designing API probes — probe output data, not endpoint access.
-  Do NOT use for clearly hypothetical 'what if X' design discussions where ground truth doesn't yet exist."
+description: "Use before claiming anything about codebase state or external API behaviour — any moment you would otherwise say 'I think' or 'should be'. Probe for real first."
 version: "0.1.0"
 updated: "2026-06-19"
 ---
+
+## When to use
+
+Use this skill whenever you're about to make a claim about codebase state or external API behavior. Triggers include: 'does X exist', 'is Y still used', 'does this endpoint work on the Starter plan', tier/quota questions about external APIs, planning a TODO consolidation, or any moment you'd otherwise say 'I think...' or 'should be...'. Also use before designing API probes — probe output data, not endpoint access. Do NOT use for clearly hypothetical 'what if X' design discussions where ground truth doesn't yet exist.
 
 # Feedback — Verify With Real Data
 

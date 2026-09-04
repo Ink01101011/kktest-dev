@@ -1,12 +1,13 @@
 ---
 name: meta-skill-self-improve
-description: "Use this skill whenever you discover something that should make an existing skill smarter — a new method, an extra step, a sharper trigger, a new edge case, an anti-pattern, or a concept that a skill doesn't yet cover.
-  Triggers include: the user corrects you ('ทำไมไม่...', 'next time do X'), you fixed a mistake a skill should have prevented, a technique just proved out in real work, you hit an edge case a skill's checklist missed, or you're wrapping up a task and notice a reusable lesson.
-  Also use when a skill has grown too large and its detail should be split into self-contained reference files.
-  Do NOT use for one-off project facts (those go to memory, not a skill) or for creating brand-new skills from scratch (use skill-creator for that)."
+description: "Use when something should make an existing skill smarter — the user corrects you, a mistake a skill should have prevented, a missed edge case, or a technique that just proved out."
 version: "0.2.0"
 updated: "2026-06-19"
 ---
+
+## When to use
+
+Use this skill whenever you discover something that should make an existing skill smarter — a new method, an extra step, a sharper trigger, a new edge case, an anti-pattern, or a concept that a skill doesn't yet cover. Triggers include: the user corrects you ('ทำไมไม่...', 'next time do X'), you fixed a mistake a skill should have prevented, a technique just proved out in real work, you hit an edge case a skill's checklist missed, or you're wrapping up a task and notice a reusable lesson. Also use when a skill has grown too large and its detail should be split into self-contained reference files. Do NOT use for one-off project facts (those go to memory, not a skill) or for creating brand-new skills from scratch (use skill-creator for that).
 
 # Meta — Self-Improving Skills
 
