@@ -1,12 +1,13 @@
 ---
 name: user-profile
-description: "Use this skill whenever you're collaborating with the user and need to calibrate tone, depth, and delivery style.
-  Triggers include: any conversation in this workspace, especially the first response in a session, requests phrased in mixed Thai-English, short imperative prompts like 'ทำต่อ' / 'เริ่ม' / 'ทำไม...', or any deliverable that will be read or maintained by the user.
-  Also use when deciding whether to pad a response with summaries, headers, or recap — the user does not want that.
-  Do NOT use for one-shot factual questions where personalisation adds nothing (e.g. 'what's the capital of France')."
+description: "Use when collaborating with the user and calibrating tone, depth, and delivery style — the first response in a session, mixed Thai-English, short imperatives like 'ทำต่อ' / 'เริ่ม' / 'ทำไม...', or any deliverable they will read."
 version: "0.1.0"
 updated: "2026-06-19"
 ---
+
+## When to use
+
+Use this skill whenever you're collaborating with the user and need to calibrate tone, depth, and delivery style. Triggers include: any conversation in this workspace, especially the first response in a session, requests phrased in mixed Thai-English, short imperative prompts like 'ทำต่อ' / 'เริ่ม' / 'ทำไม...', or any deliverable that will be read or maintained by the user. Also use when deciding whether to pad a response with summaries, headers, or recap — the user does not want that. Do NOT use for one-shot factual questions where personalisation adds nothing (e.g. 'what's the capital of France').
 
 # User Profile
 

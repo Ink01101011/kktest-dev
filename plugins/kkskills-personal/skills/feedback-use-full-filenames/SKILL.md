@@ -1,12 +1,13 @@
 ---
 name: feedback-use-full-filenames
-description: "Use this skill whenever you're about to reference a project doc in chat — especially versioned docs that follow a dated filename convention (e.g. DDMMYYYY_NAME.md) or any scheme that layers new versions beside old ones.
-  Triggers include: mentioning AUDIT, BUG, SCALING, ROADMAP, TODO, CHECKLIST, REGRESSION, or any doc that has a date prefix in the repo.
-  Also use when linking via `present_files` or markdown links.
-  Do NOT use for one-off short notes or temporary scratch files that don't follow the convention."
+description: "Use when referencing a project doc in chat that follows a dated filename convention like DDMMYYYY_NAME.md — AUDIT, BUG, ROADMAP, TODO, or any date-prefixed doc."
 version: "0.1.0"
 updated: "2026-06-19"
 ---
+
+## When to use
+
+Use this skill whenever you're about to reference a project doc in chat — especially versioned docs that follow a dated filename convention (e.g. DDMMYYYY_NAME.md) or any scheme that layers new versions beside old ones. Triggers include: mentioning AUDIT, BUG, SCALING, ROADMAP, TODO, CHECKLIST, REGRESSION, or any doc that has a date prefix in the repo. Also use when linking via `present_files` or markdown links. Do NOT use for one-off short notes or temporary scratch files that don't follow the convention.
 
 # Feedback — Use Full Filenames
 
