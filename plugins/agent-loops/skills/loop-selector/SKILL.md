@@ -7,8 +7,8 @@ description: "Use this skill whenever a task sounds like it needs a loop but it'
   system-optimization-loops) and pattern, and produce the concrete loop_start config. Do NOT use this
   once you already know which category and pattern apply — go straight to that category skill instead;
   this is only for the ambiguous 'which loop do I even want' moment."
-version: "0.1.1"
-updated: "2026-07-02"
+version: "0.1.2"
+updated: "2026-10-20"
 ---
 
 # Loop Selector
@@ -60,7 +60,7 @@ across sessions, adapting a plan, choosing among options, or tuning a reusable a
    - Companion: `critique-gate` if you want this enforced (Stop hook blocks until threshold clears).
 
 2. **"Remember this / don't repeat that mistake / what have we learned / compress these lessons."**
-   → **`memory-loops`** (implemented today by `reflexion` — use its tools, don't hand-roll the store).
+   → **`memory-loops`** (implemented today by bantamkit's memory tools — use them, don't hand-roll the store).
    - Default recall-before / reflect-after on a task → *Reflexion*.
    - A batch of new facts needs to reconcile with existing memory → *Memory Update*.
    - Backfilling/growing a failure-lesson library → *Error Library*.
@@ -148,7 +148,7 @@ direction: "decrease", max_iterations: 8 }`, `progress: <# failing tests>`, `sta
 tick per candidate, `done:true` on the tick that commits to a winner.
 
 **Task:** "Don't let us make the same deployment mistake twice."
-→ `memory-loops` → Error Library (backfill) + Reflexion (going forward). Use `reflexion`'s tools
+→ `memory-loops` → Error Library (backfill) + Reflexion (going forward). Use bantamkit's memory tools
 directly rather than a fresh loop-ledger config for the day-to-day recall/reflect; wire a `dry`-mode
 loop only for a one-time backfill sweep.
 
@@ -159,6 +159,8 @@ dry_rounds: 2` if you're just trying to find the ceiling.
 
 ## Changelog
 
+- 0.1.2 (2026-10-20) — the Memory category now points at bantamkit's memory tools; `reflexion` was folded
+  into bantamkit.
 - 0.1.1 (2026-07-02) — fix: added the `dry`-mode direction-blindness caveat (negate the metric when
   shrinking a value under `exit_mode: "dry"`) to the System Optimization config line, matching the
   verified fix in `system-optimization-loops`.

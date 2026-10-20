@@ -22,8 +22,7 @@ exact params to pass.
 /plugin install loop-ledger@kktest-dev
 ```
 
-`agent-loops` depends on **`loop-ledger`** being installed alongside it — the same relationship
-[`reflexion`](../reflexion) has with `memory-keeper`: this plugin is the reference material, `loop-ledger`
+`agent-loops` depends on **`loop-ledger`** being installed alongside it — this plugin is the reference material, `loop-ledger`
 is the engine that actually enforces the stop decision. Every skill in this plugin assumes the
 `loop_start` / `loop_tick` / `loop_status` / `loop_end` / `loop_gc` MCP tools are available in the
 session; without `loop-ledger` installed, treat the "Wire the brake" sections as design intent only —
@@ -65,11 +64,11 @@ loop_end { loop_id }             // if not already closed by the last tick
 
 ## Relationship to sibling plugins
 
-- **Memory category → [`reflexion`](../reflexion).** Reflexion, Error Library, Success Pattern, and
-  Memory Compression already ship as a working implementation on top of `memory-keeper`. Read
-  `memory-loops`'s SKILL.md for the pattern shapes and the brake to wire; use `reflexion`'s
-  `reflexion_recall` / `reflexion_reflect` / `reflexion_library` / `reflexion_compress` tools (or its
-  CLI) for the actual memory operations rather than reimplementing them.
+- **Memory category → [bantamkit](https://github.com/Ink01101011/bantamkit).** Its `memory_recall` / `memory_save` / `memory_compact` MCP tools are
+  the working store for Reflexion, Memory Update and Error Library. Read `memory-loops`'s SKILL.md for
+  the pattern shapes and the brake to wire; use bantamkit's tools for the actual memory operations
+  rather than reimplementing them. An error/success library view ([#219](https://github.com/Ink01101011/bantamkit/issues/219)) and multi-lesson merge
+  ([#220](https://github.com/Ink01101011/bantamkit/issues/220)) are not served yet.
 - **Quality category → `critique-gate`** (companion plugin, built alongside this one). It turns the
   Quality-loop patterns (Score-and-Retry, Multi-Critic, Adversarial, Judge Ensemble) into an enforced
   Stop-hook gate on a quality threshold, riding on `loop-ledger`'s retry-count backstop the same way

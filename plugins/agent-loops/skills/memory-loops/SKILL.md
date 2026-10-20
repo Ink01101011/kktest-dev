@@ -6,10 +6,10 @@ description: "Use this skill whenever an agent should learn across tasks instead
   include: 'remember this for next time', 'why did we hit this again', 'what have we learned about X',
   'compress these lessons', 'don't repeat that mistake'. Covers Reflexion, Memory Update, Error Library,
   Success Pattern, and Memory Compression. Do NOT use for one-off, non-generalizable task state (that's
-  just working context, not memory) — and prefer the `reflexion` plugin's actual tools over hand-rolling
-  these patterns if it's installed."
-version: "0.1.0"
-updated: "2026-07-02"
+  just working context, not memory) — and prefer the bantamkit MCP server's memory tools over
+  hand-rolling these patterns if it's installed."
+version: "0.2.0"
+updated: "2026-10-20"
 ---
 
 # Memory Loops
@@ -21,11 +21,13 @@ learned" into a durable, queryable store: recall matching lessons before acting,
 lesson after acting, and periodically compress recurring lessons into higher-level patterns so the
 store doesn't just grow forever.
 
-**This category already has a working implementation: [`reflexion`](../../../reflexion).** It ships
-`reflexion_recall` / `reflexion_reflect` / `reflexion_library` / `reflexion_compress` as MCP tools (or a
-CLI) on top of `memory-keeper`'s file-based store. Read this skill for the *pattern shapes* and the
-`loop-ledger` brake each one wires to; **use `reflexion`'s tools for the actual read/write/compress
-operations** rather than re-implementing a memory store from these subsections. If `reflexion` isn't
+**This category already has a working implementation: [bantamkit](https://github.com/Ink01101011/bantamkit)'s memory tools.** `memory_recall`
+covers recall-before-acting, `memory_save` writes one lesson (a `feedback` fact with **Why:** /
+**How to apply:** lines) and refuses a near-duplicate, and `memory_compact` archives without deleting.
+Two pieces are not served yet — an error/success library view ([#219](https://github.com/Ink01101011/bantamkit/issues/219)) and merging several lessons into
+one pattern ([#220](https://github.com/Ink01101011/bantamkit/issues/220)); until they land, do those by hand with the shapes below. Read this skill for the
+*pattern shapes* and the `loop-ledger` brake each one wires to; **use bantamkit's tools for the actual
+store operations** rather than re-implementing a memory store from these subsections. If bantamkit isn't
 installed, these patterns still apply to whatever memory store you do have (a file, a doc, a database) —
 the loop shape and the brake wiring below are store-agnostic.
 
@@ -107,8 +109,8 @@ written>`.
 Merge N recurring, near-duplicate lessons into one higher-level pattern lesson, archiving the originals.
 Use it periodically (not every task) once the library shows repetition — three "failed on X" entries
 that are really one root cause. Don't compress unrelated lessons just to shrink the count; only merge
-what's genuinely the same pattern (`reflexion_compress` defaults to a dry run for exactly this reason —
-preview before applying).
+what's genuinely the same pattern (preview the merge before applying for exactly this reason — it
+archives the originals).
 
 **Shape:** identify a cluster of similar lessons → propose one merged pattern lesson → preview (dry run)
 → apply: write the pattern, archive the originals.
@@ -116,8 +118,8 @@ preview before applying).
 **Wire the brake:** compression across the whole library is itself a dry-until-no-more-merges loop:
 `loop_start { goal: "compress recurring lessons until no more clusters found", max_iterations: 6,
 exit_mode: "dry", dry_rounds: 2 }`, `progress: <cumulative lessons merged>`, `state: <the current
-candidate cluster>`. A single compression pass (one cluster) doesn't need the ledger at all — just call
-`reflexion_compress` and confirm before applying.
+candidate cluster>`. A single compression pass (one cluster) doesn't need the ledger at all — just preview
+the one merge and confirm before applying.
 
 ## Rules & Constraints
 
@@ -125,13 +127,14 @@ candidate cluster>`. A single compression pass (one cluster) doesn't need the le
   confident.
 - ALWAYS reflect exactly one lesson after a task with something generalizable — not zero (lost lesson),
   not several (fragments the library).
-- ALWAYS dedupe before writing (`reflexion_reflect` does this by name/content similarity) — a lesson
+- ALWAYS dedupe before writing (bantamkit's `memory_save` refuses a near-duplicate and names the
+  existing fact) — a lesson
   library with duplicates is worse than no library.
 - ALWAYS preview (dry run) before a compression merge actually archives originals.
 - NEVER treat `stalled` in a memory-search loop as "keep searching the same way" — it means the search
   strategy itself needs to change (different keywords, broaden scope, or accept you've found what's
   findable).
-- Prefer `reflexion`'s tools over reimplementing recall/reflect/library/compress from scratch.
+- Prefer bantamkit's memory tools over reimplementing recall/save/compact from scratch.
 
 ## Examples
 
@@ -151,6 +154,9 @@ Z"), dry-run preview, confirm, apply — three lessons become one, archived not 
 
 ## Changelog
 
+- 0.2.0 (2026-10-20) — the working implementation is now bantamkit's memory tools
+  (`memory_recall` / `memory_save` / `memory_compact`); the `reflexion` and `memory-keeper` plugins were
+  folded into bantamkit. Library view and multi-lesson merge are tracked as bantamkit #219 / #220.
 - 0.1.0 (2026-07-02) — initial version; 5 Memory-category patterns (Reflexion, Memory Update, Error
   Library, Success Pattern, Memory Compression), each with a real `loop-ledger` `loop_start` wiring.
   Reflexion's dry-mode brake verified live against the real `loop-ledger` MCP server (see plugin test

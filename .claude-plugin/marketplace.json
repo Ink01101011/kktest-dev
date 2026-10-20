@@ -284,7 +284,7 @@
       "name": "agent-loops",
       "source": "./plugins/agent-loops",
       "description": "Playbook for the 5 categories of agent loop design patterns (Quality, Memory, Planning, Exploration, System Optimization) \u2014 when to use each, its minimal shape, and the exact loop-ledger brake to wire (exit_mode/target_value/direction/max_iterations or dry_rounds). Includes a loop-selector router skill. Skills-only; pairs with the loop-ledger plugin for enforcement.",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "author": {
         "name": "Ink",
         "email": "supakit.kitj@gmail.com"
