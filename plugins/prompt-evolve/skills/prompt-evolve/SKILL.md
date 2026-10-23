@@ -7,7 +7,7 @@ description: >
   scores every output, rewrites the prompt from its failures, and repeats — reporting best_so_far,
   never just the last attempt.
 metadata:
-  version: "0.1.0"
+  version: "0.2.0"
   author: "Ink"
 ---
 
@@ -57,12 +57,17 @@ of this narrow renderer, not something to work around silently.
    reviewer would grade a rubric — the CLI's deterministic `exact_match`/`regex`/`schema` scorers are
    the fallback for extraction-style tasks (where a literal/regex/JSON check really is "correct") and
    for the fully-offline `run` mode above. Write one `{"input": ..., "output": ...}` line per case (in
-   the same order as `testset.jsonl` — matching is positional, not by content) to an outputs file, then
-   persist the scores and the prompt you used:
+   the same order as `testset.jsonl` — matching is positional, not by content) to an outputs file. When
+   you graded by rubric, add your grade to each line — `"score"` (a number from 0 to 1) and optionally
+   `"note"` (why) — and pass `--scorer rubric`, which saves your grades as-is instead of re-scoring.
+   Then persist the scores and the prompt you used:
 
    ```
-   python3 pevolve.py score --dir <dir> --version <N> --outputs outputs.jsonl --save-prompt prompt.tmpl
+   python3 pevolve.py score --dir <dir> --version <N> --outputs outputs.jsonl --scorer rubric --save-prompt prompt.tmpl
    ```
+
+   (Use `--scorer exact_match|regex|schema` instead when a deterministic check is the right grader.)
+   `score` exits 1 and names the case if a rubric line has no `score` or one outside 0..1.
 
    Rewrite `prompt.tmpl` from the reported `failures`, bump the version, re-render, re-score. Repeat
    until the score curve (see `report.md`) is good enough or plateaus.
@@ -93,7 +98,7 @@ each generation call `loop_tick` with `state` = a hash of the sorted failing cas
 stop when `should_continue` is false and report the loop's `status` (`target_reached` success,
 `stalled` means the same cases keep failing and need human insight or better test cases — not more
 retries, `dry`/`converged` means no new progress). Its default interactive scorer is critique-gate's
-rubric approach (Claude scores each case, then calls `pevolve.py score` to persist it); its
+rubric approach (Claude scores each case, then calls `pevolve.py score --scorer rubric` to persist it); its
 deterministic scorers are the fallback for extraction-style tasks and the offline `run` verification
 mode. Failure summaries from `report.md` feed [`reflexion`](../../../reflexion/README.md) as durable
 lessons once a case fails repeatedly across evolve rounds.

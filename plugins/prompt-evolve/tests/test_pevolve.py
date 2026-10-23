@@ -265,6 +265,58 @@ class TestScoreSubcommand(PdirTestCase):
         self.assertEqual([e["version"] for e in entries], [1, 2])
 
 
+
+class TestRubricScorer(PdirTestCase):
+    """--scorer rubric: the agent grades each output itself and puts the grade in the outputs line;
+    score persists that grade instead of re-scoring deterministically."""
+
+    def _score(self, outputs: list[dict], *extra: str) -> subprocess.CompletedProcess:
+        outputs_path = self.pdir / "outputs.jsonl"
+        write_outputs(outputs_path, outputs)
+        return run(["score", "--version", "1", "--outputs", str(outputs_path),
+                    "--scorer", "rubric", *extra], pdir=self.pdir)
+
+    def test_agent_scores_and_notes_are_persisted(self):
+        write_testset(self.pdir, [
+            {"input": "a", "rubric": "polite and under 20 words"},
+            {"input": "b", "rubric": "polite and under 20 words"},
+        ])
+        proc = self._score([
+            {"input": "a", "output": "Thanks!", "score": 0.9, "note": "polite, short"},
+            {"input": "b", "output": "No.", "score": 0.25},
+        ])
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        entry = read_scores(self.pdir)[0]
+        self.assertAlmostEqual(entry["avg_score"], 0.575)
+        self.assertEqual(entry["per_case"][0], {"id": "case-0", "score": 0.9, "note": "polite, short"})
+        self.assertEqual(entry["per_case"][1]["note"], "rubric score from agent")
+        self.assertEqual(entry["failures"], ["case-1"])
+
+    def test_missing_score_exits_1_and_names_the_case(self):
+        write_testset(self.pdir, [{"input": "a", "rubric": "r"}])
+        proc = self._score([{"input": "a", "output": "x"}])
+        self.assertEqual(proc.returncode, 1, proc.stdout + proc.stderr)
+        self.assertIn("case-0", proc.stderr)
+        self.assertIn("score", proc.stderr)
+        self.assertFalse((self.pdir / "generations" / "scores.jsonl").exists())
+
+    def test_out_of_range_or_non_numeric_score_exits_1(self):
+        write_testset(self.pdir, [{"input": "a", "rubric": "r"}])
+        for bad in (1.5, -0.1, "0.8", True, None):
+            with self.subTest(bad=bad):
+                proc = self._score([{"input": "a", "output": "x", "score": bad}])
+                self.assertEqual(proc.returncode, 1, proc.stdout + proc.stderr)
+                self.assertIn("between 0 and 1", proc.stderr)
+                self.assertNotIn("Traceback", proc.stdout + proc.stderr)
+
+    def test_run_rejects_rubric_scorer(self):
+        write_prompt(self.pdir, "say {input}")
+        write_testset(self.pdir, [{"input": "a", "rubric": "r"}])
+        proc = run(["run", "--scorer", "rubric"], pdir=self.pdir)
+        self.assertEqual(proc.returncode, 2, proc.stdout + proc.stderr)
+        self.assertIn("invalid choice", proc.stderr)
+
+
 class TestReport(PdirTestCase):
     def _write_scores(self, entries: list[dict]) -> None:
         gen_dir = self.pdir / "generations"

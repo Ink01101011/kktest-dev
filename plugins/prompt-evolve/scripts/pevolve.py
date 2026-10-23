@@ -17,6 +17,10 @@ this CLI never calls a model (no network, stdlib only). It supports two ways of 
          when *Claude itself* generated the outputs interactively (this CLI has no model client of its
          own) — see the ``prompt-evolve`` skill.
 
+         With ``--scorer rubric`` the agent grades each output itself against the case's rubric and
+         puts the grade in the outputs line ({"input":..., "output":..., "score": 0..1, "note"?: ...});
+         score persists that grade as-is instead of re-scoring the output.
+
   report Render report.md from testset.jsonl + generations/scores.jsonl: a score curve, the best
          version highlighted, and a failure summary (which case ids fail most often).
 
@@ -27,6 +31,9 @@ scoring logic. Three deterministic scorers, all stdlib:
   regex         re.search(case["rubric"], output) — case["rubric"] is a regex pattern string.
   schema        json.loads(output) must be a dict containing every key in case["rubric"] (a JSON
                 array of required top-level key names). Deliberately narrow — NOT full JSON Schema.
+
+``score`` also accepts ``--scorer rubric`` (not ``run``: it has no agent to do the grading), which
+takes the agent's own 0..1 grade from each outputs line — see ``rubric_score()``.
 
 Data model
 ----------
@@ -67,6 +74,7 @@ DEFAULT_MAX_ITER = int(os.environ.get("PEVOLVE_MAX_ITER", "8"))
 DEFAULT_THRESHOLD = float(os.environ.get("PEVOLVE_THRESHOLD", "0.8"))
 DEFAULT_DRY_ROUNDS = int(os.environ.get("PEVOLVE_DRY_ROUNDS", "2"))
 SCORER_CHOICES = ["exact_match", "regex", "schema"]
+RUBRIC_SCORER = "rubric"
 
 GENERATIONS_DIR = "generations"
 SCORES_FILE = "scores.jsonl"
@@ -113,6 +121,21 @@ def score_output(output: str, case: dict, scorer: str) -> tuple[float, str]:
         return 1.0, "all required keys present"
 
     return 0.0, f"unknown scorer: {scorer}"
+
+
+def rubric_score(out: dict, case_id: str) -> tuple[float, str]:
+    """Read the agent's own grade from an outputs line. Raises ValueError, naming the case and the
+    fix, when the grade is missing or not a number in [0, 1] — a rubric run must never be persisted
+    with a made-up score."""
+    score = out.get("score")
+    if score is None and "score" not in out:
+        raise ValueError(f"outputs line for case {case_id} has no 'score' field — with --scorer rubric, "
+                         f"grade the output against the case's rubric and add \"score\": <0..1>")
+    if isinstance(score, bool) or not isinstance(score, (int, float)) or not 0.0 <= score <= 1.0:
+        raise ValueError(f"outputs line for case {case_id} has score {score!r} — it must be a number "
+                         f"between 0 and 1 (e.g. \"score\": 0.75)")
+    note = out.get("note")
+    return float(score), str(note) if note else "rubric score from agent"
 
 
 # ── testset / outputs / scores I/O ─────────────────────────────────────────────
@@ -316,7 +339,14 @@ def cmd_score(args) -> int:
         if "output" not in out:
             print(f"error: outputs line for case {case['id']} has no 'output' field", file=sys.stderr)
             return 1
-        score, note = score_output(out["output"], case, args.scorer)
+        if args.scorer == RUBRIC_SCORER:
+            try:
+                score, note = rubric_score(out, case["id"])
+            except ValueError as e:
+                print(f"error: {e}", file=sys.stderr)
+                return 1
+        else:
+            score, note = score_output(out["output"], case, args.scorer)
         per_case.append({"id": case["id"], "score": score, "note": note})
     avg = statistics.fmean(pc["score"] for pc in per_case) if per_case else 0.0
     failures = [pc["id"] for pc in per_case if pc["score"] < args.threshold]
@@ -416,7 +446,8 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--version", type=int, required=True, help="generation version number")
     s.add_argument("--outputs", required=True,
                   help="path to a JSONL file, one {'input':..., 'output':...} per case, same order as testset")
-    s.add_argument("--scorer", choices=SCORER_CHOICES, default="exact_match")
+    s.add_argument("--scorer", choices=[*SCORER_CHOICES, RUBRIC_SCORER], default="exact_match",
+                  help="rubric = keep the agent's own 0..1 'score' from each outputs line")
     s.add_argument("--threshold", type=float, default=DEFAULT_THRESHOLD,
                   help="per-case pass line used to build the failures list")
     s.add_argument("--save-prompt", help="copy this prompt file into generations/v<version>.tmpl")
