@@ -30,8 +30,9 @@ missing feature. It gives you two paths:
 - **`score`** — score an outputs file *you* (or Claude, interactively) produced by actually running the
   prompt through a real model. This is the path for real prompt-evolve work: Claude renders the
   prompt, generates the real output, judges it (critique-gate's rubric approach is the default
-  interactive scorer) or runs it through a deterministic scorer, then calls `pevolve.py score` to
-  persist the result and keep the generation on disk.
+  interactive scorer — the grade goes in each outputs line as `"score"`, and `--scorer rubric` saves
+  it as-is) or runs it through a deterministic scorer, then calls `pevolve.py score` to persist the
+  result and keep the generation on disk.
 
 `report` renders `report.md`: the score curve (version → avg_score), the best version highlighted
 (never just the last attempt — prompt rewrites aren't monotonic), and a failure summary of which case
@@ -97,6 +98,7 @@ is a hard error.
 | `exact_match` (default) | `expected` | trimmed string equality against the output |
 | `regex` | `rubric` (a pattern string) | `re.search(rubric, output)` |
 | `schema` | `rubric` (a JSON array of key names, e.g. `["name","age"]`) | `json.loads(output)` is a dict containing every listed key — **not** full JSON Schema, deliberately narrow |
+| `rubric` (`score` only) | the outputs line's `score` (0..1) and optional `note` | none — the agent's own grade against the case's `rubric` is saved as-is; a missing or out-of-range `score` exits 1 |
 
 One scoring function, `score_output()`, is shared by `run` and `score` — no duplicated logic.
 
@@ -127,7 +129,7 @@ last attempt.
 
 - The CLI itself **never calls a model** — it has no MCP client and no network access. Interactive
   scoring (Claude acting as critique-gate's rubric judge) happens at the skill layer, not inside
-  `pevolve.py`.
+  `pevolve.py`; `score --scorer rubric` only persists the grades Claude wrote into the outputs file.
 - There is no MCP server or bespoke Stop-hook state machine here. `loop-ledger`'s existing generic
   quality/optimization gate (`loop_start`/`loop_tick` with `exit_mode:"target"`) already covers the
   "bounded iteration" need once `progress` is defined as `avg_score` — see the skill's Chaining

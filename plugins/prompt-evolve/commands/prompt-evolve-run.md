@@ -21,9 +21,11 @@ It refuses to overwrite an existing `generations/scores.jsonl` unless you pass `
 `prompt.tmpl` yourself and generate the actual output as you normally would (calling whatever model/tool
 the prompt targets); score each case yourself against its `rubric` (critique-gate-style) if there's no
 deterministic scorer; write one `{"input":..., "output":...}` line per case, in testset order, to an
-outputs file; then persist the scores:
+outputs file — when you graded by rubric, also put your grade in each line as `"score"` (0 to 1) plus an
+optional `"note"`; then persist the scores (`--scorer rubric` keeps your grades as-is; use
+`exact_match`/`regex`/`schema` instead for a deterministic grader):
 
-!`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/pevolve.py score --dir "$1" --version <N> --outputs <path> --save-prompt prompt.tmpl`
+!`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/pevolve.py score --dir "$1" --version <N> --outputs <path> --scorer rubric --save-prompt prompt.tmpl`
 
 Rewrite `prompt.tmpl` from the failures it reports, bump `<N>`, and repeat. Always keep every
 generation — never overwrite `generations/vN.tmpl`. Report `best_so_far`, not the last attempt, when
