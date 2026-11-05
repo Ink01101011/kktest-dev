@@ -1,14 +1,13 @@
 ---
 name: loop-selector
-description: "Use this skill whenever a task sounds like it needs a loop but it's not yet clear which
-  kind — 'make this better', 'fix the failing suite', 'explore N designs', 'don't repeat that mistake',
-  'find a plan that works', 'optimize this prompt'. It's a router: read the task description, pick the
-  matching category skill (quality-loops / memory-loops / planning-loops / exploration-loops /
-  system-optimization-loops) and pattern, and produce the concrete loop_start config. Do NOT use this
-  once you already know which category and pattern apply — go straight to that category skill instead;
-  this is only for the ambiguous 'which loop do I even want' moment."
-version: "0.1.2"
-updated: "2026-10-20"
+description: "Use this skill only when a task clearly needs an iterate-until-done loop but the request
+  does not point at one category — e.g. the goal mixes quality, planning and learning concerns, or the
+  user asks which loop to use. It's a router: read the task description, pick the matching category
+  skill (quality-loops / memory-loops / planning-loops / exploration-loops / system-optimization-loops)
+  and pattern, and produce the concrete loop_start config. It owns no trigger phrases of its own: when a
+  request matches a category skill's triggers, use that category skill directly instead."
+version: "0.1.3"
+updated: "2026-11-05"
 ---
 
 # Loop Selector

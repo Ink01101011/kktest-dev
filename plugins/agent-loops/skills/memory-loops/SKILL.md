@@ -3,13 +3,14 @@ name: memory-loops
 description: "Use this skill whenever an agent should learn across tasks instead of re-discovering the
   same mistake or re-deriving the same success every session — recall-before-acting, reflect-after,
   building an error/success library, or compressing recurring lessons into a durable pattern. Triggers
-  include: 'remember this for next time', 'why did we hit this again', 'what have we learned about X',
-  'compress these lessons', 'don't repeat that mistake'. Covers Reflexion, Memory Update, Error Library,
+  include: 'remember this for next time', 'why did we hit this again', 'don't repeat that mistake'.
+  Covers Reflexion, Memory Update, Error Library,
   Success Pattern, and Memory Compression. Do NOT use for one-off, non-generalizable task state (that's
   just working context, not memory) — and prefer the bantamkit MCP server's memory tools over
-  hand-rolling these patterns if it's installed."
-version: "0.2.0"
-updated: "2026-10-20"
+  hand-rolling these patterns if it's installed. For running the recall/reflect loop on the file-based
+  store, or for reviewing and compressing lessons already stored there, use the reflexion skill instead."
+version: "0.2.1"
+updated: "2026-11-05"
 ---
 
 # Memory Loops
