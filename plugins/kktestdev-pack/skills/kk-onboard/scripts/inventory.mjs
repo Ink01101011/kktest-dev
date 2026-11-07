@@ -37,7 +37,7 @@ export const LIMITS = {
 // ---------------------------------------------------------------- named patterns
 // Key segments that make an env/header/flag/query name secret-like. Matched on whole segments of the
 // snake_cased name, so AUTHOR_NAME does not match "auth" but OAUTH_TOKEN matches "token".
-const SECRET_SEGMENTS = 'token|secret|password|passwd|pwd|pass|api_?key|apikey|access_?key|private_?key|client_?secret|auth|authorization|bearer|cookie|credentials?|pat|signature|sig';
+const SECRET_SEGMENTS = 'token|secret|password|passwd|pwd|pw|pass|api_?key|apikey|access_?key|private_?key|client_?secret|auth|authorization|bearer|cookie|credentials?|pat|signature|sig';
 const SECRET_KEY = new RegExp(`(^|_)(${SECRET_SEGMENTS})(_|$)`);
 // ${VAR}, ${VAR:-default}, $VAR, %VAR%: a reference to a variable, not a literal secret.
 // Query parameter names that carry a credential even though the word alone is generic (?key=, ?sig=).
@@ -49,6 +49,10 @@ const URL_IN_TEXT = /\b[a-z][a-z0-9+.-]*:\/\/[^\s'"<>`]+/gi;
 const AUTH_SCHEME = /\b(Bearer|Basic|Token)(\s+)([^\s'"]+)/gi;
 const KEY_VALUE = /(-{0,2}[A-Za-z_][\w.-]*)(=|:[ \t]*)("[^"]*"|'[^']*'|[^\s'"&]+)/g;
 const FLAG = /^--?[A-Za-z][\w.-]*$/;
+// curl/wget/git style `-u user:password` / `--user user:password`: the part after the first colon is a password.
+const USER_FLAG = /^(-u|--user|--proxy-user)$/;
+// MySQL-family clients take the password glued to -p (`mysql -pSECRET`); a separate `-p X` is a prompt + db name.
+const MYSQL_CMD = /(^|[\\/\s])(mysql|mariadb|mysqldump|mysqladmin|mysqlimport|mysqlshow)(\.exe)?$/i;
 // Directories under HOME that belong to a package manager or version manager (not "a local checkout").
 const TOOLCHAIN_DIRS = /\/(node_modules|\.nvm|nvm|\.volta|\.asdf|\.fnm|\.bun\/bin|\.cargo\/bin|\.npm-global|\.npm\/_npx|\.local\/bin|\.local\/share\/(mise|pnpm|uv)|mise|homebrew|linuxbrew|\.claude\/plugins|appdata\/roaming\/npm|appdata\/local\/(mise|pnpm|volta)|scoop\/(shims|apps)|go\/bin|library\/pnpm)(\/|$)/;
 const BROAD_PERMISSION = /^Bash(\(\*\))?$|^Bash\(\*|bypassPermissions|^mcp__[^_]+$|^\*$/;
@@ -129,18 +133,40 @@ export function redactText(s) {
     if (!secretKey(flag) || val === '***' || isEnvRef(val.replace(/^["']|["']$/g, ''))) return m;
     hits.push(`"${flag}"`); return `${pre}${flag}${sp}***`;
   });
+  // -u user:password (curl, wget, git credential helpers)
+  t = t.replace(/(^|\s)(-u|--user|--proxy-user)(\s+|=)("?)([^\s:'"]+):([^\s'"]+)\4/g, (m, pre, flag, sp, q, user, pw) => {
+    if (pw === '***' || isEnvRef(pw)) return m;
+    hits.push(`"${flag}" password`); return `${pre}${flag}${sp}${q}${user}:***${q}`;
+  });
+  // mysql -pSECRET (only on a MySQL-family command line; elsewhere -p usually means a port)
+  if (/\b(mysql|mariadb|mysqldump|mysqladmin|mysqlimport|mysqlshow)(\.exe)?\b/i.test(t)) {
+    t = t.replace(/(^|\s)-p(?!\s)("[^"]*"|'[^']*'|[^\s'"]+)/g, (m, pre, val) => {
+      if (val === '***' || isEnvRef(val.replace(/^["']|["']$/g, ''))) return m;
+      hits.push('"-p" password'); return `${pre}-p***`;
+    });
+  }
   t = t.replace(TOKEN_PREFIX, () => { hits.push('token-like value'); return '***'; });
   return { text: t, hits };
 }
 
 /** redact an argv array: also masks the value that follows a secret-like flag */
-export function redactArgs(args) {
+export function redactArgs(args, command = '') {
   const hits = [];
   const out = [];
   const list = strArray(args);
+  const mysql = [String(command ?? ''), ...list].some((x) => MYSQL_CMD.test(x.trim()));
   for (let i = 0; i < list.length; i++) {
     const a = list[i];
     const prev = list[i - 1];
+    if (prev !== undefined && USER_FLAG.test(prev) && /^[^:]+:.+/.test(a)) {
+      const [user, ...rest] = a.split(':'); const pw = rest.join(':');
+      if (isEnvRef(pw)) out.push(a); else { hits.push(`"${prev}" password`); out.push(`${user}:***`); }
+      continue;
+    }
+    if (mysql && /^-p.+/.test(a)) {
+      if (isEnvRef(a.slice(2))) out.push(a); else { hits.push('"-p" password'); out.push('-p***'); }
+      continue;
+    }
     if (prev !== undefined && FLAG.test(prev) && secretKey(prev) && !a.startsWith('-')) {
       if (isEnvRef(a)) out.push(a); else { hits.push(`"${prev}"`); out.push('***'); }
       continue;
@@ -391,7 +417,7 @@ function makeServer(name, cfg, source) {
     type: typeof c.type === 'string' ? c.type : url ? 'http' : 'stdio',
     url: url ? redactUrl(url).text : null,
     command: command ? redactText(command).text : null,
-    args: redactArgs(args).args,
+    args: redactArgs(args, command).args,
     envKeys: Object.keys(env), headerKeys: Object.keys(headers),
     [RAW]: { url, command, args, env, headers },
   };
@@ -558,7 +584,7 @@ export async function collect(opts) {
     if (!parsed.ok || !Array.isArray(parsed.value)) ctx.note(`claude plugin marketplace list --json: ${parsed.ok ? 'not a list' : parsed.error}; marketplaces unknown`);
     else for (const m of parsed.value) {
       if (!isObject(m) || typeof m.name !== 'string') continue;
-      data.marketplaces.push({ name: m.name, source: typeof m.source === 'string' ? m.source : null, repo: typeof m.repo === 'string' ? m.repo : null, path: typeof m.path === 'string' ? ctx.short(m.path) : null });
+      data.marketplaces.push({ name: m.name, source: typeof m.source === 'string' ? m.source : null, repo: typeof m.repo === 'string' ? redactText(m.repo).text : null, url: typeof m.url === 'string' ? redactUrl(m.url).text : null, path: typeof m.path === 'string' ? ctx.short(m.path) : null });
     }
   } else if (data.claudeAvailable) cliNote('claude plugin marketplace list --json', ml);
 
@@ -756,7 +782,7 @@ const DETECTORS = {
       const places = [];
       const envKeys = inlineSecretKeys(raw.env); if (envKeys.length) places.push(`env: ${envKeys.join(', ')}`);
       const hdrKeys = inlineSecretKeys(raw.headers); if (hdrKeys.length) places.push(`headers: ${hdrKeys.join(', ')}`);
-      const argHits = [...new Set(redactArgs(raw.args).hits)]; if (argHits.length) places.push(`args: ${argHits.join(', ')}`);
+      const argHits = [...new Set(redactArgs(raw.args, raw.command).hits)]; if (argHits.length) places.push(`args: ${argHits.join(', ')}`);
       const urlHits = raw.url ? [...new Set(redactUrl(raw.url).hits)] : []; if (urlHits.length) places.push(`url: ${urlHits.join(', ')}`);
       if (places.length) out.push(['risk', 'inline-secret', `MCP "${s.name}" stores a credential in plain text in its config`, [`source: ${s.source}`, ...places, 'values not shown']]);
     }
@@ -805,7 +831,7 @@ const DETECTORS = {
     const packMarkets = asObject(pack.marketplaces);
     return data.marketplaces.filter((m) => !lower(m.repo).startsWith('anthropics/')).map((m) => {
       const managed = Object.prototype.hasOwnProperty.call(packMarkets, m.name);
-      const f = ['risk', 'third-party-marketplace', `marketplace "${m.name}" is not from Anthropic`, [m.repo ? `github: ${m.repo}` : `${m.source}: ${m.path ?? ''}`, ...(managed ? ['pack-managed: kktestdev-pack adds this marketplace'] : [])]];
+      const f = ['risk', 'third-party-marketplace', `marketplace "${m.name}" is not from Anthropic`, [m.repo ? `github: ${m.repo}` : m.url ? `${m.source ?? 'url'}: ${m.url}` : `${m.source}: ${m.path ?? ''}`, ...(managed ? ['pack-managed: kktestdev-pack adds this marketplace'] : [])]];
       if (managed) f.push({ packManaged: true });
       return f;
     });

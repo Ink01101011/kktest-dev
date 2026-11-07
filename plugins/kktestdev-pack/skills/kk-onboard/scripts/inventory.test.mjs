@@ -391,3 +391,36 @@ test('G6-1: importing the module prints nothing and runs no CLI', () => {
   const r = spawnSync(process.execPath, ['--input-type=module', '-e', `import(${JSON.stringify(SCRIPT)}).then(m => console.log(typeof m.run))`], { encoding: 'utf8', env: { PATH: '' } });
   assert.equal(r.stdout.trim(), 'function');
 });
+
+// ---------------------------------------------------------------- G5 follow-ups (N1-N3)
+test('G5-N3: redactUrl fallback masks userinfo and query values of unparsable URLs', () => {
+  const r = redactUrl('//alice:CANAFB1@host.example/x?token=CANAFB2&q=1');
+  assert.ok(!r.text.includes('CANAFB1') && !r.text.includes('CANAFB2'), r.text);
+  assert.ok(r.text.includes('//***@host.example'), r.text);
+  assert.ok(r.hits.includes('url userinfo'));
+});
+
+test('G5-N2: -u user:password, mysql -pSECRET and --pw are masked; -p port elsewhere is kept', () => {
+  assert.deepEqual(redactArgs(['-u', 'me:CANAN21', 'https://x']).args, ['-u', 'me:***', 'https://x']);
+  assert.deepEqual(redactArgs(['-u', 'me:${PW}']).args, ['-u', 'me:${PW}']);
+  assert.deepEqual(redactArgs(['-h', 'db', '-pCANAN22', 'app'], 'mysql').args, ['-h', 'db', '-p***', 'app']);
+  assert.deepEqual(redactArgs(['-p8080'], 'node').args, ['-p8080']);
+  assert.deepEqual(redactArgs(['--pw', 'CANAN23']).args, ['--pw', '***']);
+  const t = redactText('curl -u bob:CANAN24 https://x && mysql -uroot -pCANAN25 db').text;
+  assert.ok(!/CANAN2[45]/.test(t), t);
+  assert.equal(redactText('serve -p8080').text, 'serve -p8080');
+  assert.ok(redactArgs(['-u', 'me:CANAN26']).hits.length > 0);
+});
+
+test('G5-N1: marketplace repo/url carrying a token is redacted in installed list and evidence', async (t) => {
+  const fx = fakeHome(t);
+  const marketplaces = [
+    { name: 'tok', source: 'git', repo: 'https://ghp_CANAN1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@github.com/o/r.git' },
+    { name: 'u', source: 'git', url: 'https://bob:CANAN12@git.example/r.git' },
+  ];
+  const out = await inv(fx, ['--full'], { runClaude: stubClaude({ marketplaces }) });
+  const txt = JSON.stringify(out);
+  assert.ok(!txt.includes('CANAN1aaaa') && !txt.includes('CANAN12'), 'token leaked');
+  const ev = byCat(out, 'third-party-marketplace').flatMap((f) => f.evidence).join('\n');
+  assert.match(ev, /git: https:\/\/\*\*\*@git\.example\/r\.git/);
+});
