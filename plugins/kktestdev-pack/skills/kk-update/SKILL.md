@@ -37,6 +37,9 @@ minutes: every step is network-bound.
    - Plugins: for each installed plugin whose id equals an item's **`plugin`** value in
      `pack.json`, `claude plugin update <plugin>`. Leave other plugins alone; mention that
      `claude plugin update <id>` works for them too.
+     Items the pack dropped are no longer updated here: `serena` left the pack in 1.1.0. If it is
+     still installed, say so once and point to `/kk-onboard`'s audit (`overlap:code-nav`), which
+     asks whether to keep it. Never uninstall it from this skill.
    - Global npm packages the pack installs, only the ones already installed globally, in **one**
      command: `npm i -g <pkg>@latest <pkg>@latest ...`. The packages are the `npm i -g` targets in
      `pack.json` (`steps` and `requires[].install`): today `bantamkit-mcp`,
@@ -52,8 +55,9 @@ minutes: every step is network-bound.
    `bantamkit-mcp` is not found on PATH, it was installed some other way (a checkout, another
    prefix). Say so and skip it; do not install a second copy without asking.
 
-5. **npx-based MCP servers** (playwright, chrome-devtools, next-devtools) are configured with
-   `@latest`, so they resolve the newest release when they start. Nothing to run here. Say they
+5. **npx-based MCP servers** (playwright; chrome-devtools and next-devtools from the frontend
+   profile) are configured with `@latest`, so they resolve the newest release when they start.
+   Nothing to run here. Say they
    update on the next `/mcp` reconnect or restart.
 
 6. **Options that changed with the new versions**: run

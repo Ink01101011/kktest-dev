@@ -60,9 +60,9 @@ deferred.
 
 | Profile | Items |
 |---|---|
-| **core** | `superpowers`, `kkskills-essentials`, `context7`; LSP: `typescript-lsp`, `gopls-lsp`, `pyright-lsp`, `jdtls-lsp`; MCP: `bantamkit`, `playwright`, `chrome-devtools` |
-| **frontend** | `impeccable`, `next-devtools` MCP (Next.js 16+), `shadcn` MCP (per project) |
-| **investigate** | `sentry`, `grafana-mcp`, `serena` |
+| **core** | `superpowers`, `kkskills-essentials`, `context7`; LSP: `typescript-lsp`, `gopls-lsp`, `pyright-lsp`, `jdtls-lsp`; MCP: `bantamkit`, `playwright` |
+| **frontend** | `impeccable`, `chrome-devtools` MCP (perf traces, Lighthouse), `next-devtools` MCP (Next.js 16+), `shadcn` MCP (per project) |
+| **investigate** | `sentry`, `grafana-mcp` |
 | **docs only** | [Jira / Confluence](docs/jira-confluence.md) (your own LDAP login), [Figma](docs/figma.md), [bantamkit hooks](docs/bantamkit-hooks.md) (opt-in) |
 
 The catalog is [`skills/kk-onboard/pack.json`](skills/kk-onboard/pack.json). To change the pack,
@@ -70,6 +70,25 @@ edit that file: `detect` says how an item is recognised as already installed, `s
 `windows` / `plugin` say how to install it, and `overlapGroups` drive the redundancy audit. Its
 `keys` field lists which keys the script reads; the script reports unknown `detect` keys in
 `notes`.
+
+## Routing: which tool for which job
+
+Some pack items overlap on purpose. Nothing is uninstalled for this; the team default is:
+
+| Job | Default | Use the other one only when |
+|---|---|---|
+| Browser: navigate, click, fill, screenshot, E2E | `playwright` (core) | `chrome-devtools` (frontend): perf traces, Lighthouse, network detail. Claude in Chrome (built in): the task needs your real logged-in browser |
+| Planning | superpowers (`writing-plans` / `executing-plans`) for a plan that fits one session | bantamkit shiftwork (`shiftwork_plan`, `clock_in` / `clock_out`) for 2 or more units that fan out agents |
+| Code review of a diff | built-in `/code-review` (and `/security-review`) | superpowers' `requesting-code-review`: only inside the superpowers TDD / subagent flow. `receiving-code-review` has no built-in equivalent and stays |
+| Next.js docs | `next-devtools` while a Next.js dev server is running | `context7` otherwise (and for every other library) |
+| Code navigation | the LSP plugins + Claude Code's built-in LSP tool | none: the pack dropped `serena` in 1.1.0 |
+
+The audit still lists the planning overlap (and the browser one when `frontend` is installed) as
+`packManaged`: these are the pack's own choices, not questions. An existing `serena` plugin is
+no longer a pack item: the audit reports it (the plugin and the MCP server it starts) under
+`overlap:code-nav` and asks whether to keep it.
+`chrome-devtools` moved from `core` to `frontend` in 1.1.0; a copy installed earlier keeps working
+and `/kk-update` keeps it current.
 
 ## Who publishes what
 
@@ -90,7 +109,6 @@ their newest release from the registry on each start (team policy: no pinned ver
 | `shadcn` | shadcn-ui, npm `shadcn` | `npx`, writes the project's `.mcp.json` |
 | `sentry` | Sentry, official plugin catalog | remote MCP (OAuth to your Sentry) |
 | `grafana-mcp` | Grafana Labs, official plugin catalog | MCP with your Grafana token |
-| `serena` | Oraios, community-managed entry in the official catalog | MCP |
 | Jira / Confluence (docs) | Server/DC: `sooperset/mcp-atlassian` (community, PyPI via `uvx`; the npm package of the same name is a different project). Cloud: Atlassian | stdio MCP / remote MCP |
 | Figma (docs) | Figma | claude.ai connector or official plugin |
 

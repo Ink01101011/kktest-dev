@@ -300,6 +300,23 @@ questions per call). Skip `info` findings in the questions; list them once at th
 Findings with `packManaged: true` are not asked about: list them once, saying they are the pack's
 own choices (the user can still change them later).
 
+### Routing: overlaps the pack keeps on purpose
+
+When listing a `packManaged` overlap, or when the user asks which of two pack tools to use, give
+the team default (the same table is in the pack README):
+- **Browser**: `playwright` (core) for navigate / click / fill / screenshot / E2E; `chrome-devtools`
+  (frontend) only for perf traces, Lighthouse and network detail; Claude in Chrome only when the
+  task needs the user's real logged-in browser.
+- **Planning**: superpowers (`writing-plans` / `executing-plans`) for a plan that fits one
+  session; bantamkit shiftwork (`shiftwork_plan`, `clock_in` / `clock_out`) for 2 or more units
+  that fan out agents. Nothing is uninstalled.
+- **Code review**: the built-in `/code-review` for a diff; superpowers' `requesting-code-review`
+  only inside the superpowers TDD / subagent flow (so it is not counted in `overlap:code-review`).
+- **Next.js docs**: `next-devtools` while a Next.js dev server is running, otherwise `context7`.
+- **Code navigation**: the LSP plugins and the built-in LSP tool. The pack dropped `serena` in
+  1.1.0; a `serena` install shows up as `overlap:code-nav` without `packManaged`, so ask about it
+  like any other overlap (its plugin and the MCP server it starts are listed as two entries).
+
 For every question, give the facts from `evidence` and options shaped like these:
 
 | Finding | Options to offer (each with what happens / gain / cost) |
