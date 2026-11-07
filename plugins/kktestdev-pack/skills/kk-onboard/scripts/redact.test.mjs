@@ -141,8 +141,8 @@ const FAMILIES = {
   auth: 'Token :', flag: '--token ', sepP: 'mysql -p ', gluedP: ' -px', userFlag: '-u a:', shell: 'a;"', ws: ' \t',
 };
 const BUDGET_MS = 1500;
-const timeMs = (s) => { let best = Infinity; for (let i = 0; i < 3; i++) { const t0 = process.hrtime.bigint(); redactPasses(s); best = Math.min(best, Number(process.hrtime.bigint() - t0) / 1e6); if (best > BUDGET_MS) break; } return best; };
-test('#19 linear time: every pass family, 200k adversarial chars, doubling ~doubles', () => {
+const timeMs = (s) => { let best = Infinity; for (let i = 0; i < 5; i++) { const t0 = process.hrtime.bigint(); redactPasses(s); best = Math.min(best, Number(process.hrtime.bigint() - t0) / 1e6); if (best > BUDGET_MS) break; } return best; };
+test('#19 linear time: every pass family, up to 400k adversarial chars, 4x input stays well under quadratic', () => {
   for (const [name, unit] of Object.entries(FAMILIES)) {
     // sizes go up so a quadratic pass fails at a small size instead of running for minutes
     const t = {};
@@ -150,8 +150,9 @@ test('#19 linear time: every pass family, 200k adversarial chars, doubling ~doub
       t[n] = timeMs(unit.repeat(Math.ceil(n / unit.length)));
       assert.ok(t[n] < BUDGET_MS, `${name}: ${t[n].toFixed(0)} ms on ${n} chars`);
     }
-    // ratio only means something above timer noise
-    if (t[400000] > 30) assert.ok(t[400000] / t[200000] < 3, `${name}: 200k ${t[200000].toFixed(1)} ms, 400k ${t[400000].toFixed(1)} ms`);
+    // ratio only means something above timer noise. 4x the input: linear ~4x, quadratic ~16x; 10x leaves room
+    // for a noisy CI runner (a 200k->400k ratio of 3 failed on a shared macOS runner at 26 -> 85 ms).
+    if (t[400000] > 30) assert.ok(t[400000] / t[100000] < 10, `${name}: 100k ${t[100000].toFixed(1)} ms, 400k ${t[400000].toFixed(1)} ms`);
   }
   const t0 = process.hrtime.bigint(); replaceKeyValues('token '.repeat(70000)); // the key scan alone
   assert.ok(Number(process.hrtime.bigint() - t0) / 1e6 < 1500);
