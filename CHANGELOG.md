@@ -2,8 +2,8 @@
 
 ## 1.1.0
 
-Every commit on `release/1.1.0` since 1.0.0 (`997c209`), grouped. The npm package version is set by
-the release step.
+Every commit on `release/1.1.0` since 1.0.0 (`997c209`), grouped. npm package `kktest-dev` 1.1.0;
+marketplace `kktest-dev` 1.1.0.
 
 - **kktestdev-pack 0.2.0: dedupe and routing** (ea6e937, #14-#18). `chrome-devtools` moved from
   core to frontend; `playwright` is the core browser tool (#14). Planning routing: superpowers for a

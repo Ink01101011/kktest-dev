@@ -1,6 +1,6 @@
 {
   "name": "prompt-evolve",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Evolve a prompt against a test set: run/score it, find where it fails, rewrite from those failures, repeat. Deterministic scorers (exact-match/regex/schema), saved agent rubric grades, plus a fully offline verification loop; stdlib CLI + skill, no model calls of its own.",
   "author": {
     "name": "Ink",
