@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  run, redactText, redactUrl, redactArgs, secretKey, inlineSecretKeys, isEnvRef, packageSpecOf, splitSpec,
+  run, redactText, redactUrl, redactArgs, commandName, secretKey, inlineSecretKeys, isEnvRef, packageSpecOf, splitSpec,
   normalizeEndpoint, nameMatches, unwrapCommand, isUnderHome, shortPath, isLocalPath, tokenizeCommand,
   projectEntry, parseJsonOutput, parseMcpListLine, findBinDefault, validatePack, FINDING_CATEGORIES, LIMITS,
 } from './inventory.mjs';
@@ -423,4 +423,58 @@ test('G5-N1: marketplace repo/url carrying a token is redacted in installed list
   assert.ok(!txt.includes('CANAN1aaaa') && !txt.includes('CANAN12'), 'token leaked');
   const ev = byCat(out, 'third-party-marketplace').flatMap((f) => f.evidence).join('\n');
   assert.match(ev, /git: https:\/\/\*\*\*@git\.example\/r\.git/);
+});
+
+// ---------------------------------------------------------------- G7 follow-ups
+test('G7-1: glued, combined and quoted -u user:password forms are masked for credential commands', () => {
+  for (const [s, want] of [
+    ['curl -ubob:CANAG1 https://x', 'curl -ubob:*** https://x'],
+    ['curl -vu bob:CANAG2 https://x', 'curl -vu bob:*** https://x'],
+    ['curl -vubob:CANAG3 x', 'curl -vubob:*** x'],
+    ['curl -u "bob:pa CANAG4" x', 'curl -u "bob:***" x'],
+    ['curl --user=bob:CANAG5 x', 'curl --user=bob:*** x'],
+  ]) assert.equal(redactText(s).text, want);
+  assert.deepEqual(redactArgs(['-ubob:CANAG6', 'x'], 'curl').args, ['-ubob:***', 'x']);
+  assert.deepEqual(redactArgs(['-vu', 'bob:CANAG7'], 'curl').args, ['-vu', 'bob:***']);
+  assert.deepEqual(redactArgs(['--user=bob:CANAG8'], 'tool').args, ['--user=bob:***']);
+});
+
+test('G7-2: -u meaning uid:gid or module:app is left alone', () => {
+  assert.equal(redactText('docker run -u 1000:1000 img').text, 'docker run -u 1000:1000 img');
+  assert.equal(redactText('uvicorn -u app:main').text, 'uvicorn -u app:main');
+  assert.equal(redactText('tool -u 1000:1000').text, 'tool -u 1000:1000');
+  assert.deepEqual(redactArgs(['-u', '1000:1000'], 'docker').args, ['-u', '1000:1000']);
+  assert.equal(redactText('tool -ubob:keep').text, 'tool -ubob:keep'); // glued form only for known credential commands
+});
+
+test('G7-3: the MySQL -p rule applies per shell segment', () => {
+  assert.equal(redactText('ssh -p2222 host && mysql -uroot -pCANAG9 db').text, 'ssh -p2222 host && mysql -uroot -p*** db');
+  assert.equal(redactText('mysql -pCANAG10; ssh -p22 h').text, 'mysql -p***; ssh -p22 h');
+  assert.equal(redactText('FOO=1 mysql -pCANAG11').text, 'FOO=1 mysql -p***');
+  assert.equal(commandName(['-y', 'mysql-mcp']), 'mysql-mcp');
+  assert.equal(commandName(['C:\\Program Files\\MySQL\\bin\\mysql.exe']), 'mysql');
+});
+
+test('G7-4: redactText stays linear on long adversarial input (below the cut)', () => {
+  // 19,999 chars stays under LIMITS.redactChars, so this times the regexes, not the truncation.
+  // Linear runs take ~1 ms here; the old unanchored KEY_VALUE took ~170 ms at this length.
+  for (const s of ['a'.repeat(19999), 'a.'.repeat(9999), 'a='.repeat(9999), 'x:'.repeat(9999), '-u '.repeat(6666)]) {
+    const t0 = process.hrtime.bigint();
+    redactText(s);
+    const ms = Number(process.hrtime.bigint() - t0) / 1e6;
+    assert.ok(ms < 60, `${s.slice(0, 4)}… took ${ms} ms`);
+  }
+});
+
+test('G7-4: text over LIMITS.redactChars is cut before redaction and a secret past the cut is dropped', () => {
+  const out = redactText('x'.repeat(30000) + ' --token CANAG12').text;
+  assert.ok(out.length <= 20000 + 20, `length ${out.length}`);
+  assert.ok(out.endsWith('[truncated]'));
+  assert.ok(!out.includes('CANAG12'));
+});
+
+test('G7-5: marketplace source is redacted too', async (t) => {
+  const fx = fakeHome(t);
+  const out = await inv(fx, ['--full'], { runClaude: stubClaude({ marketplaces: [{ name: 's', source: 'https://bob:CANAG13@git.example/r.git' }] }) });
+  assert.ok(!JSON.stringify(out).includes('CANAG13'));
 });

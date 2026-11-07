@@ -30,6 +30,7 @@ export const LIMITS = {
   list: 200,              // entries per installed list in --full
   str: 300,               // characters per string in the output
   claudeJsonBytes: 50 * 1024 * 1024,
+  redactChars: 20000,     // longer text is cut before redaction (keeps every regex pass bounded)
   cliTimeoutMs: 60000,
   mcpListTimeoutMs: 45000,
 };
@@ -45,14 +46,32 @@ const QUERY_SECRET = /^(key|sig|code|access_token|apikey)$/i;
 const ENV_REF = /\$\{[A-Za-z_][A-Za-z0-9_]*(?::-[^}]*)?\}|\$[A-Za-z_][A-Za-z0-9_]*|%[A-Za-z_][A-Za-z0-9_]*%/g;
 // Well-known credential prefixes (OpenAI/Anthropic sk-, Stripe, GitHub, GitLab, Slack, AWS, Google, JWT).
 const TOKEN_PREFIX = /\b(?:sk-[A-Za-z0-9_-]{8,}|sk_(?:live|test)_[A-Za-z0-9]{8,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{16,}|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]+)/g;
-const URL_IN_TEXT = /\b[a-z][a-z0-9+.-]*:\/\/[^\s'"<>`]+/gi;
+// The lookbehinds pin each match to the start of a token, so a long run of word characters is scanned
+// once, not once per position (G7-4: the unanchored forms were quadratic, ~4 s on a 100k-char token).
+const URL_IN_TEXT = /(?<![a-z0-9+.-])[a-z][a-z0-9+.-]*:\/\/[^\s'"<>`]+/gi;
 const AUTH_SCHEME = /\b(Bearer|Basic|Token)(\s+)([^\s'"]+)/gi;
-const KEY_VALUE = /(-{0,2}[A-Za-z_][\w.-]*)(=|:[ \t]*)("[^"]*"|'[^']*'|[^\s'"&]+)/g;
+const KEY_VALUE = /(?<![\w.-])(-{0,2}[A-Za-z_][\w.-]*)(=|:[ \t]*)("[^"]*"|'[^']*'|[^\s'"&]+)/g;
 const FLAG = /^--?[A-Za-z][\w.-]*$/;
-// curl/wget/git style `-u user:password` / `--user user:password`: the part after the first colon is a password.
+// `-u user:password` / `--user user:password`: the part after the first colon is a password.
 const USER_FLAG = /^(-u|--user|--proxy-user)$/;
+// Commands whose -u takes user:password and whose short flags combine/glue (`-vu bob:pw`, `-ubob:pw`).
+const CRED_U_CMDS = new Set(['curl', 'wget', 'lftp', 'aria2c', 'ftp', 'sftp', 'mongo', 'mongosh', 'mongodump', 'mongorestore', 'mongoexport', 'mongoimport', 'redis-cli', 'influx', 'rabbitmqadmin']);
+// Commands whose -u/--user means something else (uid:gid, module:app): never masked.
+const NON_CRED_U_CMDS = new Set(['docker', 'podman', 'nerdctl', 'uvicorn', 'gunicorn', 'hypercorn', 'daphne', 'sudo', 'su', 'runuser', 'chown', 'setpriv', 'python', 'python3', 'node', 'ssh']);
 // MySQL-family clients take the password glued to -p (`mysql -pSECRET`); a separate `-p X` is a prompt + db name.
-const MYSQL_CMD = /(^|[\\/\s])(mysql|mariadb|mysqldump|mysqladmin|mysqlimport|mysqlshow)(\.exe)?$/i;
+const MYSQL_CMDS = new Set(['mysql', 'mariadb', 'mysqldump', 'mysqladmin', 'mysqlimport', 'mysqlshow']);
+const SHELL_SEPARATOR = /(\s*(?:&&|\|\||[;|&\n])\s*)/;
+
+/** the command name of one shell segment / argv: basename of the first word that is not a flag, VAR=x, env, exec or command */
+export function commandName(words) {
+  for (const w of words) {
+    const word = String(w ?? '').replace(/^["']|["']$/g, '');
+    if (!word || word.startsWith('-') || /^[A-Za-z_][A-Za-z0-9_]*=/.test(word) || word === 'env' || word === 'exec' || word === 'command') continue;
+    return word.split(/[\\/]/).pop().replace(/\.(exe|cmd|bat)$/i, '').toLowerCase();
+  }
+  return '';
+}
+const uidPair = (user, pw) => /^\d+$/.test(user) && /^\d+$/.test(pw);
 // Directories under HOME that belong to a package manager or version manager (not "a local checkout").
 const TOOLCHAIN_DIRS = /\/(node_modules|\.nvm|nvm|\.volta|\.asdf|\.fnm|\.bun\/bin|\.cargo\/bin|\.npm-global|\.npm\/_npx|\.local\/bin|\.local\/share\/(mise|pnpm|uv)|mise|homebrew|linuxbrew|\.claude\/plugins|appdata\/roaming\/npm|appdata\/local\/(mise|pnpm|volta)|scoop\/(shims|apps)|go\/bin|library\/pnpm)(\/|$)/;
 const BROAD_PERMISSION = /^Bash(\(\*\))?$|^Bash\(\*|bypassPermissions|^mcp__[^_]+$|^\*$/;
@@ -115,10 +134,48 @@ export function redactUrl(u) {
   return { text, hits };
 }
 
+/** mask the password half of user:password; returns null when it is not one (or must not be masked) */
+function maskUserPass(value, cmd) {
+  const q = /^["']/.test(value) ? value[0] : '';
+  const inner = q ? value.slice(1, value.endsWith(q) ? -1 : undefined) : value;
+  const i = inner.indexOf(':');
+  if (i <= 0 || i === inner.length - 1) return null;
+  const user = inner.slice(0, i); const pw = inner.slice(i + 1);
+  if (pw === '***' || isEnvRef(pw) || NON_CRED_U_CMDS.has(cmd) || uidPair(user, pw)) return null;
+  return `${q}${user}:***${q}`;
+}
+
+/** -u/--user/--proxy-user user:password and mysql -pX inside ONE shell segment */
+function redactSegment(seg, hits) {
+  const cmd = commandName(seg.trim().split(/\s+/));
+  const VALUE = `("[^"]*"|'[^']*'|[^\\s'"]+)`;
+  // exact flags, spaced or with =: any command except the NON_CRED ones
+  seg = seg.replace(new RegExp(`(^|\\s)(-u|--user|--proxy-user)(\\s+|=)${VALUE}`, 'g'), (m, pre, flag, sp, val) => {
+    const masked = maskUserPass(val, cmd); if (!masked) return m;
+    hits.push(`"${flag}" password`); return `${pre}${flag}${sp}${masked}`;
+  });
+  // combined (-vu bob:pw) and glued (-ubob:pw, -vubob:pw): only for commands known to take user:password there
+  if (CRED_U_CMDS.has(cmd)) {
+    seg = seg.replace(new RegExp(`(^|\\s)(-[A-Za-z]*u)(\\s+|)${VALUE}`, 'g'), (m, pre, flag, sp, val) => {
+      if (flag === '-u' && sp) return m; // already handled above
+      const masked = maskUserPass(val, cmd); if (!masked) return m;
+      hits.push(`"${flag}" password`); return `${pre}${flag}${sp}${masked}`;
+    });
+  }
+  if (MYSQL_CMDS.has(cmd)) {
+    seg = seg.replace(/(^|\s)-p(?!\s)("[^"]*"|'[^']*'|[^\s'"]+)/g, (m, pre, val) => {
+      if (val === '***' || isEnvRef(val.replace(/^["']|["']$/g, ''))) return m;
+      hits.push('"-p" password'); return `${pre}-p***`;
+    });
+  }
+  return seg;
+}
+
 /** redact free text (hook commands, args, CLI output); returns { text, hits } */
 export function redactText(s) {
   const hits = [];
   let t = String(s ?? '');
+  if (t.length > LIMITS.redactChars) t = `${t.slice(0, LIMITS.redactChars)}…[truncated]`;
   t = t.replace(URL_IN_TEXT, (m) => { const r = redactUrl(m); hits.push(...r.hits); return r.text; });
   t = t.replace(AUTH_SCHEME, (m, scheme, sp, val) => {
     if (val === '***' || isEnvRef(val)) return m;
@@ -133,18 +190,8 @@ export function redactText(s) {
     if (!secretKey(flag) || val === '***' || isEnvRef(val.replace(/^["']|["']$/g, ''))) return m;
     hits.push(`"${flag}"`); return `${pre}${flag}${sp}***`;
   });
-  // -u user:password (curl, wget, git credential helpers)
-  t = t.replace(/(^|\s)(-u|--user|--proxy-user)(\s+|=)("?)([^\s:'"]+):([^\s'"]+)\4/g, (m, pre, flag, sp, q, user, pw) => {
-    if (pw === '***' || isEnvRef(pw)) return m;
-    hits.push(`"${flag}" password`); return `${pre}${flag}${sp}${q}${user}:***${q}`;
-  });
-  // mysql -pSECRET (only on a MySQL-family command line; elsewhere -p usually means a port)
-  if (/\b(mysql|mariadb|mysqldump|mysqladmin|mysqlimport|mysqlshow)(\.exe)?\b/i.test(t)) {
-    t = t.replace(/(^|\s)-p(?!\s)("[^"]*"|'[^']*'|[^\s'"]+)/g, (m, pre, val) => {
-      if (val === '***' || isEnvRef(val.replace(/^["']|["']$/g, ''))) return m;
-      hits.push('"-p" password'); return `${pre}-p***`;
-    });
-  }
+  // -u user:password and mysql -pSECRET, judged per shell segment by that segment's command
+  t = t.split(SHELL_SEPARATOR).map((seg, i) => (i % 2 ? seg : redactSegment(seg, hits))).join('');
   t = t.replace(TOKEN_PREFIX, () => { hits.push('token-like value'); return '***'; });
   return { text: t, hits };
 }
@@ -154,15 +201,22 @@ export function redactArgs(args, command = '') {
   const hits = [];
   const out = [];
   const list = strArray(args);
-  const mysql = [String(command ?? ''), ...list].some((x) => MYSQL_CMD.test(x.trim()));
+  // the command is `command` itself, or the first argv word when command is a runner/shell (npx x, cmd /c x)
+  const cmd = [commandName([command]), commandName(list)].find((c) => c && !['npx', 'cmd', 'sh', 'bash', 'uvx', 'bunx', 'pnpm', 'dlx'].includes(c)) ?? '';
+  const mysql = MYSQL_CMDS.has(cmd);
+  const credU = CRED_U_CMDS.has(cmd);
   for (let i = 0; i < list.length; i++) {
     const a = list[i];
     const prev = list[i - 1];
-    if (prev !== undefined && USER_FLAG.test(prev) && /^[^:]+:.+/.test(a)) {
-      const [user, ...rest] = a.split(':'); const pw = rest.join(':');
-      if (isEnvRef(pw)) out.push(a); else { hits.push(`"${prev}" password`); out.push(`${user}:***`); }
-      continue;
-    }
+    const userPass = (flag, val, rebuild) => {
+      const masked = maskUserPass(val, cmd); if (!masked) return false;
+      hits.push(`"${flag}" password`); out.push(rebuild(masked)); return true;
+    };
+    if (prev !== undefined && (USER_FLAG.test(prev) || (credU && /^-[A-Za-z]*u$/.test(prev))) && userPass(prev, a, (m) => m)) continue;
+    const eq = a.match(/^(-u|--user|--proxy-user)=(.+)$/);
+    if (eq && userPass(eq[1], eq[2], (m) => `${eq[1]}=${m}`)) continue;
+    const glued = credU && a.match(/^(-[A-Za-z]*u)([^\s-].*)$/);
+    if (glued && userPass(glued[1], glued[2], (m) => `${glued[1]}${m}`)) continue;
     if (mysql && /^-p.+/.test(a)) {
       if (isEnvRef(a.slice(2))) out.push(a); else { hits.push('"-p" password'); out.push('-p***'); }
       continue;
@@ -584,7 +638,7 @@ export async function collect(opts) {
     if (!parsed.ok || !Array.isArray(parsed.value)) ctx.note(`claude plugin marketplace list --json: ${parsed.ok ? 'not a list' : parsed.error}; marketplaces unknown`);
     else for (const m of parsed.value) {
       if (!isObject(m) || typeof m.name !== 'string') continue;
-      data.marketplaces.push({ name: m.name, source: typeof m.source === 'string' ? m.source : null, repo: typeof m.repo === 'string' ? redactText(m.repo).text : null, url: typeof m.url === 'string' ? redactUrl(m.url).text : null, path: typeof m.path === 'string' ? ctx.short(m.path) : null });
+      data.marketplaces.push({ name: m.name, source: typeof m.source === 'string' ? redactText(m.source).text : null, repo: typeof m.repo === 'string' ? redactText(m.repo).text : null, url: typeof m.url === 'string' ? redactUrl(m.url).text : null, path: typeof m.path === 'string' ? ctx.short(m.path) : null });
     }
   } else if (data.claudeAvailable) cliNote('claude plugin marketplace list --json', ml);
 
