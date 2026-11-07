@@ -91,7 +91,8 @@ Skills that name Claude-only tools carry a short **Other agents** section with t
 
 ## Per tool
 
-Facts below come from each vendor's documentation (checked 2026-11-07, sources at the end). Items
+Facts below come from each vendor's documentation (checked 2026-11-07; Windsurf/Devin, Claude Desktop,
+claude.ai and ChatGPT re-checked 2026-11-08 for issue #24; sources at the end). Items
 marked **UNVERIFIED** could not be confirmed from an official page; for those kktest-dev only prints
 text for you to check, it never writes them.
 
@@ -165,8 +166,13 @@ npx kktest-dev install --target cursor --scope project
   Windows `%APPDATA%\Claude\` (`%USERPROFILE%\AppData\Roaming` when APPDATA is unset), Linux
   `$XDG_CONFIG_HOME/Claude/` or `~/.config/Claude/`. Restart the app afterwards. The same rule as the
   kktestdev-pack onboarding scan (`hosts.mjs`).
-- Env references are not documented for this file, so a secret would be written as a
-  `<set NAME here>` placeholder with a note to fill it in by hand (the bundled servers have none).
+- Env references: the official page (modelcontextprotocol.io, re-checked 2026-11-08) documents only
+  literal `env` values and documents no `${VAR}` expansion; its Windows troubleshooting tells you to put
+  the expanded value of `%APPDATA%` into `env`. So a secret is written as a `<set NAME here>`
+  placeholder with a note to fill it in by hand (the bundled servers have none). Not tested against the
+  app itself.
+- The page lists only `~/.config/Claude/` for Linux; honouring `$XDG_CONFIG_HOME` is REASONED (it matches
+  `hosts.mjs`), not documented.
 - Skills: upload the claude.ai zips (below). Desktop Extensions (`.mcpb`) are not generated.
 
 ```bash
@@ -176,7 +182,9 @@ npx kktest-dev install --target claude-desktop
 ### claude.ai
 
 - Upload: Customize > Skills > + > Create skill > Upload a skill. One zip per skill, the skill folder at
-  the zip root, `description` at most 200 characters, code execution enabled. Zip size limit: UNVERIFIED.
+  the zip root (the folder name matching the skill name), `name` at most 64 and `description` at most 200
+  characters, code execution enabled. Zip size and file-count limits: not documented (UNVERIFIED); the
+  exporter keeps every zip within the OpenAI API limits below.
 - MCP: only remote connectors; the bundled stdio servers cannot run there.
 
 ```bash
@@ -186,8 +194,18 @@ npx kktest-dev export --target claude-ai     # kktest-dev-export/claude-ai/<skil
 ### ChatGPT
 
 - Skills (web): Plugins > Skills > Create > Upload from your computer. The same zips as claude.ai.
-  Accepted formats, size limit and Plus/Pro eligibility: UNVERIFIED (the help article could not be read).
-  Personal skills are documented for Business, Enterprise, Healthcare and Edu.
+  The ChatGPT app's own size limit and Plus/Pro eligibility: UNVERIFIED (the help article answers
+  automated reads with HTTP 403; re-tried 2026-11-08). Personal skills are documented for Business,
+  Enterprise, Healthcare and Edu. The OpenAI **API** documents its skill-bundle limits: a zip of at most
+  50 MB with one top-level folder, at most 500 files, at most 25 MB per file, exactly one `SKILL.md`.
+  The exporter refuses a zip over any of these, so an export fits the API and is the best bound we have
+  for the app.
+- Custom GPT knowledge files and Project files (not used by kktest-dev; asked in #24): UNVERIFIED. The
+  official File uploads FAQ (https://help.openai.com/en/articles/8555545-file-uploads-faq) answers
+  automated reads with HTTP 403 (2026-11-08). Its search-result snippet says file uploads are for Plus,
+  Pro and Enterprise, spreadsheets about 50 MB, images 20 MB, 25 GB per end user, and Projects up to 20
+  files on Plus and 40 on Pro, Team, Edu and Business. Community posts (not official) cite 20 knowledge
+  files per GPT and 512 MB / 2M tokens per file. Treat all of these as unconfirmed.
 - MCP (web): remote servers only (developer mode / apps); stdio is not possible. The desktop app shares
   Codex's config, so use the Codex target there.
 
@@ -195,25 +213,38 @@ npx kktest-dev export --target claude-ai     # kktest-dev-export/claude-ai/<skil
 npx kktest-dev export --target chatgpt
 ```
 
-### Windsurf (now Devin Local) — UNVERIFIED, export only
+### Windsurf (now Devin Local): export only
 
-The Windsurf docs now redirect to Devin Local, which lists `.devin/mcp_config.json` (project) and
-`~/.config/devin/mcp_config.json` (user). The file format and env interpolation could not be confirmed
-from a fetched page, so `install --target windsurf` refuses and
-`export --target windsurf` writes an `mcpServers` snippet with placeholders for any secrets. Check it
-against the tool's docs before pasting. `.agents/skills` support is UNVERIFIED (only the legacy
-`.windsurf/skills/` is mentioned).
+The Windsurf docs redirect to Devin Local. Its customization page lists `.devin/mcp_config.json`
+(project, committed), `.devin/mcp_config.local.json` (personal, gitignored) and
+`~/.config/devin/mcp_config.json` (user), and links to the Devin CLI MCP page for the format. That page
+(re-checked 2026-11-08) documents a top-level `mcpServers` object with `command`, `args`, `env` and
+`disabled`, and the Windows user file `%APPDATA%\devin\mcp_config.json`. Skills: `.devin/skills/` and
+`.agents/skills/` (workspace), `~/.config/devin/skills/` and `~/.agents/skills/` (global), so
+`install --target agents` already covers Devin's skills. Rules (not written by kktest-dev): `AGENTS.md`, `.devin/rules/*.md`,
+`.devin/global_rules.md` (project), `~/.devin/rules/*.md`, `~/.devin/global_rules.md` (user); the legacy
+`.windsurf/rules/*.md`, `.windsurf/global_rules.md` and `.windsurfrules` are still imported. Hooks:
+`.devin/hooks.v1.json`. MCP config moved from `config.json` to `mcp_config.json` in Devin CLI v3000.3
+(old entries are migrated on startup).
+
+Still UNVERIFIED, so `install --target windsurf` refuses and `export --target windsurf` writes an
+`mcpServers` snippet (with placeholders for any secrets) for you to paste:
+
+- env interpolation inside `env`: `${env:VAR}` is documented only for the OAuth fields;
+- that Devin Local reads exactly the CLI's files (its page says customizations "work in the other" and
+  lists the same paths, but does not say so for MCP in so many words);
+- the legacy Windsurf editor's own `~/.codeium/windsurf/mcp_config.json`, which kktest-dev never writes.
 
 ## Unverified / gaps
 
-- ChatGPT skills upload: accepted formats, size limit, Plus/Pro eligibility.
+- ChatGPT skills upload (app): size limit, Plus/Pro eligibility (the API limits are documented; the app's are not).
 - ChatGPT developer mode: plan availability and the exact menu path.
-- Windsurf/Devin: user MCP path (one FAQ mentions `~/.codeium/mcp_config.json`), env interpolation,
-  `.agents/skills` support.
-- Claude Desktop: env-variable expansion in `claude_desktop_config.json`.
+- Windsurf/Devin: env interpolation inside `env`; whether Devin Local reads the CLI's `mcp_config.json`
+  files (paths and format are documented, so only these two block `install`).
+- Claude Desktop: no env-variable expansion is documented, so none is used; not tested against the app.
 - Hooks in Codex, Cursor and Copilot; Cursor rules format; Copilot coding agent MCP config.
-- claude.ai zip size limit; its help page says `description` ≤ 200 while the Agent Skills spec allows 1024
-  (kktest-dev uses 200 for zip targets).
+- claude.ai zip size limit; its help page says `description` ≤ 200 (and `name` ≤ 64) while the Agent
+  Skills spec allows 1024 (kktest-dev uses 200 for zip targets).
 - Gemini CLI was not run locally.
 
 ## Known limits
@@ -232,14 +263,40 @@ against the tool's docs before pasting. `.agents/skills` support is UNVERIFIED (
 - The PNG step of infographic-diagram needs playwright + Chromium, which sandboxed web hosts usually lack;
   SVG output works wherever python3 runs.
 
+## Releasing (maintainers)
+
+`.github/workflows/publish.yml` publishes to npm when a `v*` tag is pushed. It checks that the tag is
+`v<package.json version>`, runs the same three test suites as CI and `npm pack --dry-run`, skips a version
+that is already on the registry, then runs `npm publish --provenance --access public`. Provenance (signed
+with the job's `id-token: write` OIDC token) links the tarball on npmjs.com to the commit and workflow run;
+it needs a GitHub-hosted runner and a public repo (this one is). Node is the latest LTS (`lts/*`).
+
+Manual run: Actions > Publish > Run workflow. `dry_run` defaults to true and ends in
+`npm publish --dry-run` (nothing is uploaded); a real publish from a manual run is refused unless it runs on
+a `v*` tag.
+
+One-time setup by the package owner, before the first tagged release:
+
+1. Create an npm token that can publish `kktest-dev` (granular access token, or an automation token) and
+   save it in GitHub > Settings > Secrets and variables > Actions as `NPM_TOKEN` (a repository secret, or a
+   secret of the `npm-publish` environment).
+2. Optional: GitHub > Settings > Environments > `npm-publish` (created on the first run): add required
+   reviewers to make each publish wait for approval.
+
+Without `NPM_TOKEN` the publish step fails and nothing is published; publish by hand (`pnpm publish`) as
+before, and the workflow then skips that version. npm trusted publishing (OIDC, no stored token,
+docs.npmjs.com/trusted-publishers, checked 2026-11-08) would also work: it needs npm 11.5.1 or later and a
+trusted publisher entry for workflow `publish.yml` on npmjs.com; the workflow does not use it yet.
+
 ## Sources
 
 - Agent Skills: https://agentskills.io/specification
 - Codex: https://learn.chatgpt.com/docs/build-skills , https://learn.chatgpt.com/docs/extend/mcp?surface=cli ; local `codex mcp add --help` (0.165.0)
-- ChatGPT: https://learn.chatgpt.com/docs/extend/mcp , https://developers.openai.com/api/docs/guides/tools-skills.md , https://help.openai.com/en/articles/20001066-skills-in-chatgpt (search snippet only)
+- ChatGPT: https://learn.chatgpt.com/docs/extend/mcp , https://developers.openai.com/api/docs/guides/tools-skills.md , https://help.openai.com/en/articles/20001066-skills-in-chatgpt (search snippet only), https://help.openai.com/en/articles/8555545-file-uploads-faq (search snippet only; both 403 on 2026-11-08), https://developers.openai.com/api/docs/guides/tools-skills.md (2026-11-08)
 - Gemini CLI: https://geminicli.com/docs/cli/skills/ , https://geminicli.com/docs/extensions/reference/ , https://geminicli.com/docs/tools/mcp-server/
 - VS Code / Copilot: https://code.visualstudio.com/docs/copilot/customization/agent-skills , https://code.visualstudio.com/docs/agents/reference/mcp-configuration , https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-skills
 - Cursor: https://cursor.com/docs/skills , https://cursor.com/docs/mcp
-- Windsurf / Devin: https://docs.devin.ai/desktop/cascade/mcp
-- Claude Desktop: https://modelcontextprotocol.io/docs/develop/connect-local-servers , https://support.claude.com/en/articles/10949351
-- claude.ai: https://support.claude.com/en/articles/12512180-using-skills-in-claude , https://support.claude.com/en/articles/12512198-how-to-create-custom-skills
+- Windsurf / Devin: https://docs.devin.ai/desktop/cascade/mcp , https://docs.devin.ai/cli/extensibility/mcp/configuration (2026-11-08)
+- Claude Desktop: https://modelcontextprotocol.io/docs/develop/connect-local-servers (2026-11-08) , https://support.claude.com/en/articles/10949351
+- claude.ai: https://support.claude.com/en/articles/12512180-using-skills-in-claude , https://support.claude.com/en/articles/12512198-how-to-create-custom-skills (2026-11-08)
+- npm provenance and trusted publishing: https://docs.npmjs.com/generating-provenance-statements , https://docs.npmjs.com/trusted-publishers (2026-11-08)

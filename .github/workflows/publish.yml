@@ -1,0 +1,93 @@
+name: Publish
+
+# Publishes the kktest-dev npm package with a provenance attestation when a v* tag is pushed.
+# Auth: the NPM_TOKEN repository (or npm-publish environment) secret, an npm automation/granular token
+# with publish rights. `id-token: write` lets npm sign the provenance statement (docs.npmjs.com/generating-provenance-statements);
+# provenance needs a GitHub-hosted runner and this public repo. Owner setup: docs/providers.md, "Releasing".
+# Without NPM_TOKEN the publish step fails and nothing is published; publish by hand instead.
+# A version that is already on the registry (for example published by hand) is skipped, not re-published.
+#
+# Manual run (Actions > Publish > Run workflow): dry_run defaults to true and runs everything,
+# ending in `npm publish --dry-run`. A real publish from a manual run is allowed only on a v* tag ref.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run: test and pack, then npm publish --dry-run (nothing is uploaded)'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: npm-publish
+    permissions:
+      contents: read
+      id-token: write # required to sign the provenance attestation
+    env:
+      # Push of a tag: always a real publish. Manual run: whatever the dry_run input says.
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'true' || 'false' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          registry-url: https://registry.npmjs.org
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Tag must match package.json version
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if [ "${GITHUB_REF_TYPE}" != "tag" ]; then
+            if [ "${DRY_RUN}" = "true" ]; then
+              echo "::notice::not a tag ref (${GITHUB_REF_NAME}); dry run of ${version}"
+              exit 0
+            fi
+            echo "::error::a real publish must run on a v* tag, not ${GITHUB_REF_NAME}"
+            exit 1
+          fi
+          if [ "${GITHUB_REF_NAME}" != "v${version}" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} does not match package.json version ${version}"
+            exit 1
+          fi
+      - name: Node tests
+        run: node --test "tools/test/*.test.mjs"
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+      - name: Node tests (kktestdev-pack kk-onboard)
+        run: node --test "plugins/kktestdev-pack/skills/kk-onboard/scripts/*.test.mjs"
+      - name: Python tests (infographic-diagram)
+        run: python -m unittest discover -s plugins/infographic-diagram/skills/infographic-diagram/scripts -p "test_*.py"
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+      - name: Package contents
+        run: npm pack --dry-run
+      - name: Skip a version that is already published
+        id: registry
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if npm view "kktest-dev@${version}" version >/dev/null 2>&1; then
+            echo "::notice::kktest-dev@${version} is already on the registry; not publishing again"
+            echo "published=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Publish dry run
+        if: env.DRY_RUN == 'true' && steps.registry.outputs.published != 'true'
+        run: npm publish --provenance --access public --dry-run
+      - name: Publish with provenance
+        if: env.DRY_RUN != 'true' && steps.registry.outputs.published != 'true'
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

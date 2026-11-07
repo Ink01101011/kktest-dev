@@ -77,15 +77,24 @@ export function targetPaths(target, { platform = process.platform, env = process
       return { ...common, configRoot: app, skillsDir: null, mcpConfig: p.join(app, 'Claude', 'claude_desktop_config.json'), format: 'claude-desktop-json', serversDir };
     }
     case 'windsurf':
-      // docs.devin.ai lists .devin/mcp_config.json and ~/.config/devin/mcp_config.json, but the file
-      // format and env interpolation were not verified from a fetched page: export only.
+      // Windsurf is now Devin Local. docs.devin.ai/cli/extensibility/mcp/configuration (checked 2026-11-08):
+      // project .devin/mcp_config.json, user ~/.config/devin/mcp_config.json or %APPDATA%\devin\mcp_config.json
+      // on Windows; "mcpServers" with command/args/env. Still export only: ${env:VAR} is documented for
+      // OAuth fields only, not for `env`, and the Devin Local page links to the CLI docs without saying
+      // in so many words that it reads the same files (docs/providers.md).
       return {
         ...common,
         skillsDir: null,
-        mcpConfig: scope === 'project' ? p.join(cwd, '.devin', 'mcp_config.json') : p.join(home, '.config', 'devin', 'mcp_config.json'),
+        mcpConfig:
+          scope === 'project'
+            ? p.join(cwd, '.devin', 'mcp_config.json')
+            : platform === 'win32'
+              ? p.join(appDataDir({ platform, env, home }), 'devin', 'mcp_config.json')
+              : p.join(home, '.config', 'devin', 'mcp_config.json'),
         format: 'windsurf-json',
         serversDir,
-        unsupported: 'Windsurf/Devin config format is unverified; use `export --target windsurf` and paste by hand',
+        unsupported:
+          'Windsurf/Devin: the mcp_config.json format is documented, but env interpolation in "env" and whether Devin Local reads the CLI files are unverified; use `export --target windsurf` and paste by hand',
       };
     default:
       return null;
@@ -104,7 +113,9 @@ export function liveToolDirs({ platform = process.platform, env = process.env } 
     return [];
   }
   const dirs = ['.agents', '.codex', '.gemini', '.cursor', '.vscode', '.claude', '.copilot', '.kktest-dev', '.codeium'].map((d) => p.join(home, d));
-  dirs.push(p.join(appDataDir({ platform, env, home }), 'Claude'), p.join(home, '.config', 'devin'));
+  const app = appDataDir({ platform, env, home });
+  dirs.push(p.join(app, 'Claude'), p.join(home, '.config', 'devin'));
+  if (platform === 'win32') dirs.push(p.join(app, 'devin')); // Devin's Windows user config (docs.devin.ai)
   if (env.CODEX_HOME && p.isAbsolute(env.CODEX_HOME)) dirs.push(env.CODEX_HOME);
   return dirs;
 }

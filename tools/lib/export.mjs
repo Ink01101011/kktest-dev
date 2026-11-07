@@ -13,7 +13,9 @@ export const EXPORT_TARGETS = ['agents', 'claude-ai', 'chatgpt', 'gemini-extensi
 export const MARKER = '.kktest-dev-export';
 const MARKER_TOOL = 'kktest-dev export';
 
-// Upload limits documented for OpenAI skill bundles (developers.openai.com/api/docs/guides/tools-skills).
+// Upload limits documented for OpenAI API skill bundles (developers.openai.com/api/docs/guides/tools-skills,
+// checked 2026-11-08): 50 MB zip, 500 files, 25 MB per file. Applied to both zip targets as a conservative
+// bound; neither the ChatGPT app nor claude.ai documents its own size limit (docs/providers.md).
 const MB = 1024 * 1024;
 const ZIP_MAX_FILES = 500;
 const ZIP_MAX_FILE_BYTES = 25 * MB;
@@ -36,7 +38,7 @@ const HOW_TO = {
   'claude-desktop':
     'Merge into claude_desktop_config.json (macOS ~/Library/Application Support/Claude/, Windows %APPDATA%\\Claude\\, Linux ~/.config/Claude/) and restart Claude Desktop.',
   windsurf:
-    'UNVERIFIED: Windsurf is now documented as Devin Local (docs.devin.ai). Its MCP file is .devin/mcp_config.json (project) or ~/.config/devin/mcp_config.json (user); check the format against the tool\'s docs before pasting.',
+    'Windsurf is now Devin Local (docs.devin.ai). Merge mcp_config.json ("mcpServers") into .devin/mcp_config.json (project), ~/.config/devin/mcp_config.json (user) or %APPDATA%\\devin\\mcp_config.json (Windows user). UNVERIFIED: whether Devin Local reads exactly these files (its page links to the Devin CLI docs for them).',
 };
 
 /** Files a server needs, keyed by path relative to the server copy root. */
@@ -100,8 +102,8 @@ export function planExport(catalog, target, { outDir, plugin, skill, log = () =>
     if (target !== 'agents') {
       notes.push(
         target === 'claude-ai'
-          ? 'Upload each zip at claude.ai: Customize > Skills > + > Create skill > Upload a skill (code execution must be enabled).'
-          : 'Upload each zip in ChatGPT: Plugins > Skills > Create > Upload from your computer. Plan eligibility and size limits are UNVERIFIED (help page not readable).',
+          ? 'Upload each zip at claude.ai: Customize > Skills > + > Create skill > Upload a skill (code execution must be enabled). Documented: name at most 64 characters, description at most 200, the skill folder at the zip root. Zip size limit: UNVERIFIED (not documented; these zips stay within the OpenAI API limits of 50 MB / 500 files / 25 MB per file).'
+          : 'Upload each zip in ChatGPT: Plugins > Skills > Create > Upload from your computer. The zips stay within the documented OpenAI API skill limits (50 MB zip, 500 files, 25 MB per file); the ChatGPT app\'s own size limit and Plus/Pro eligibility are UNVERIFIED (its help page refuses automated reads).',
       );
     } else {
       notes.push('Copy skills/<name>/ into .agents/skills/ (project) or ~/.agents/skills/ (user). Read by Codex, Gemini CLI, VS Code Copilot, Copilot CLI and Cursor.');
@@ -165,7 +167,7 @@ export function planExport(catalog, target, { outDir, plugin, skill, log = () =>
     if (servers.length) files.push({ rel: CONFIG_FILE[target], data: Buffer.from(text) });
     notes.push(HOW_TO[target], ...allNotes);
     if (servers.length) notes.push(SERVERS_NOTE);
-    if (target === 'windsurf') notes.push('Env references are UNVERIFIED for Windsurf/Devin; secrets are left as placeholders.');
+    if (target === 'windsurf') notes.push('Env references in "env" are UNVERIFIED for Windsurf/Devin (${env:VAR} is documented for OAuth fields only); secrets are left as placeholders.');
   }
   files.push({ rel: 'NOTES.txt', data: Buffer.from(notes.join('\n') + '\n') });
   files.sort((a, b) => (a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0));
