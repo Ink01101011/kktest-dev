@@ -1,0 +1,175 @@
+{
+  "name": "kktestdev-pack",
+  "policy": "Never pin versions: plugins follow their marketplace, npm packages use @latest. /kk-update refreshes everything.",
+  "marketplaces": {
+    "claude-plugins-official": { "builtin": true },
+    "kktest-dev": { "add": "claude plugin marketplace add Ink01101011/kktest-dev" },
+    "superpowers-dev": { "add": "claude plugin marketplace add obra/superpowers" },
+    "impeccable": { "add": "claude plugin marketplace add pbakaus/impeccable" }
+  },
+  "items": [
+    {
+      "id": "superpowers", "profile": "core", "kind": "plugin",
+      "plugin": "superpowers@superpowers-dev",
+      "detect": { "plugins": ["superpowers@"] },
+      "what": "Workflow skills: brainstorm, plan, TDD, systematic debugging, code review, verification before completion."
+    },
+    {
+      "id": "kkskills-essentials", "profile": "core", "kind": "plugin",
+      "plugin": "kkskills-essentials@kktest-dev",
+      "detect": { "plugins": ["kkskills-essentials@"] },
+      "what": "Everyday discipline: additive changes, no duplicate docs, proactive reminders, Conventional Commits."
+    },
+    {
+      "id": "context7", "profile": "core", "kind": "plugin",
+      "plugin": "context7@claude-plugins-official",
+      "detect": { "plugins": ["context7@"], "mcpUrl": ["context7.com"], "mcpArgs": ["@upstash/context7-mcp"] },
+      "what": "Current library documentation lookup (Next.js, React, NestJS, Spring, ...) instead of the model's memory."
+    },
+    {
+      "id": "typescript-lsp", "profile": "core", "kind": "plugin",
+      "plugin": "typescript-lsp@claude-plugins-official",
+      "detect": { "plugins": ["typescript-lsp@"] },
+      "requires": [{ "bin": "typescript-language-server", "install": "npm i -g typescript typescript-language-server" }],
+      "what": "TS/JS code intelligence (go-to-definition, references, diagnostics)."
+    },
+    {
+      "id": "gopls-lsp", "profile": "core", "kind": "plugin",
+      "plugin": "gopls-lsp@claude-plugins-official",
+      "detect": { "plugins": ["gopls-lsp@"] },
+      "requires": [{ "bin": "gopls", "install": "go install golang.org/x/tools/gopls@latest" }],
+      "what": "Go code intelligence."
+    },
+    {
+      "id": "pyright-lsp", "profile": "core", "kind": "plugin",
+      "plugin": "pyright-lsp@claude-plugins-official",
+      "detect": { "plugins": ["pyright-lsp@"] },
+      "requires": [{ "bin": "pyright-langserver", "install": "npm i -g pyright" }],
+      "what": "Python type checking and code intelligence."
+    },
+    {
+      "id": "jdtls-lsp", "profile": "core", "kind": "plugin",
+      "plugin": "jdtls-lsp@claude-plugins-official",
+      "detect": { "plugins": ["jdtls-lsp@"] },
+      "requires": [{ "bin": "jdtls", "install": "brew install jdtls  (Linux/Windows: see https://github.com/eclipse-jdtls/eclipse.jdt.ls)" }],
+      "what": "Java / Spring Boot code intelligence."
+    },
+    {
+      "id": "bantamkit", "profile": "core", "kind": "mcp",
+      "steps": [
+        "npm i -g bantamkit-mcp@latest",
+        "claude mcp add --scope user bantamkit -- bantamkit-mcp"
+      ],
+      "detect": { "mcpName": ["bantamkit"], "mcpCommand": ["bantamkit-mcp"], "mcpArgs": ["bantamkit-mcp"] },
+      "what": "Cross-session memory (recall/save), token ledger, skill audit. Works alongside Claude's own auto-memory. Hooks are opt-in: see docs/bantamkit-hooks.md."
+    },
+    {
+      "id": "playwright", "profile": "core", "kind": "mcp",
+      "steps": ["claude mcp add --scope user playwright -- npx -y @playwright/mcp@latest --headless"],
+      "detect": { "plugins": ["playwright@"], "mcpName": ["playwright"], "mcpArgs": ["@playwright/mcp"] },
+      "what": "Browser automation and E2E checks (cross-browser, headless)."
+    },
+    {
+      "id": "chrome-devtools", "profile": "core", "kind": "mcp",
+      "steps": ["claude mcp add --scope user chrome-devtools -- npx -y chrome-devtools-mcp@latest"],
+      "detect": { "plugins": ["chrome-devtools-mcp@"], "mcpName": ["chrome-devtools"], "mcpArgs": ["chrome-devtools-mcp"] },
+      "what": "Chrome performance traces, Lighthouse, network/console debugging."
+    },
+    {
+      "id": "impeccable", "profile": "frontend", "kind": "plugin",
+      "plugin": "impeccable@impeccable",
+      "detect": { "plugins": ["impeccable@"] },
+      "what": "Frontend design quality: build, critique and audit UI."
+    },
+    {
+      "id": "next-devtools", "profile": "frontend", "kind": "mcp",
+      "steps": ["claude mcp add --scope user next-devtools -- npx -y next-devtools-mcp@latest"],
+      "detect": { "mcpName": ["next-devtools"], "mcpArgs": ["next-devtools-mcp"] },
+      "what": "Talks to a running Next.js 16+ dev server: routes, build/runtime errors, docs."
+    },
+    {
+      "id": "shadcn", "profile": "frontend", "kind": "mcp", "scope": "project",
+      "steps": ["(inside the project) npx shadcn@latest mcp init --client claude"],
+      "detect": { "mcpName": ["shadcn"], "mcpArgs": ["shadcn"] },
+      "what": "Browse and add shadcn/ui components. Writes the project's .mcp.json, so run it per project."
+    },
+    {
+      "id": "sentry", "profile": "investigate", "kind": "plugin",
+      "plugin": "sentry@claude-plugins-official",
+      "detect": { "plugins": ["sentry@"], "mcpUrl": ["mcp.sentry.dev"] },
+      "what": "Read Sentry issues, events and stack traces (OAuth to your own Sentry account)."
+    },
+    {
+      "id": "grafana-mcp", "profile": "investigate", "kind": "plugin",
+      "plugin": "grafana-mcp@claude-plugins-official",
+      "detect": { "plugins": ["grafana-mcp@", "grafana-cloud-mcp@"], "mcpName": ["grafana"] },
+      "what": "Query Prometheus/Loki, dashboards, alerts (needs a Grafana service-account token)."
+    },
+    {
+      "id": "serena", "profile": "investigate", "kind": "plugin",
+      "plugin": "serena@claude-plugins-official",
+      "detect": { "plugins": ["serena@"], "mcpName": ["serena"] },
+      "what": "Semantic code navigation for large codebases (symbol-level find/refactor)."
+    },
+    {
+      "id": "jira-confluence", "profile": "docs", "kind": "docs", "doc": "docs/jira-confluence.md",
+      "detect": { "mcpUrl": ["mcp.atlassian.com"], "mcpName": ["atlassian", "mcp-atlassian", "jira", "confluence"], "mcpArgs": ["mcp-atlassian"] },
+      "what": "Not installed by the pack: each person connects with their own credentials (LDAP)."
+    },
+    {
+      "id": "figma", "profile": "docs", "kind": "docs", "doc": "docs/figma.md",
+      "detect": { "plugins": ["figma@"], "mcpUrl": ["mcp.figma.com"], "mcpName": ["figma"] },
+      "what": "Not installed by the pack: each person connects their own Figma account."
+    }
+  ],
+  "overlapGroups": [
+    {
+      "id": "browser",
+      "label": "Browser automation",
+      "match": { "mcpArgs": ["@playwright/mcp", "chrome-devtools-mcp", "puppeteer"], "mcpName": ["playwright", "chrome-devtools", "puppeteer", "browser"], "skills": ["browser-automation", "claude-in-chrome"], "plugins": ["playwright@", "chrome-devtools-mcp@"] },
+      "note": "Playwright: scripted, cross-browser, E2E. chrome-devtools: perf traces, Lighthouse, live debugging. Claude in Chrome: drives your real logged-in browser. More of these means more tool descriptions loaded in every session."
+    },
+    {
+      "id": "code-review",
+      "label": "Code review",
+      "match": { "plugins": ["pr-review-toolkit@", "code-review@", "coderabbit@", "greptile@", "qodo@"], "skills": ["code-review", "requesting-code-review"] },
+      "note": "Claude Code ships /code-review. superpowers has requesting-code-review. Extra review plugins add different reviewers (external services or specialised agents), at the cost of more skills/agents in context."
+    },
+    {
+      "id": "commit",
+      "label": "Commit / PR workflow",
+      "match": { "plugins": ["commit-commands@"], "skills": ["reference-conventional-commits", "commit"] },
+      "note": "kkskills-essentials gives the message convention; commit-commands gives one-shot commit/push/PR commands. They overlap on commit messages, not on automation."
+    },
+    {
+      "id": "planning",
+      "label": "Planning / orchestration",
+      "match": { "skills": ["writing-plans", "executing-plans", "plan-decompose-orchestrate", "subagent-driven-development"], "plugins": ["feature-dev@"], "mcpName": ["bantamkit"] },
+      "note": "Two planning skill sets can both trigger on the same request and give different procedures."
+    },
+    {
+      "id": "frontend-design",
+      "label": "Frontend design",
+      "match": { "plugins": ["frontend-design@", "impeccable@"] },
+      "note": "Both steer UI generation. With both enabled the guidance can conflict."
+    },
+    {
+      "id": "memory",
+      "label": "Memory",
+      "match": { "mcpName": ["bantamkit", "memory"], "plugins": ["memory-keeper@", "reflexion@"], "skills": ["memory-management"] },
+      "note": "Claude's auto-memory is always on unless disabled. bantamkit syncs with it (exports its project facts into MEMORY.md and mirrors new auto-memory files). Other memory tools usually do not sync."
+    },
+    {
+      "id": "security",
+      "label": "Security review",
+      "match": { "plugins": ["security-guidance@", "semgrep@", "claude-security@", "aikido@", "sonarqube@"] },
+      "note": "Claude Code ships /security-review (on demand). Plugins here add edit-time warnings or external scanners."
+    },
+    {
+      "id": "lsp-ts",
+      "label": "TypeScript language server",
+      "match": { "plugins": ["typescript-lsp@", "vtsls@"] },
+      "note": "Two TS language servers index the same files twice."
+    }
+  ]
+}
