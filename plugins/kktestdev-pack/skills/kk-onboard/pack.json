@@ -186,6 +186,7 @@
       "id": "code-nav",
       "label": "Code navigation",
       "match": { "plugins": ["serena@"], "mcpName": ["serena"], "mcpArgs": ["serena", "mcp-language-server"] },
+      "with": { "plugins": ["typescript-lsp@", "vtsls@", "gopls-lsp@", "pyright-lsp@", "jdtls-lsp@", "rust-analyzer-lsp@", "clangd-lsp@", "csharp-lsp@", "kotlin-lsp@", "php-lsp@", "swift-lsp@", "lua-lsp@"] },
       "note": "serena (and LSP-over-MCP bridges) run their own language servers. The pack's *-lsp plugins feed the built-in LSP tool the same data, so files are indexed twice. The pack dropped serena in 1.1.0. A plugin and the MCP server it starts are listed separately."
     },
     {

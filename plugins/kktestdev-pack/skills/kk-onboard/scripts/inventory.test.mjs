@@ -11,7 +11,7 @@ import {
   run, redactText, redactUrl, redactArgs, splitShell, secretKey, inlineSecretKeys, isEnvRef, packageSpecOf, splitSpec,
   normalizeEndpoint, nameMatches, unwrapCommand, isUnderHome, shortPath, isLocalPath, tokenizeCommand,
   projectEntry, parseJsonOutput, parseMcpListLine, findBinDefault, validatePack, FINDING_CATEGORIES, LIMITS,
-  cutAtWhitespace, replaceKeyValues,
+  cutAtWhitespace, replaceKeyValues, globalPackageDirs, findGlobalPackage, findBinOffPath,
 } from './inventory.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -557,4 +557,122 @@ test('O4-F7/F9: the 20k cut and the key=value scan are linear (checked uncapped,
   t0 = process.hrtime.bigint();
   redactText('a:'.repeat(9999) + ' ' + 'z'.repeat(100000));
   assert.ok(Number(process.hrtime.bigint() - t0) / 1e6 < 2000);
+});
+
+// ------------------------------------------------------------------ #22 / I1 follow-up (I3)
+const LSP = { id: 'typescript-lsp@claude-plugins-official', enabled: true, scope: 'user' };
+const SERENA_MCP = { serena: { command: 'uvx', args: ['--from', 'git+https://github.com/oraios/serena', 'serena', 'start-mcp-server'] } };
+
+test('I3: code-nav fires for a hand-added serena MCP plus an LSP plugin; serena alone or an LSP plugin alone does not', async (t) => {
+  const fx = fakeHome(t);
+  write(join(fx.home, '.claude.json'), { mcpServers: SERENA_MCP });
+  const both = await inv(fx, [], { runClaude: stubClaude({ plugins: [LSP] }) });
+  const f = byCat(both, 'overlap:code-nav')[0];
+  assert.ok(f, 'serena MCP + typescript-lsp must report code-nav');
+  assert.match(f.title, /2 tools/);
+  assert.deepEqual(f.evidence.filter((l) => !l.startsWith('note: ')).sort(), ['mcp serena (user (~/.claude.json))', `plugin ${LSP.id} [pack item]`]);
+  assert.equal(f.packManaged, undefined);
+  const alone = await inv(fx);
+  assert.equal(byCat(alone, 'overlap:code-nav').length, 0, 'serena alone is not an overlap');
+  write(join(fx.home, '.claude.json'), {});
+  const lspOnly = await inv(fx, [], { runClaude: stubClaude({ plugins: [LSP] }) });
+  assert.equal(byCat(lspOnly, 'overlap:code-nav').length, 0, 'an LSP plugin alone is not an overlap (every core machine has one)');
+  const twoLsp = await inv(fx, [], { runClaude: stubClaude({ plugins: [LSP, { id: 'gopls-lsp@claude-plugins-official', enabled: true, scope: 'user' }] }) });
+  assert.equal(byCat(twoLsp, 'overlap:code-nav').length, 0, 'several LSP plugins and no serena: not code-nav');
+});
+
+test('I3: a plugin and the MCP server it starts count as one tool (serena plugin alone, playwright plugin alone: no overlap)', async (t) => {
+  const fx = fakeHome(t);
+  const serena = join(fx.home, 'serena-plugin');
+  write(join(serena, '.mcp.json'), { mcpServers: SERENA_MCP });
+  const pw = join(fx.home, 'pw-plugin');
+  write(join(pw, '.mcp.json'), { mcpServers: { playwright: { command: 'npx', args: ['@playwright/mcp@latest'] } } });
+  const plugins = [{ id: 'serena@claude-plugins-official', enabled: true, scope: 'user', installPath: serena }, { id: 'playwright@claude-plugins-official', enabled: true, scope: 'user', installPath: pw }];
+  const out = await inv(fx, [], { runClaude: stubClaude({ plugins }) });
+  assert.equal(byCat(out, 'overlap:code-nav').length, 0, cats(out).join());
+  assert.equal(byCat(out, 'overlap:browser').length, 0, cats(out).join());
+  // a second, different browser tool still fires, and the plugin's own server is listed but not counted
+  write(join(fx.home, '.claude.json'), { mcpServers: { 'chrome-devtools': { command: 'npx', args: ['chrome-devtools-mcp@latest'] } } });
+  const out2 = await inv(fx, [], { runClaude: stubClaude({ plugins }) });
+  const b = byCat(out2, 'overlap:browser')[0];
+  assert.ok(b);
+  assert.match(b.title, /2 tools/);
+  assert.equal(b.evidence.filter((l) => !l.startsWith('note: ')).length, 3);
+});
+
+test('I3: validatePack checks the keys of an overlap group\'s "with" rule', () => {
+  const pack = { items: [], overlapGroups: [{ id: 'g', match: { plugins: ['a@'] }, with: { plugin: ['b@'] } }, { id: 'h', match: {}, with: 'x' }] };
+  const p = validatePack(pack);
+  assert.ok(p.some((x) => /group g: unknown with key "plugin"/.test(x)), p.join());
+  assert.ok(p.some((x) => /group h: "with" must be an object/.test(x)), p.join());
+  assert.ok(PACK.overlapGroups.find((g) => g.id === 'code-nav').with, 'code-nav uses the with rule');
+});
+
+/** fake HOME with a global package of every manager (POSIX layouts) */
+function pmHome(t) {
+  const fx = fakeHome(t);
+  const h = fx.home;
+  const pkg = (dir, name) => write(join(dir, ...name.split('/'), 'package.json'), { name, version: '1.0.0' });
+  const bin = (dir, name) => { write(join(dir, name), '#!/bin/sh\n'); chmodSync(join(dir, name), 0o755); };
+  pkg(join(h, '.local', 'share', 'pnpm', 'global', '5', 'node_modules'), 'pn-old');
+  pkg(join(h, '.local', 'share', 'pnpm', 'global', 'v11', 'abc123', 'node_modules'), '@sc/pn-new');
+  bin(join(h, '.local', 'share', 'pnpm', 'bin'), 'pn-tool');
+  pkg(join(h, '.config', 'yarn', 'global', 'node_modules'), 'yn');
+  pkg(join(h, '.bun', 'install', 'global', 'node_modules'), 'bn');
+  pkg(join(h, '.volta', 'tools', 'image', 'packages', '@sc', 'vo', 'lib', 'node_modules'), '@sc/vo');
+  pkg(join(h, '.local', 'share', 'mise', 'installs', 'node', '22.1.0', 'lib', 'node_modules'), 'mi');
+  bin(join(h, '.local', 'share', 'mise', 'installs', 'node', '22.1.0', 'bin'), 'mi-tool');
+  return fx;
+}
+
+test('#22: global packages of pnpm (both layouts), yarn, bun, Volta (scoped) and mise are found from default folders', (t) => {
+  const fx = pmHome(t);
+  const dirs = globalPackageDirs({ home: fx.home, env: {}, platform: 'linux' });
+  assert.deepEqual(dirs.map((d) => d.manager), ['pnpm', 'yarn', 'bun', 'volta', 'mise']);
+  const where = (p) => findGlobalPackage(p, dirs, { platform: 'linux' }).map((x) => x.manager);
+  assert.deepEqual(where('pn-old'), ['pnpm']);
+  assert.deepEqual(where('@sc/pn-new'), ['pnpm']);
+  assert.deepEqual(where('yn'), ['yarn']);
+  assert.deepEqual(where('bn'), ['bun']);
+  assert.deepEqual(where('@sc/vo'), ['volta']);
+  assert.deepEqual(where('mi'), ['mise']);
+  assert.deepEqual(where('absent-pkg'), []);
+});
+
+test('#22: env vars move the folders (absolute only), and a linked version folder is not followed', (t) => {
+  const fx = fakeHome(t);
+  const pn = join(fx.home, 'custom-pnpm');
+  write(join(pn, 'global', '5', 'node_modules', 'envpkg', 'package.json'), { name: 'envpkg' });
+  const mise = join(fx.home, 'm');
+  write(join(fx.home, 'real-node', 'lib', 'node_modules', 'linked', 'package.json'), { name: 'linked' });
+  mkdirSync(join(mise, 'installs', 'node'), { recursive: true });
+  symlinkSync(join(fx.home, 'real-node'), join(mise, 'installs', 'node', 'latest'), 'junction');
+  const dirs = globalPackageDirs({ home: fx.home, env: { PNPM_HOME: pn, MISE_DATA_DIR: mise }, platform: 'linux' });
+  assert.deepEqual(findGlobalPackage('envpkg', dirs, { platform: 'linux' }).map((x) => x.manager), ['pnpm']);
+  assert.deepEqual(findGlobalPackage('linked', dirs, { platform: 'linux' }), []);
+  const rel = globalPackageDirs({ home: fx.home, env: { PNPM_HOME: 'rel/pnpm' }, platform: 'linux' });
+  assert.deepEqual(findGlobalPackage('envpkg', rel, { platform: 'linux' }), [], 'a relative PNPM_HOME is not used');
+});
+
+test('#22: a required bin installed by a package manager but off PATH is named in missingBins (inventory, all OSes)', async (t) => {
+  const fx = fakeHome(t);
+  const pn = join(fx.home, 'pn'); // PNPM_HOME in the host's own path form, so this runs on every OS
+  const exe = process.platform === 'win32' ? 'pn-tool.cmd' : 'pn-tool';
+  write(join(pn, 'bin', exe), '#!/bin/sh\n');
+  if (posix) chmodSync(join(pn, 'bin', exe), 0o755);
+  write(join(pn, 'global', '5', 'node_modules', 'a', 'package.json'), { name: 'a' });
+  write(join(pn, 'global', '5', 'node_modules', 'b', 'package.json'), { name: 'b' });
+  const env = { PNPM_HOME: pn, PATHEXT: '.CMD' };
+  const dirs = globalPackageDirs({ home: fx.home, env });
+  assert.equal(findBinOffPath('pn-tool', dirs, { env: { ...env, PATH: '' } })?.manager, 'pnpm');
+  assert.equal(findBinOffPath('pn-tool', dirs, { env: { ...env, PATH: join(pn, 'bin') } }), null, 'on PATH: findBin covers it');
+  const pack = { items: [{ id: 'x', kind: 'mcp', steps: [], detect: { mcpName: ['x'] }, requires: [{ bin: 'pn-tool', install: 'pnpm add -g pn-tool' }] }] };
+  const out = await inv(fx, [], { pack, env, findBin: () => ({ found: false }) });
+  assert.match(item(out, 'x').missingBins[0].note, /installed by pnpm in ~\/pn\/bin, which is not on PATH/);
+  assert.ok(out.packageManagers.some((m) => m.manager === 'pnpm' && m.packageDirs === 1));
+});
+
+test('#22: yarn and bun global folders are package-manager dirs, not "local path" code', () => {
+  for (const p of ['~/.config/yarn/global/node_modules/x/cli.js', '~/.yarn/bin/x', '~/.bun/install/global/node_modules/x/i.js']) assert.equal(isLocalPath(p, '/home/u', 'linux'), false, p);
+  assert.equal(isLocalPath('~/code/x/i.js', '/home/u', 'linux'), true);
 });

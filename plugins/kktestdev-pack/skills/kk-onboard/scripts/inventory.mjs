@@ -16,7 +16,7 @@
 //
 // Single file, Node stdlib only. The pure helpers are exported for inventory.test.mjs.
 import { spawn } from 'node:child_process';
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import nodePath from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -44,7 +44,7 @@ export const LIMITS = {
 
 // ---------------------------------------------------------------- named patterns
 // Directories under HOME that belong to a package manager or version manager (not "a local checkout").
-const TOOLCHAIN_DIRS = /\/(node_modules|\.nvm|nvm|\.volta|\.asdf|\.fnm|\.bun\/bin|\.cargo\/bin|\.npm-global|\.npm\/_npx|\.local\/bin|\.local\/share\/(mise|pnpm|uv)|mise|homebrew|linuxbrew|\.claude\/plugins|appdata\/roaming\/npm|appdata\/local\/(mise|pnpm|volta)|scoop\/(shims|apps)|go\/bin|library\/pnpm)(\/|$)/;
+const TOOLCHAIN_DIRS = /\/(node_modules|\.nvm|nvm|\.volta|\.asdf|\.fnm|\.bun\/(bin|install)|\.yarn\/bin|\.config\/yarn\/global|appdata\/local\/yarn|\.cargo\/bin|\.npm-global|\.npm\/_npx|\.local\/bin|\.local\/share\/(mise|pnpm|uv)|mise|homebrew|linuxbrew|\.claude\/plugins|appdata\/roaming\/npm|appdata\/local\/(mise|pnpm|volta)|scoop\/(shims|apps)|go\/bin|library\/pnpm)(\/|$)/;
 const BROAD_PERMISSION = /^Bash(\(\*\))?$|^Bash\(\*|bypassPermissions|^mcp__[^_]+$|^\*$/;
 // Commands that fetch a package from a registry and run it.
 const DIRECT_RUNNERS = new Set(['npx', 'bunx', 'uvx', 'pipx']);
@@ -295,6 +295,119 @@ export function findBinDefault(bin, { env = process.env, platform = process.plat
     }
   }
   return { found: false, windowsOnly };
+}
+
+// ---------------------------------------------------------------- global package dirs of other package managers
+// Probed from env vars and default folders only: no package manager is spawned. Each listing is one readdir of a
+// known folder, capped, links not followed. Sources (defaults per OS):
+//  pnpm  pnpm.io/settings/other (globalDir, globalBinDir): $PNPM_HOME/global, $XDG_DATA_HOME/pnpm/global,
+//        ~/Library/pnpm/global (macOS), ~/.local/share/pnpm/global (Linux), ~/AppData/Local/pnpm/global (Windows);
+//        packages under global/<layout version>/node_modules (pnpm <= 10) or global/v11/<hash>/node_modules
+//        (pnpm.io/global-packages); bins in globalBinDir, or PNPM_HOME itself on older pnpm.
+//  yarn  classic.yarnpkg.com/en/docs/cli/global: global folder ~/.config/yarn/global, bins ~/.yarn/bin; Windows
+//        %LOCALAPPDATA%\Yarn\Data\global and %LOCALAPPDATA%\Yarn\bin (reasoned: yarn classic's Windows defaults).
+//  bun   $BUN_INSTALL_GLOBAL_DIR or $BUN_INSTALL/install/global (default ~/.bun), bins $BUN_INSTALL_BIN or
+//        $BUN_INSTALL/bin (reasoned: bun's install defaults; bun.sh/docs documents only the cache dir).
+//  volta docs.volta.sh/advanced/installers: VOLTA_HOME = ~/.volta (Unix), %LOCALAPPDATA%\Volta (Windows), shims in
+//        $VOLTA_HOME/bin; packages in tools/image/packages/<pkg>/{lib/node_modules,node_modules} (reasoned).
+//  mise  mise.jdx.dev/directories.html: MISE_DATA_DIR, else $XDG_DATA_HOME/mise, ~/.local/share/mise,
+//        %LOCALAPPDATA%\mise; MISE_INSTALLS_DIR moves installs/; `mise install node@24` -> installs/node/24.0.0, so
+//        npm -g under a mise node lands in installs/node/<v>/lib/node_modules (Windows: installs\node\<v>\node_modules);
+//        shims in <data>/shims.
+export const PM_LIMITS = Object.freeze({ entries: 200, versions: 20 });
+const PM_MANAGERS = ['pnpm', 'yarn', 'bun', 'volta', 'mise'];
+
+function realSubDirs(dir, readdir, lstat, max) {
+  let names; try { names = readdir(dir).map(String).sort(); } catch { return []; }
+  const out = [];
+  for (const n of names.slice(0, PM_LIMITS.entries)) {
+    try { const st = lstat(nodePath.join(dir, n)); if (st.isDirectory() && !st.isSymbolicLink()) out.push(n); } catch {}
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+/**
+ * global package folders of pnpm, yarn, bun, Volta and mise that exist on this machine:
+ * [{ manager, modules: [node_modules dirs], bins: [bin dirs] }]. `fs` replaces readdir/lstat/exists (tests).
+ */
+export function globalPackageDirs({ home, env = process.env, platform = process.platform, fs = {} } = {}) {
+  const p = platform === 'win32' ? nodePath.win32 : nodePath.posix;
+  const readdir = fs.readdir ?? ((d) => readdirSync(d));
+  const lstat = fs.lstat ?? lstatSync;
+  const isDir = (d) => { try { const st = lstat(d); return st.isDirectory() && !st.isSymbolicLink(); } catch { return false; } };
+  const abs = (v) => (typeof v === 'string' && v && p.isAbsolute(v) ? v : null);
+  const win = platform === 'win32';
+  const local = abs(env.LOCALAPPDATA) ?? p.join(home, 'AppData', 'Local');
+  const xdgData = platform === 'linux' || platform === 'darwin' ? abs(env.XDG_DATA_HOME) : null;
+  const subs = (d, max = PM_LIMITS.versions) => realSubDirs(d, readdir, lstat, max).map((n) => p.join(d, n));
+  const found = [];
+  const add = (manager, modules, bins) => {
+    const m = [...new Set(modules)].filter(isDir); const b = [...new Set(bins)].filter(isDir);
+    if (m.length || b.length) found.push({ manager, modules: m, bins: b });
+  };
+  // pnpm
+  const pnpmHome = abs(env.PNPM_HOME) ?? (xdgData ? p.join(xdgData, 'pnpm') : win ? p.join(local, 'pnpm') : platform === 'darwin' ? p.join(home, 'Library', 'pnpm') : p.join(home, '.local', 'share', 'pnpm'));
+  const pnpmGlobal = p.join(pnpmHome, 'global');
+  const pnpmModules = [];
+  for (const v of subs(pnpmGlobal)) {
+    pnpmModules.push(p.join(v, 'node_modules'));
+    for (const h of subs(v)) pnpmModules.push(p.join(h, 'node_modules'));
+  }
+  add('pnpm', pnpmModules, [p.join(pnpmHome, 'bin'), pnpmHome]);
+  // yarn classic
+  add('yarn', win ? [p.join(local, 'Yarn', 'Data', 'global', 'node_modules')] : [p.join(abs(env.XDG_CONFIG_HOME) ?? p.join(home, '.config'), 'yarn', 'global', 'node_modules')],
+    win ? [p.join(local, 'Yarn', 'bin')] : [p.join(home, '.yarn', 'bin')]);
+  // bun
+  const bunHome = abs(env.BUN_INSTALL) ?? p.join(home, '.bun');
+  add('bun', [p.join(abs(env.BUN_INSTALL_GLOBAL_DIR) ?? p.join(bunHome, 'install', 'global'), 'node_modules')], [abs(env.BUN_INSTALL_BIN) ?? p.join(bunHome, 'bin')]);
+  // Volta
+  const volta = abs(env.VOLTA_HOME) ?? (win ? p.join(local, 'Volta') : p.join(home, '.volta'));
+  const voltaModules = [];
+  const pkgs = p.join(volta, 'tools', 'image', 'packages');
+  for (const d of subs(pkgs, PM_LIMITS.entries)) {
+    const pkgDirs = p.basename(d).startsWith('@') ? subs(d, PM_LIMITS.entries) : [d]; // @scope/name
+    for (const x of pkgDirs) voltaModules.push(p.join(x, 'lib', 'node_modules'), p.join(x, 'node_modules'));
+  }
+  add('volta', voltaModules, [p.join(volta, 'bin')]);
+  // mise
+  const miseData = abs(env.MISE_DATA_DIR) ?? (xdgData ? p.join(xdgData, 'mise') : win ? p.join(local, 'mise') : p.join(home, '.local', 'share', 'mise'));
+  const installs = abs(env.MISE_INSTALLS_DIR) ?? p.join(miseData, 'installs');
+  const miseModules = []; const miseBins = [p.join(miseData, 'shims')];
+  for (const v of subs(p.join(installs, 'node'))) {
+    miseModules.push(win ? p.join(v, 'node_modules') : p.join(v, 'lib', 'node_modules'));
+    miseBins.push(win ? v : p.join(v, 'bin'));
+  }
+  add('mise', miseModules, miseBins);
+  return found.sort((a, b) => PM_MANAGERS.indexOf(a.manager) - PM_MANAGERS.indexOf(b.manager));
+}
+
+/** the global copies of package `pkg` in those folders: [{ manager, dir }] (a package.json must be there) */
+export function findGlobalPackage(pkg, dirs, { platform = process.platform, exists = existsSync } = {}) {
+  const p = platform === 'win32' ? nodePath.win32 : nodePath.posix;
+  const out = [];
+  for (const d of dirs) for (const m of d.modules) {
+    const dir = p.join(m, ...String(pkg).split('/'));
+    if (exists(p.join(dir, 'package.json'))) out.push({ manager: d.manager, dir });
+  }
+  return out;
+}
+
+/** a bin that is in a package manager's bin folder that is NOT on PATH: { manager, dir } or null */
+export function findBinOffPath(bin, dirs, { env = process.env, platform = process.platform, stat = statSync } = {}) {
+  const p = platform === 'win32' ? nodePath.win32 : nodePath.posix;
+  const onPath = String(env.PATH ?? env.Path ?? '').split(platform === 'win32' ? ';' : ':').filter(Boolean);
+  const exts = platform === 'win32' ? ['', ...String(env.PATHEXT || '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean)] : [''];
+  for (const d of dirs) for (const b of d.bins) {
+    if (onPath.some((x) => samePath(x, b, platform))) continue; // on PATH: findBin already looked there
+    for (const ext of exts) {
+      try {
+        const st = stat(p.join(b, bin + ext));
+        if (st.isFile() && (platform === 'win32' || st.mode & 0o111)) return { manager: d.manager, dir: b };
+      } catch {}
+    }
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------- collect (all I/O)
@@ -572,7 +685,10 @@ export function validatePack(pack) {
     if (!need) problems.push(`pack.json item ${it.id}: unknown kind "${it.kind}"`);
     else if (it[need] == null) problems.push(`pack.json item ${it.id}: kind ${it.kind} needs "${need}"`);
   }
-  for (const g of asArray(pack.overlapGroups)) for (const k of Object.keys(asObject(g?.match))) if (!KNOWN_DETECT_KEYS.has(k)) problems.push(`pack.json overlap group ${g.id}: unknown match key "${k}"`);
+  for (const g of asArray(pack.overlapGroups)) {
+    for (const part of ['match', 'with']) for (const k of Object.keys(asObject(g?.[part]))) if (!KNOWN_DETECT_KEYS.has(k)) problems.push(`pack.json overlap group ${g.id}: unknown ${part} key "${k}"`);
+    if (g?.with !== undefined && !isObject(g.with)) problems.push(`pack.json overlap group ${g.id}: "with" must be an object of match keys`);
+  }
   return problems;
 }
 
@@ -585,7 +701,7 @@ function pluginServerHealth(data, plugin) {
   if (!list.length) return null;
   return list.some((h) => isConnected(h.status)) ? true : list[0].status;
 }
-export function packStatus(data, pack, findBin = findBinDefault) {
+export function packStatus(data, pack, findBin = findBinDefault, offPath = null) {
   return asArray(pack.items).map((it) => {
     const viaPlugins = [...groupBy(data.plugins.filter((p) => matches(it.detect, { plugin: p })), (p) => p.id).values()]
       .map((list) => ({ id: list[0].id, enabled: list.some((p) => p.enabled), scopes: list.map((p) => p.scope) }));
@@ -612,7 +728,11 @@ export function packStatus(data, pack, findBin = findBinDefault) {
     for (const r of asArray(it.requires)) {
       if (!isObject(r) || typeof r.bin !== 'string') continue;
       const f = findBin(r.bin);
-      if (!f.found) missingBins.push({ bin: r.bin, install: r.install, ...(f.windowsOnly ? { note: 'found only on the Windows side of WSL; install it inside Linux' } : {}) });
+      if (f.found) continue;
+      const off = offPath ? offPath(r.bin) : null;
+      const note = f.windowsOnly ? 'found only on the Windows side of WSL; install it inside Linux'
+        : off ? `installed by ${off.manager} in ${data.ctx.short(off.dir)}, which is not on PATH: add that folder to PATH (or start Claude Code from a shell that has it)` : null;
+      missingBins.push({ bin: r.bin, install: r.install, ...(note ? { note } : {}) });
     }
     const out = { id: it.id, profile: it.profile, kind: it.kind, status, foundAs: capList(locations.map((l) => l.label)), missingBins };
     if (status !== 'present') out.what = it.what;
@@ -660,19 +780,32 @@ const DETECTORS = {
     }
     return out;
   },
+  /**
+   * overlap groups. A tool is counted once: a plugin, the MCP servers it starts and the skills it ships are one
+   * tool (each is still listed). Without `with`: fires at 2+ tools matching `match`. With `with`: fires when a tool
+   * matching `match` and a different tool matching `with` are both on (serena + an LSP plugin), so neither side
+   * alone reports anything.
+   */
   overlap(data, pack) {
     const out = [];
+    const pluginTool = (source) => { const m = String(source).match(/^plugin (.+)$/); return m ? `plugin:${m[1]}` : null; };
+    const entriesOf = (rule) => [
+      ...[...groupBy(data.plugins.filter((p) => p.enabled && matches(rule, { plugin: p })), (p) => p.id).values()].map(([p]) => ({ tool: `plugin:${p.id}`, label: `plugin ${p.id}`, pack: isPackPlugin(pack, p) })),
+      ...data.mcp.filter((s) => matches(rule, { server: s })).map((s) => ({ tool: pluginTool(s.source) ?? `mcp:${s.source}:${s.name}`, label: `mcp ${s.name} (${s.source})`, pack: isPackServer(pack, s) })),
+      ...data.skills.filter((s) => matches(rule, { skill: s })).map((s) => ({ tool: pluginTool(s.source) ?? `skill:${s.source}:${s.name}`, label: `skill ${s.name} (${s.source})`, pack: isPackSkill(pack, data, s) })),
+    ];
     for (const g of asArray(pack.overlapGroups)) {
-      const members = [
-        ...[...groupBy(data.plugins.filter((p) => p.enabled && matches(g.match, { plugin: p })), (p) => p.id).values()].map(([p]) => ({ label: `plugin ${p.id}`, pack: isPackPlugin(pack, p) })),
-        ...data.mcp.filter((s) => matches(g.match, { server: s })).map((s) => ({ label: `mcp ${s.name} (${s.source})`, pack: isPackServer(pack, s) })),
-        ...data.skills.filter((s) => matches(g.match, { skill: s })).map((s) => ({ label: `skill ${s.name} (${s.source})`, pack: isPackSkill(pack, data, s) })),
-      ];
-      if (members.length > 1) {
-        const f = ['redundancy', `overlap:${g.id}`, `${g.label}: ${members.length} tools cover the same job`, [...members.map((m) => m.label + (m.pack ? ' [pack item]' : '')), `note: ${g.note}`]];
-        if (members.every((m) => m.pack)) f.push({ packManaged: true });
-        out.push(f);
-      }
+      const x = entriesOf(g.match);
+      const y = g.with ? entriesOf(g.with) : [];
+      const members = [...new Map([...x, ...y].map((m) => [m.label, m])).values()];
+      const tools = new Set(members.map((m) => m.tool));
+      const fires = g.with
+        ? x.some((a) => y.some((b) => a.tool !== b.tool))
+        : tools.size > 1;
+      if (!fires) continue;
+      const f = ['redundancy', `overlap:${g.id}`, `${g.label}: ${tools.size} tools cover the same job`, [...members.map((m) => m.label + (m.pack ? ' [pack item]' : '')), `note: ${g.note}`]];
+      if (members.every((m) => m.pack)) f.push({ packManaged: true });
+      out.push(f);
     }
     return out;
   },
@@ -807,13 +940,24 @@ export async function run(argv = [], opts = {}) {
     const major = Number(process.versions.node.split('.')[0]);
     if (major < 22) data.ctx.note(`Node ${process.versions.node}: some pack servers need Node 22.22+ (typescript-language-server) or 20.19+ (chrome-devtools-mcp, shadcn, bantamkit-mcp)`);
     const findBin = opts.findBin ?? ((b) => findBinDefault(b, { env: opts.env ?? process.env, platform: opts.platform ?? process.platform }));
-    const pk = packStatus(data, pack, findBin);
+    const env = opts.env ?? process.env;
+    const pmDirs = opts.globalDirs ?? globalPackageDirs({ home: data.ctx.home, env, platform: data.ctx.platform });
+    const pk = packStatus(data, pack, findBin, (bin) => findBinOffPath(bin, pmDirs, { env, platform: data.ctx.platform }));
     const out = buildOutput(data, pk, audit(data, pack), { full });
     // AI hosts and model-provider signals (names only) for the options step; options.mjs has the per-item detail
     // (options.mjs reads the same files again for its per-item detail: two parses per skill run, by design, so each
     // script stays usable on its own; this summary has a different shape from options.mjs hosts[] on purpose)
     const hostsInfo = readHosts({ home: data.ctx.home, cwd: data.ctx.cwd, env: opts.env ?? process.env, platform: data.ctx.platform, short: data.ctx.short });
-    out.hosts = hostsInfo.hosts.map((h) => ({ id: h.id, label: h.label, present: h.present, mcpServers: h.servers.length, configFiles: h.files.filter((f) => f.exists).map((f) => data.ctx.short(f.file)) }));
+    out.hosts = hostsInfo.hosts.map((h) => {
+      const plugins = new Set(h.files.filter((f) => f.exists && f.scope === 'plugin').map((f) => f.plugin));
+      return {
+        id: h.id, label: h.label, present: h.present, mcpServers: h.servers.length,
+        configFiles: h.files.filter((f) => f.exists && f.scope !== 'plugin').map((f) => data.ctx.short(f.file) + (f.variant ? ` (${f.variant})` : '')),
+        ...(plugins.size ? { pluginsWithServers: plugins.size } : {}),
+      };
+    });
+    // global package folders of other package managers (names and folder counts; npm itself is asked by options.mjs)
+    out.packageManagers = pmDirs.map((d) => ({ manager: d.manager, packageDirs: d.modules.length, binDirs: d.bins.map((b) => data.ctx.short(b)) }));
     out.providers = detectProviders({ env: opts.env ?? process.env, hosts: hostsInfo.hosts, findBin }).filter((p) => p.signals.length);
     for (const n of hostsInfo.notes) data.ctx.note(n); // ctx.note redacts
     return out;
