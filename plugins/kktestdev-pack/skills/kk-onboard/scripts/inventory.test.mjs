@@ -530,3 +530,11 @@ test('G9 minor: the 20k cut happens at whitespace, so no token fragment is left'
   const out = redactText(s).text;
   assert.ok(!/sk-Z/.test(out), out.slice(-40));
 });
+
+test('redactText: a non-secret key does not swallow a secret pair in its value', () => {
+  for (const s of ['Example: DEMO_TOKEN=CANAKV1', 'note=API_KEY=CANAKV1', 'cfg: "password":"CANAKV1"', 'a:b:password=CANAKV1', 'x=y token=CANAKV1']) {
+    assert.ok(!redactText(s).text.includes('CANAKV1'), s + ' => ' + redactText(s).text);
+  }
+  const t0 = process.hrtime.bigint(); redactText('a:'.repeat(9999)); redactText('a=b='.repeat(4999));
+  assert.ok(Number(process.hrtime.bigint() - t0) / 1e6 < 100);
+});

@@ -54,7 +54,21 @@ minutes: every step is network-bound.
    `@latest`, so they resolve the newest release when they start. Nothing to run here. Say they
    update on the next `/mcp` reconnect or restart.
 
-6. **Snapshot "after"** and print one table: component → before → after (or "already latest", or
+6. **Options that changed with the new versions**: run
+   `node "<base>/../kk-onboard/scripts/options.mjs" --diff`. For each item in `diff[]`, say the
+   version change and list only `added`, `removed` and `changed` options and `flagsAdded` /
+   `flagsRemoved` (a `changed` option's doc line differs from the recorded one; show the new line
+   with `options.mjs --item <id>`). When nothing changed, say "no option changes" and move on.
+   For the changed options only, run the **same explain-and-ask flow as `/kk-onboard` step 5.3 to
+   5.4** (what it does, choices with gain/cost, where to store it per AI tool, secrets never
+   literal, confirm and back up). An option that was removed but is still set (`currentlySet`) is
+   asked about as keep · remove · look it up. Items with `firstSeen: true` were never recorded:
+   offer to walk through their options as in `/kk-onboard` step 5, or skip.
+   npx-based servers update only when they next start, so their local copy (npx cache) may still
+   be the old version here: say so, and offer `--diff --network` to compare against `@latest`.
+   Then run `options.mjs --record` so the next update compares against these versions.
+
+7. **Snapshot "after"** and print one table: component → before → after (or "already latest", or
    "failed: <reason>"). Then say what needs a reload: plugins → restart Claude Code; MCP servers
    → `/mcp` reconnect; bantamkit hooks pick up the new global install on the next hook call.
 

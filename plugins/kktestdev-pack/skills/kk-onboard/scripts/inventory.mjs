@@ -20,6 +20,7 @@ import { lstatSync, readFileSync, readdirSync, realpathSync, statSync } from 'no
 import { homedir } from 'node:os';
 import nodePath from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { detectProviders, readHosts } from './hosts.mjs';
 
 export const LIMITS = {
   skillDepth: 3,          // nesting below a skills root
@@ -192,6 +193,28 @@ function redactSegment(seg, hits) {
   return seg;
 }
 
+/**
+ * KEY=value / key: value with a secret-like key. A match whose key is NOT secret must not swallow its value:
+ * in `Example: TOKEN=abc` the value of `Example:` is `TOKEN=abc`, which is itself a pair to check. So the scan
+ * resumes at the value's start after a non-secret key (each step still advances, so it stays linear).
+ */
+function replaceKeyValues(t, hits) {
+  const re = new RegExp(KEY_VALUE.source, 'g');
+  let out = ''; let last = 0; let m;
+  while ((m = re.exec(t)) !== null) {
+    const [whole, run, sep, val] = m;
+    const key = run.replace(/^[^A-Za-z_]+/, '');
+    if (key && secretKey(key) && val !== '***' && !isEnvRef(val.replace(/^["']|["']$/g, ''))) {
+      hits.push(`"${run}"`);
+      out += t.slice(last, m.index) + `${run}${sep}***`;
+      last = m.index + whole.length;
+    } else {
+      re.lastIndex = m.index + run.length + sep.length; // rescan the value
+    }
+  }
+  return out + t.slice(last);
+}
+
 /** redact free text (hook commands, args, CLI output); returns { text, hits } */
 export function redactText(s) {
   const hits = [];
@@ -207,11 +230,12 @@ export function redactText(s) {
     if (val === '***' || isEnvRef(val)) return m;
     hits.push(`${scheme} credential`); return `${scheme}${sp}***`;
   });
-  t = t.replace(KEY_VALUE, (m, run, sep, val) => {
-    const key = run.replace(/^[^A-Za-z_]+/, '');
-    if (!key || !secretKey(key) || val === '***' || isEnvRef(val.replace(/^["']|["']$/g, ''))) return m;
-    hits.push(`"${run}"`); return `${run}${sep}***`;
+  // "key": "value" (JSON / YAML-ish quoted pairs); the key length is capped so each match is bounded
+  t = t.replace(/"([^"\\\n]{1,200})"(\s*:\s*)"((?:[^"\\\n]|\\.)*)"/g, (m, key, sep, val) => {
+    if (!secretKey(key) || val === '***' || val === '' || isEnvRef(val)) return m;
+    hits.push(`"${key}"`); return `"${key}"${sep}"***"`;
   });
+  t = replaceKeyValues(t, hits);
   // --token VALUE (space separated) inside a command line
   t = t.replace(/(^|\s)(--?[A-Za-z][\w.-]*)(\s+)("[^"]*"|'[^']*'|[^\s'"-][^\s'"]*)/g, (m, pre, flag, sp, val) => {
     if (!secretKey(flag) || val === '***' || isEnvRef(val.replace(/^["']|["']$/g, ''))) return m;
@@ -436,13 +460,14 @@ function readJsonFile(file, ctx, { maxBytes = LIMITS.claudeJsonBytes } = {}) {
 }
 
 // ---------------------------------------------------------------- I/O defaults (replaceable in tests)
-export function runClaudeDefault(args, timeoutMs) {
+/** run a command with fixed args (never user text through a shell); resolves { ok, stdout } or { ok:false, code, error } */
+export function runCommand(cmd, args, timeoutMs, { shell = false, cwd } = {}) {
   return new Promise((resolve) => {
     let stdout = ''; let stderr = ''; let done = false;
     let child;
     const finish = (r) => { if (!done) { done = true; clearTimeout(timer); resolve(r); } };
     try {
-      child = spawn('claude', args, { shell: process.platform === 'win32', windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+      child = spawn(cmd, args, { shell, cwd, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
     } catch (e) { resolve({ ok: false, code: e.code, error: e.message }); return; }
     const timer = setTimeout(() => { try { child.kill(); } catch {} finish({ ok: false, code: 'ETIMEDOUT', error: `timed out after ${timeoutMs / 1000} s` }); }, timeoutMs);
     child.stdout.on('data', (d) => { if (stdout.length < 20e6) stdout += d; });
@@ -451,6 +476,8 @@ export function runClaudeDefault(args, timeoutMs) {
     child.on('close', (code) => finish(code === 0 ? { ok: true, stdout } : { ok: false, code, error: stderr.trim() || `exit ${code}`, stdout }));
   });
 }
+// claude is a .cmd shim on Windows, so it needs the shell there; args are always fixed literals.
+export const runClaudeDefault = (args, timeoutMs) => runCommand('claude', args, timeoutMs, { shell: process.platform === 'win32' });
 /** find an executable on PATH in-process (no `which`/`where`; never the current directory) */
 export function findBinDefault(bin, { env = process.env, platform = process.platform } = {}) {
   const dirs = String(env.PATH ?? env.Path ?? '').split(platform === 'win32' ? ';' : ':').filter((d) => d && d !== '.');
@@ -739,6 +766,10 @@ export function validatePack(pack) {
   for (const it of pack.items) {
     if (!isObject(it) || typeof it.id !== 'string') { problems.push('pack.json: an item has no id'); continue; }
     for (const k of Object.keys(asObject(it.detect))) if (!KNOWN_DETECT_KEYS.has(k)) problems.push(`pack.json item ${it.id}: unknown detect key "${k}" (never matches)`);
+    if (it.options !== undefined) {
+      const o = asObject(it.options);
+      for (const k of Object.keys(o)) if (!['package', 'bin', 'envPrefix'].includes(k)) problems.push(`pack.json item ${it.id}: unknown options key "${k}" (options holds identity hints only)`);
+    }
     const need = { plugin: 'plugin', mcp: 'steps', docs: 'doc' }[it.kind];
     if (!need) problems.push(`pack.json item ${it.id}: unknown kind "${it.kind}"`);
     else if (it[need] == null) problems.push(`pack.json item ${it.id}: kind ${it.kind} needs "${need}"`);
@@ -977,8 +1008,15 @@ export async function run(argv = [], opts = {}) {
     for (const p of validatePack(pack)) data.ctx.note(p);
     const major = Number(process.versions.node.split('.')[0]);
     if (major < 22) data.ctx.note(`Node ${process.versions.node}: some pack servers need Node 22.22+ (typescript-language-server) or 20.19+ (chrome-devtools-mcp, shadcn, bantamkit-mcp)`);
-    const pk = packStatus(data, pack, opts.findBin ?? ((b) => findBinDefault(b, { env: opts.env ?? process.env, platform: opts.platform ?? process.platform })));
-    return buildOutput(data, pk, audit(data, pack), { full });
+    const findBin = opts.findBin ?? ((b) => findBinDefault(b, { env: opts.env ?? process.env, platform: opts.platform ?? process.platform }));
+    const pk = packStatus(data, pack, findBin);
+    const out = buildOutput(data, pk, audit(data, pack), { full });
+    // AI hosts and model-provider signals (names only) for the options step; options.mjs has the per-item detail
+    const hostsInfo = readHosts({ home: data.ctx.home, cwd: data.ctx.cwd, env: opts.env ?? process.env, platform: data.ctx.platform });
+    out.hosts = hostsInfo.hosts.map((h) => ({ id: h.id, label: h.label, present: h.present, mcpServers: h.servers.length, configFiles: h.files.map((f) => data.ctx.short(f.file)) }));
+    out.providers = detectProviders({ env: opts.env ?? process.env, hosts: hostsInfo.hosts, findBin }).filter((p) => p.signals.length);
+    for (const n of hostsInfo.notes) data.ctx.note(redactText(n).text);
+    return out;
   } catch (e) {
     notes.push(`inventory failed: ${cap(redactText(e?.message ?? String(e)).text, 300)}`);
     return { generatedAt: new Date().toISOString(), error: true, pack: [], findings: [], notes };
