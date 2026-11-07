@@ -2,12 +2,9 @@
 Each layer = badge + "Layer N — NAME" + tagline, a row of chips/process steps,
 and a right-hand 'aside' insight box. Optional side rails and a bottom summary strip.
 """
-from build import text, approx_w, wrap, esc
+from common import (SERIF, SpecError, approx_w, check, check_lines, check_words, color, issue, num,
+                    opt_list, opt_str, req, short, svg_wrap, text, wrap)
 from icons import icon
-
-ISSUES = []
-
-SERIF = "Georgia, 'Noto Serif', 'DejaVu Serif', 'Noto Sans Thai', serif"
 #          base       tint       ink
 MUTED = {
     "olive":  ("#5E7F3A", "#F3F6EC", "#2F4119"),
@@ -44,66 +41,122 @@ def chip_w(it):
     return approx_w(it["label"], 15, 500) + (34 if it.get("icon") else 0) + 26
 
 
+def chip_h(it):
+    return 40 + 18 * str(it["label"]).count("\n")
+
+
+def palette(name, default, where):
+    """Layers theme lookup: unknown names fall back to `default` with a SPEC lint issue."""
+    if name is None:
+        return MUTED[default]
+    if isinstance(name, str) and name in MUTED:
+        return MUTED[name]
+    issue(f"SPEC      {where}: unknown theme {short(name)} (use {' '.join(MUTED)}) -> used {default}")
+    return MUTED[default]
+
+
+def _normalise(s):
+    """Validate the layers spec up front so problems surface as SpecError, not tracebacks."""
+    layers = s.get("layers")
+    if not isinstance(layers, list) or not layers:
+        raise SpecError("layers spec: 'layers' must be a non-empty list")
+    for i, L in enumerate(layers):
+        w = f"layers[{i}]"
+        L["name"] = req(L, "name", w)
+        for r, row in enumerate(opt_list(L, "rows", w)):
+            if not isinstance(row, dict):
+                raise SpecError(f"{w}.rows[{r}]: expected an object with 'items'")
+            for k, it in enumerate(opt_list(row, "items", f"{w}.rows[{r}]")):
+                it["label"] = req(it, "label", f"{w}.rows[{r}].items[{k}]")
+        if L.get("aside") is not None:
+            L["aside"]["text"] = req(L["aside"], "text", f"{w}.aside")
+    rails = s.get("rails") or {}
+    if not isinstance(rails, dict):
+        raise SpecError("rails: expected an object with 'left' and/or 'right'")
+    for side in ("left", "right"):
+        if rails.get(side):
+            rails[side]["title"] = req(rails[side], "title", f"rails.{side}")
+            for b, bl in enumerate(opt_list(rails[side], "bullets", f"rails.{side}")):
+                if not isinstance(bl, (str, int, float)):
+                    raise SpecError(f"rails.{side}.bullets[{b}]: expected a string")
+    for k, it in enumerate(opt_list(s, "summary", "spec")):
+        it["text"] = req(it, "text", f"summary[{k}]")
+    return layers, rails
+
+
 def render_layers(s):
-    W = s.get("width", 1200)
+    layers, rails = _normalise(s)
+    W = num(s.get("width"), "width", 1200, lo=1, hi=20000)
     P = []
     y = 46
-    if s.get("kicker"):
-        kw = approx_w(s["kicker"], 18, 700) + len(s["kicker"]) * 3
+    kicker, title = opt_str(s, "kicker", "spec"), opt_str(s, "title", "spec")
+    subtitle, byline = opt_str(s, "subtitle", "spec"), opt_str(s, "byline", "spec")
+    if kicker:
+        kw = approx_w(kicker, 18, 700) + len(kicker) * 3
+        check(kicker, 18, 700, W - 80 - 40, "kicker", ls=3)
         P.append(icon(s.get("kicker_icon", "sparkle"), W / 2 - kw / 2 - 40, y - 15, 30, "#D2703A", 2.2))
-        P.append(text(W / 2 + 8, y, s["kicker"], 18, INK, 700, ls=3))
+        P.append(text(W / 2 + 8, y, kicker, 18, INK, 700, ls=3))
         y += 64
-    if s.get("title"):
-        P.append(text(W / 2, y, s["title"], 54, INK, 700, family=SERIF))
+    if title:
+        check(title, 54, 700, W - 80, "title")
+        P.append(text(W / 2, y, title, 54, INK, 700, family=SERIF))
         y += 60
-    if s.get("subtitle"):
-        P.append(text(W / 2, y, s["subtitle"], 25, INK, 600, ls=0.5))
+    if subtitle:
+        check(subtitle, 25, 600, W - 80, "subtitle", ls=0.5)
+        P.append(text(W / 2, y, subtitle, 25, INK, 600, ls=0.5))
         y += 42
-    if s.get("byline"):
-        P.append(text(W / 2, y, s["byline"], 18, SOFT_INK, 500))
+    if byline:
+        check(byline, 18, 500, W - 80, "byline")
+        P.append(text(W / 2, y, byline, 18, SOFT_INK, 500))
         y += 34
 
-    rails = s.get("rails", {})
-    railW = s.get("rail_width", 160)
+    railW = num(s.get("rail_width"), "rail_width", 160, lo=0)
     x0 = 40 + (railW + 34 if rails.get("left") else 0)
     x1 = W - 40 - (railW + 34 if rails.get("right") else 0)
     y += 20
     boxes = []
-    for i, L in enumerate(s["layers"]):
-        base, tint, ink = MUTED.get(L.get("theme", "slate"), MUTED["slate"])
-        h = L.get("h", 170)
+    for i, L in enumerate(layers):
+        lw_ = f"layer {i + 1} {short(L['name'], 30)}"
+        base, tint, ink = palette(L.get("theme"), "slate", lw_)
+        h = num(L.get("h"), f"{lw_}.h", 170, lo=0)
         boxes.append((x0, y, x1 - x0, h))
         P.append(f'<rect x="{x0}" y="{y}" width="{x1-x0}" height="{h}" rx="14" fill="{CARD}" '
                  f'stroke="{base}" stroke-opacity=".35" stroke-width="1.6" filter="url(#soft)"/>')
         P.append(f'<path d="M{x0+2} {y+14} V{y+h-14}" stroke="{base}" stroke-width="5" stroke-linecap="round"/>')
         # header
         hx, hy = x0 + 24, y + 34
-        num = str(L.get("n", i + 1))
+        badge = str(L.get("n", i + 1))
         P.append(f'<rect x="{hx}" y="{hy-15}" width="30" height="30" rx="6" fill="{base}"/>')
-        P.append(text(hx + 15, hy, num, 18, "#fff", 700))
+        P.append(text(hx + 15, hy, badge, 18, "#fff", 700))
         hx += 42
-        pre = L.get("prefix", f"Layer {num} — ")
+        pre = str(L.get("prefix", f"Layer {badge} \u2014 "))
         P.append(text(hx, hy, pre, 20, INK, 500, anchor="start"))
         hx += approx_w(pre, 20, 500)
         P.append(text(hx, hy, L["name"], 30, base, 700, anchor="start"))
         hx += approx_w(L["name"], 30, 700) + 28
-        if L.get("tagline"):
-            P.append(text(hx, hy, L["tagline"], 20, base, 500, anchor="start", family=SERIF, italic=True))
+        tagline = opt_str(L, "tagline", lw_)
+        if tagline:
+            P.append(text(hx, hy, tagline, 20, base, 500, anchor="start", family=SERIF, italic=True))
+        head_end = hx + (approx_w(tagline, 20, 500) if tagline else -28)
+        if head_end > x1 - 20:
+            issue(f"OVERFLOW  {lw_} header (prefix + name + tagline) needs ~{head_end - x0 - 24:.0f}px, "
+                  f"has {x1 - 20 - x0 - 24:.0f}px -> shorten the name/tagline or set prefix \"\"")
 
         body_t, body_b = y + 64, y + h - 16
         bx = x0 + 30
         if L.get("icon"):
             ic = 58
-            lab = L.get("icon_label")
+            lab = opt_str(L, "icon_label", lw_)
             iy = (body_t + body_b) / 2 - (ic / 2 + (12 if lab else 0))
             P.append(icon(L["icon"], bx + 10, iy, ic, SOFT_INK, 1.6))
             if lab:
+                check(lab, 15, 500, 110, f"{lw_} icon_label")
                 P.append(text(bx + 10 + ic / 2, iy + ic + 20, lab, 15, INK, 500))
             bx += 110
         ax = x1 - 24
         if L.get("aside"):
             A = L["aside"]
-            aw = A.get("w", 170)
+            aw = num(A.get("w"), f"{lw_}.aside.w", 170, lo=0)
             ax = x1 - 20 - aw
             P.append(f'<rect x="{ax}" y="{body_t - 14}" width="{aw}" height="{body_b - body_t + 4}" rx="10" '
                      f'fill="{tint}" stroke="{base}" stroke-opacity=".35" stroke-width="1.3"/>')
@@ -113,17 +166,22 @@ def render_layers(s):
                 ty += 34
             body = wrap(A["text"], 14, aw - 24, 500)
             nlines = body.count("\n") + 1
+            check_words(A["text"], 14, 500, aw - 8, f"{lw_} aside text")   # inside the box border
+            last_mid = ty + 2 + (nlines - 1) * 17          # centre line of the last wrapped line
+            if last_mid > body_b - 10 - 2:                 # box bottom is body_b - 10
+                issue(f"OVERFLOW  {lw_} aside text: {nlines} wrapped line(s) run out of the aside box "
+                      "-> shorten it, widen aside.w, or raise the layer h")
             P.append(text(ax + aw / 2, ty + (nlines - 1) * 17 / 2 + 2, body, 14, INK, 500))
             ax -= 20
         # chip rows
         rows = []
         avail = ax - bx
-        for row in L.get("rows", []):
+        for row in opt_list(L, "rows", lw_):
             if row.get("arrows"):
                 rows.append(row)
                 continue
             line, wsum = [], 0
-            for it in row["items"]:          # auto-wrap plain chip rows that don't fit
+            for it in opt_list(row, "items", lw_):   # auto-wrap plain chip rows that don't fit
                 cw = chip_w(it) + (14 if line else 0)
                 if line and wsum + cw > avail:
                     rows.append({**row, "items": line})
@@ -133,17 +191,24 @@ def render_layers(s):
                 wsum += cw
             if line:
                 rows.append({**row, "items": line})
-        note = L.get("note")
+        note = opt_str(L, "note", lw_)
         area_b = body_b - (30 if note else 0)
         n = max(len(rows), 1)
         step = (area_b - body_t) / n
+        tallest = max((chip_h(it) for row in rows for it in row.get("items", [])), default=0)
+        if rows and tallest > step + 1:
+            want = h + tallest * n - (area_b - body_t) + 4
+            issue(f"OVERFLOW  {lw_}: {len(rows)} chip row(s) (after auto-wrap) need ~{tallest * n:.0f}px of height, "
+                  f"have {area_b - body_t:.0f}px, so chips overlap or leave the card -> raise h to >= {want:.0f}, "
+                  "use fewer/shorter chips, or narrow the aside")
         for r, row in enumerate(rows):
             items = row["items"]
             arrows = row.get("arrows", False)
             gap = 44 if arrows else 14
             total = sum(chip_w(it) for it in items) + gap * (len(items) - 1)
             if total > avail:
-                ISSUES.append(f"OVERFLOW  layer '{L['name']}' row {r+1} is {total:.0f}px wide, only {avail:.0f}px available")
+                issue(f"OVERFLOW  {lw_} row {r+1} is {total:.0f}px wide, only {avail:.0f}px available "
+                      "-> shorten labels, narrow the aside, or drop the rails")
             cx = bx + max(0, (avail - total) / 2) if row.get("align") != "left" else bx
             cy = body_t + step * (r + 0.5)
             for k, it in enumerate(items):
@@ -153,12 +218,13 @@ def render_layers(s):
                              f'stroke-width="2.2" marker-end="url(#ah)"/>')
                 cx += w + gap
         if note:
+            check(note, 15, 500, ax - bx, f"{lw_} note")
             P.append(text((bx + ax) / 2, body_b - 12, note, 15, INK, 500))
-        y += h + s.get("gap", 18)
+        y += h + num(s.get("gap"), "gap", 18)
 
     # rails
     def rail(side, R):
-        base, tint, ink = MUTED.get(R.get("theme", "orange"), MUTED["orange"])
+        base, tint, ink = palette(R.get("theme"), "orange", f"rails.{side}")
         rx = 40 if side == "left" else W - 40 - railW
         first, last = boxes[0], boxes[-1]
         top = boxes[1][1] if len(boxes) > 2 else first[1]
@@ -170,6 +236,7 @@ def render_layers(s):
             P.append(icon(R["icon"], rx + railW / 2 - 22, cy, 44, base, 1.8))
             cy += 62
         t = wrap(R["title"], 26, railW - 24, 700)
+        check_words(R["title"], 26, 700, railW - 8, f"rails.{side} title")
         nl = t.count("\n") + 1
         P.append(text(rx + railW / 2, cy + (nl - 1) * 16 + 12, t, 26, INK, 700))
         cy += nl * 32 + 10
@@ -177,10 +244,14 @@ def render_layers(s):
         cy += 26
         for bl in R.get("bullets", []):
             bt = wrap(bl, 16, railW - 44, 500)
+            check_words(bl, 16, 500, railW - 34, f"rails.{side} bullet")
             k = bt.count("\n") + 1
             P.append(f'<circle cx="{rx+18}" cy="{cy}" r="3.5" fill="{base}"/>')
             P.append(text(rx + 30, cy + (k - 1) * 9.8, bt, 16, INK, 500, anchor="start"))
             cy += k * 20 + 16
+        if cy - 26 > bot - 8:
+            issue(f"OVERFLOW  rails.{side}: title + bullets need ~{cy - 26 - top:.0f}px, the rail is "
+                  f"{bot - top:.0f}px tall -> fewer/shorter bullets or taller middle layers")
         # connectors into first and last layer
         mx = rx + railW / 2
         lx = first[0] if side == "left" else first[0] + first[2]
@@ -200,20 +271,24 @@ def render_layers(s):
     # summary strip
     if s.get("summary"):
         items = s["summary"]
+        if not isinstance(items, list):
+            raise SpecError("summary: expected a list")
         y += 10
         sh = 96
         P.append(f'<rect x="40" y="{y}" width="{W-80}" height="{sh}" rx="14" fill="{CARD}" '
                  f'stroke="#D9D2C6" stroke-width="1.5"/>')
         slot = (W - 80 - 40) / len(items)
-        layer_themes = [L.get("theme", "slate") for L in s["layers"]]
+        layer_themes = [L.get("theme", "slate") if L.get("theme") in MUTED else "slate" for L in layers]
         for k, it in enumerate(items):
-            base = MUTED.get(it.get("theme", layer_themes[k % len(layer_themes)]), MUTED["slate"])[0]
+            base = palette(it.get("theme", layer_themes[k % len(layer_themes)]), "slate", f"summary[{k}]")[0]
             sx = 60 + k * slot
             cy = y + sh / 2
             P.append(f'<rect x="{sx}" y="{cy-26}" width="52" height="52" rx="10" fill="#fff" '
                      f'stroke="{base}" stroke-width="1.6"/>')
             P.append(icon(it.get("icon", "box"), sx + 12, cy - 14, 28, base, 1.9))
             t = wrap(it["text"], 14, slot - 100, 500)
+            check_words(it["text"], 14, 500, slot - 100, f"summary[{k}] text")
+            check_lines(t, 17, sh - 16, f"summary[{k}] text")
             P.append(text(sx + 64, cy, t, 14, INK, 500, anchor="start"))
             if k < len(items) - 1:
                 arx = sx + slot - 26
@@ -227,7 +302,5 @@ def render_layers(s):
         f'<marker id="ahs" viewBox="0 0 10 10" refX="1.5" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M10 0L0 5L10 10z" fill="{EDGE}"/></marker>'
         '<filter id="soft" x="-3%" y="-5%" width="106%" height="115%"><feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#5A4A30" flood-opacity=".08"/></filter>'
         '</defs>')
-    font = "Inter, 'Noto Sans Thai', 'Segoe UI', Helvetica, Arial, sans-serif"
-    return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}" '
-            f'font-family="{font}">{defs}<rect width="100%" height="100%" fill="{s.get("background", PAPER)}"/>'
-            + "".join(P) + "</svg>")
+    bg = color(s.get("background"), PAPER, "background")
+    return svg_wrap(W, H, defs, bg, "".join(P)), W, H

@@ -1,5 +1,6 @@
 """Generic line icons on a 24x24 grid (stroke = currentColor).
 Original, brand-free shapes. Add new ones here; keep them simple strokes."""
+import html
 
 ICONS = {
     "monitor":   '<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>',
@@ -56,8 +57,9 @@ ICONS = {
 
 
 def icon(name, x, y, size, color, stroke=2.0):
-    body = ICONS.get(name, ICONS["box"])
+    """`color` must already be validated (common.color); it is escaped again as a backstop."""
+    body = ICONS.get(name, ICONS["box"]) if isinstance(name, str) else ICONS["box"]
     s = size / 24.0
     return (f'<g transform="translate({x:.1f},{y:.1f}) scale({s:.4f})" fill="none" '
-            f'stroke="{color}" stroke-width="{stroke}" stroke-linecap="round" '
+            f'stroke="{html.escape(str(color), quote=True)}" stroke-width="{stroke}" stroke-linecap="round" '
             f'stroke-linejoin="round">{body}</g>')

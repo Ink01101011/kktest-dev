@@ -3,15 +3,35 @@
 
 Archetypes (spec "type"): map (default) | layers | tree  -- see ../references/archetypes.md
 
-Usage:
-  python build.py spec.json out.svg            # SVG only
-  python build.py spec.json out.svg --png      # also out.png (2x, needs playwright)
+Usage (flags may appear anywhere):
+  python3 build.py spec.json out.svg                     # SVG only
+  python3 build.py spec.json out.svg --png               # also out.png (2x, needs playwright)
+  python3 build.py spec.json out.svg --png-out x.png     # PNG at a chosen path (implies --png)
+  python3 build.py spec.json out.svg --strict            # exit 1 while lint issues remain
+
+Exit codes:
+  0  SVG (and PNG if asked) written; lint clean, or issues without --strict
+  1  --strict and the LINT report has issues (files are still written)
+  2  bad arguments or bad spec (clear message on stderr; nothing written)
+  3  --png asked but the PNG could not be made (playwright/Chromium missing or failed);
+     the SVG is written. With --strict, lint issues (1) take precedence.
 
 Spec reference: ../references/spec.md
 """
-import json, sys, os, html
+import argparse
+import base64
+import json
+import math
+import os
+import sys
+
+sys.dont_write_bytecode = True          # do not litter the (possibly read-only) plugin dir
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from icons import icon
+
+import common                                                      # noqa: E402
+from common import (SpecError, approx_w, check, color, esc, issue, num, opt_list,  # noqa: E402,F401
+                    opt_str, req, short, svg_wrap, text, wrap)
+from icons import icon                                             # noqa: E402
 
 THEMES = {
     #          base       panel      soft       ink
@@ -30,149 +50,125 @@ EDGE = "#1E2B4D"
 MUTED = "#4B5563"
 MIN_GAP = 32      # min px between top-level panels (edge label pills need ~pill width + 24)
 PAD_IN = 16       # inner text padding of a panel
-FONT = "Inter, 'Noto Sans Thai', 'Segoe UI', Helvetica, Arial, sans-serif"
+FONT = common.FONT
+SIDES = ("top", "bottom", "left", "right")
+MAX_CANVAS = 20000
 
 
-def esc(s):
-    return html.escape(str(s), quote=True)
+def theme(name, default, where):
+    """Map-archetype theme lookup: unknown names fall back to `default` with a SPEC lint issue."""
+    if name is None:
+        return THEMES[default]
+    if isinstance(name, str) and name in THEMES:
+        return THEMES[name]
+    issue(f"SPEC      {where}: unknown theme {short(name)} (use {' '.join(THEMES)}) -> used {default}")
+    return THEMES[default]
 
 
-def text(x, y, s, size, color, weight=400, anchor="middle", family=None, italic=False, ls=None, filt=None):
-    lines = str(s).split("\n")
-    lh = size * 1.22
-    y0 = y - (len(lines) - 1) * lh / 2
-    extra = ""
-    if family:
-        extra += f' font-family="{family}"'
-    if italic:
-        extra += ' font-style="italic"'
-    if ls:
-        extra += f' letter-spacing="{ls}"'
-    if filt:
-        extra += f' filter="url(#{filt})"'
-    out = []
-    for i, ln in enumerate(lines):
-        out.append(f'<text x="{x:.1f}" y="{y0 + i*lh:.1f}" font-size="{size}" '
-                   f'font-weight="{weight}" fill="{color}" text-anchor="{anchor}" '
-                   f'dominant-baseline="central"{extra}>{esc(ln)}</text>')
-    return "".join(out)
-
-
-def wrap(s, size, width, weight=400):
-    """Greedy word wrap using approx_w; keeps explicit \n breaks."""
-    out = []
-    for para in str(s).split("\n"):
-        line = ""
-        for word in para.split(" "):
-            cand = (line + " " + word).strip()
-            if line and approx_w(cand, size, weight) > width:
-                out.append(line)
-                line = word
-            else:
-                line = cand
-        out.append(line)
-    return "\n".join(out)
-
-
-def approx_w(s, size, weight=400):
-    """Estimate rendered width (Inter-like metrics; Thai combining marks count as 0)."""
-    def w(line):
-        t = 0.0
-        for ch in line:
-            o = ord(ch)
-            if 0x0E31 == o or 0x0E34 <= o <= 0x0E3A or 0x0E47 <= o <= 0x0E4E:
-                continue                      # Thai vowels/tone marks above/below
-            if ch in "—–":
-                t += 0.95
-            elif ch.isupper() or ch in "MW@%":
-                t += 0.66
-            elif ch in " .,:;'|!()-ilj1/":
-                t += 0.30
-            else:
-                t += 0.52
-        return t
-    longest = max((w(l) for l in str(s).split("\n")), default=0)
-    return longest * size * (1.06 if weight >= 600 else 1.0)
+def item_theme(name, fallback, where, what="the panel colours"):
+    """Optional per-item/edge theme: None -> fallback; unknown -> fallback + SPEC lint issue."""
+    if name is None:
+        return fallback
+    if isinstance(name, str) and name in THEMES:
+        return THEMES[name]
+    issue(f"SPEC      {where}: unknown theme {short(name)} (use {' '.join(THEMES)}) -> used {what}")
+    return fallback
 
 
 class Diagram:
     def __init__(self, spec):
         self.spec = spec
-        self.W = spec.get("width", 1200)
+        self.W = num(spec.get("width"), "width", 1200, lo=1, hi=MAX_CANVAS)
+        self.Hset = None if spec.get("height") in (None, 0) else num(spec.get("height"), "height", lo=1, hi=MAX_CANVAS)
         self.boxes = {}       # id -> (x, y, w, h)
         self.parts = []
-        self.issues = []
+        self.maxy = 0
+        self.edge_extent = []   # (minx, maxx, maxy) per edge, for canvas lint
 
     # ---------- panels ----------
-    def panel(self, p):
-        base, tint, soft, ink = THEMES[p.get("theme", "blue")]
-        x, y, w, h = p["x"], p["y"], p["w"], p["h"]
-        self.boxes[p["id"]] = (x, y, w, h)
+    def panel(self, p, k):
+        where = f"panels[{k}]"
+        pid = req(p, "id", where)
+        if "." in pid:
+            raise SpecError(f'{where}.id "{pid}": panel ids must not contain "." (edges use "panel.item")')
+        if pid in self.boxes:
+            raise SpecError(f'{where}.id "{pid}": duplicate panel id')
+        where = f'panel "{pid}"'
+        base, tint, soft, ink = theme(p.get("theme", "blue"), "blue", where)
+        x, y = num(p.get("x"), f"{where}.x"), num(p.get("y"), f"{where}.y")
+        w, h = num(p.get("w"), f"{where}.w", lo=0), num(p.get("h"), f"{where}.h", lo=0)
+        title = req(p, "title", where)
+        subtitle = opt_str(p, "subtitle", where)
+        self.boxes[pid] = (x, y, w, h)
         P = self.parts
         P.append(f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="18" fill="{tint}" '
                  f'stroke="{base}" stroke-width="2.5" filter="url(#sh)"/>')
 
         style = p.get("style", "cards")   # cards | columns | solid (whole panel = one node)
+        if style not in ("cards", "columns", "solid"):
+            raise SpecError(f'{where}.style: {short(style)} is not one of cards, columns, solid')
         if style == "solid":
             # single highlighted node, e.g. "API Gateway"
             P[-1] = (f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="16" fill="{base}" '
                      f'filter="url(#sh)"/>')
-            has_sub = bool(p.get("subtitle"))
+            has_sub = bool(subtitle)
             cy = y + h / 2
-            tw = approx_w(p["title"], 24, 700)
-            sw = approx_w(p["subtitle"], 15, 500) if has_sub else 0
+            tw = approx_w(title, 24, 700)
+            sw = approx_w(subtitle, 15, 500) if has_sub else 0
             bw = max(tw, sw)                       # text block width
             ic = 34 if p.get("icon") else 0
             gap = 14 if ic else 0
-            self.check(p["title"], 24, 700, w - 2 * PAD_IN - ic - gap, f'panel "{p["id"]}" title')
+            check(title, 24, 700, w - 2 * PAD_IN - ic - gap, f'{where} title')
             if has_sub:
-                self.check(p["subtitle"], 15, 500, w - 2 * PAD_IN - ic - gap, f'panel "{p["id"]}" subtitle')
+                check(subtitle, 15, 500, w - 2 * PAD_IN - ic - gap, f'{where} subtitle')
             tx = x + w / 2 + (ic + gap) / 2          # centre of text block
             if ic:
                 P.append(icon(p["icon"], tx - bw / 2 - gap - ic, cy - ic / 2, ic, "#fff", 2.2))
-            P.append(text(tx, cy - (12 if has_sub else 0), p["title"], 24, "#fff", 700))
+            P.append(text(tx, cy - (12 if has_sub else 0), title, 24, "#fff", 700))
             if has_sub:
-                P.append(text(tx, cy + 18, p["subtitle"], 15, "#E6EEFF", 500))
+                P.append(text(tx, cy + 18, subtitle, 15, "#E6EEFF", 500))
             return
 
         # header
         hy = y + 34
-        tw = approx_w(p["title"], 22, 700)
+        tw = approx_w(title, 22, 700)
         ic = 28 if p.get("icon") else 0
         gap = 10 if ic else 0
-        self.check(p["title"], 22, 700, w - 2 * PAD_IN - ic - gap, f'panel "{p["id"]}" title')
-        if p.get("subtitle"):
-            self.check(p["subtitle"], 15, 600, w - 2 * PAD_IN, f'panel "{p["id"]}" subtitle')
+        check(title, 22, 700, w - 2 * PAD_IN - ic - gap, f'{where} title')
+        if subtitle:
+            check(subtitle, 15, 600, w - 2 * PAD_IN, f'{where} subtitle')
         tx = x + w / 2 + (ic + gap) / 2
         if ic:
             P.append(icon(p["icon"], tx - tw / 2 - gap - ic, hy - ic / 2, ic, ink, 2.1))
-        P.append(text(tx, hy, p["title"], 22, "#111827", 700))
+        P.append(text(tx, hy, title, 22, "#111827", 700))
         top = y + 58
-        if p.get("subtitle"):
-            P.append(text(x + w / 2, y + 60, p["subtitle"], 15, "#1F2937", 600))
+        if subtitle:
+            P.append(text(x + w / 2, y + 60, subtitle, 15, "#1F2937", 600))
             top = y + 80
 
-        items = p.get("items", [])
+        items = opt_list(p, "items", where)
         if not items:
             return
-        footer = p.get("footer")
+        footer = opt_str(p, "footer", where)
         bottom = y + h - 16 - (40 if footer else 0)
         pad, gapc = 18, (34 if p.get("flow") else 14)
         n = len(items)
         cw = (w - 2 * pad - (n - 1) * gapc) / n
         ch = bottom - top
         for i, it in enumerate(items):
+            iw = f"{where}.items[{i}]"
+            lab = req(it, "label", iw)
             cx = x + pad + i * (cw + gapc)
-            iid = f'{p["id"]}.{it.get("id", i)}'
+            iid = f'{pid}.{it.get("id", i)}'
             self.boxes[iid] = (cx, top, cw, ch)
             if style == "columns":
-                self.column(cx, top, cw, ch, it, base, ink)
+                self.column(cx, top, cw, ch, it, lab, base, ink, iw)
                 if i < n - 1:
                     lx = cx + cw + gapc / 2
                     P.append(f'<line x1="{lx}" y1="{top+6}" x2="{lx}" y2="{bottom-6}" '
                              f'stroke="{base}" stroke-opacity=".35" stroke-width="1.5"/>')
             else:
-                self.card(cx, top, cw, ch, it, base, soft, ink)
+                self.card(cx, top, cw, ch, it, lab, base, soft, ink, iw)
             if p.get("flow") and i < n - 1:
                 ax = cx + cw + 4
                 ay = top + ch / 2
@@ -182,21 +178,20 @@ class Diagram:
             fx1, fx2 = x + pad + 30, x + w - pad - 30
             fy = bottom + 8
             mid = (fx1 + fx2) / 2
+            check(footer, 15, 600, w - 2 * pad, f'{where} footer')
             P.append(f'<path d="M{fx1} {fy} q0 10 10 10 H{mid-10} q10 0 10 8 q0 -8 10 -8 '
                      f'H{fx2-10} q10 0 10 -10" fill="none" stroke="{EDGE}" stroke-width="2"/>')
             P.append(text(mid, fy + 32, footer, 15, "#111827", 600))
 
-    def card(self, x, y, w, h, it, base, soft, ink):
+    def card(self, x, y, w, h, it, lab, base, soft, ink, where):
         P = self.parts
         kind = it.get("style", "soft")
-        theme = it.get("theme")
-        if theme:
-            base, _, soft, ink = THEMES[theme]
+        base, _, soft, ink = item_theme(it.get("theme"), (base, None, soft, ink), where)
+        sub = opt_str(it, "sublabel", where)
         if kind == "solid":
             P.append(f'<rect x="{x:.1f}" y="{y:.1f}" width="{w:.1f}" height="{h:.1f}" rx="12" '
                      f'fill="{base}" filter="url(#sh2)"/>')
             ic = min(40, h * 0.5)
-            sub = it.get("sublabel")
             if w >= 150 and it.get("icon"):
                 P.append(icon(it["icon"], x + 16, y + h / 2 - ic / 2, ic, "#fff", 2.2))
                 tx = x + 16 + ic + 12 + (w - ic - 44) / 2
@@ -205,50 +200,43 @@ class Diagram:
                     P.append(icon(it["icon"], x + w / 2 - ic / 2, y + 12, ic, "#fff", 2.2))
                 tx = x + w / 2
             ty = y + h / 2 if w >= 150 or not it.get("icon") else y + 12 + ic + (h - ic - 12) / 2
-            self.check(it["label"], 17, 650, w - (ic + 24 if w >= 150 and it.get("icon") else 0))
-            P.append(text(tx, ty - (9 if sub else 0), it["label"], 17, "#fff", 650))
+            check(lab, 17, 650, w - (ic + 24 if w >= 150 and it.get("icon") else 0), f"{where} label")
+            P.append(text(tx, ty - (9 if sub else 0), lab, 17, "#fff", 650))
             if sub:
-                self.check(sub, 13, 500, w - (ic + 24 if w >= 150 and it.get("icon") else 0), "card sublabel")
+                check(sub, 13, 500, w - (ic + 24 if w >= 150 and it.get("icon") else 0), f"{where} sublabel")
                 P.append(text(tx, ty + 14, sub, 13, "#EEF2FF", 500))
         else:
             P.append(f'<rect x="{x:.1f}" y="{y:.1f}" width="{w:.1f}" height="{h:.1f}" rx="12" '
                      f'fill="{soft}" stroke="{base}" stroke-opacity=".55" stroke-width="1.5"/>')
             ic = min(30, h * 0.32)
-            lab = it["label"]
-            nl = lab.count("\n") + 1 + (1 if it.get("sublabel") else 0)
+            nl = lab.count("\n") + 1 + (1 if sub else 0)
             block = ic + 8 + nl * 19
             iy = y + (h - block) / 2
             if it.get("icon"):
                 P.append(icon(it["icon"], x + w / 2 - ic / 2, iy, ic, ink, 2.2))
             ly = iy + ic + 8 + (lab.count("\n") + 1) * 19 / 2
-            self.check(lab, 15, 600, w)
+            check(lab, 15, 600, w, f"{where} label")
             P.append(text(x + w / 2, ly, lab, 15, "#111827", 600))
-            if it.get("sublabel"):
-                self.check(it["sublabel"], 13, 500, w, "card sublabel")
-                P.append(text(x + w / 2, ly + 19 + lab.count("\n") * 9, it["sublabel"], 13, MUTED, 500))
+            if sub:
+                check(sub, 13, 500, w, f"{where} sublabel")
+                P.append(text(x + w / 2, ly + 19 + lab.count("\n") * 9, sub, 13, MUTED, 500))
 
-    def column(self, x, y, w, h, it, base, ink):
+    def column(self, x, y, w, h, it, lab, base, ink, where):
         P = self.parts
-        color = THEMES[it["theme"]][0] if it.get("theme") else base
+        col = item_theme(it.get("theme"), (base,), where)[0]
         ic = min(46, h * 0.45)
-        sub = it.get("sublabel")
+        sub = opt_str(it, "sublabel", where)
         block = ic + 10 + 20 + (18 if sub else 0)
         iy = y + (h - block) / 2
         if it.get("icon"):
-            P.append(icon(it["icon"], x + w / 2 - ic / 2, iy, ic, color, 2.0))
+            P.append(icon(it["icon"], x + w / 2 - ic / 2, iy, ic, col, 2.0))
         ly = iy + ic + 10 + 10
         fs = 16 if w >= 120 else 14
-        self.check(it["label"], fs, 650, w)
-        P.append(text(x + w / 2, ly, it["label"], fs, "#111827", 650))
+        check(lab, fs, 650, w, f"{where} label")
+        P.append(text(x + w / 2, ly, lab, fs, "#111827", 650))
         if sub:
-            self.check(sub, fs - 2, 500, w, "column sublabel")
+            check(sub, fs - 2, 500, w, f"{where} sublabel")
             P.append(text(x + w / 2, ly + 20, sub, fs - 2, MUTED, 500))
-
-    def check(self, s, size, weight, avail, where="label"):
-        need = approx_w(s, size, weight)
-        if need > avail - 4:
-            self.issues.append(f"OVERFLOW  {where}: '{s}' needs ~{need:.0f}px, has {avail-4:.0f}px "
-                               "-> widen the box, break with \\n, or shorten")
 
     def lint_layout(self):
         """Spacing/overlap rules for top-level panels (hand-placed coordinates)."""
@@ -256,19 +244,26 @@ class Diagram:
         for i in range(len(tops)):
             (a, (ax, ay, aw, ah)) = tops[i]
             if ax < 0 or ax + aw > self.W:
-                self.issues.append(f"CANVAS    panel \"{a}\" spills outside width {self.W} (x={ax}, right={ax+aw})")
+                issue(f"CANVAS    panel \"{a}\" spills outside width {self.W} (x={ax}, right={ax+aw})")
+            if ay < 0 or (self.Hset is not None and ay + ah > self.Hset):
+                lim = f"height {self.Hset}" if self.Hset is not None else "the top edge"
+                issue(f"CANVAS    panel \"{a}\" spills outside {lim} (y={ay}, bottom={ay+ah})")
             for j in range(i + 1, len(tops)):
                 (b_, (bx, by, bw, bh)) = tops[j]
                 gx = max(bx - (ax + aw), ax - (bx + bw))   # horizontal gap (<0 = overlap on x)
                 gy = max(by - (ay + ah), ay - (by + bh))   # vertical gap
                 if gx < 0 and gy < 0:
-                    self.issues.append(f"OVERLAP   panels \"{a}\" and \"{b_}\" overlap")
+                    issue(f"OVERLAP   panels \"{a}\" and \"{b_}\" overlap")
                 elif max(gx, gy) < MIN_GAP:
-                    self.issues.append(f"TOO CLOSE panels \"{a}\" and \"{b_}\" are {max(gx, gy):.0f}px apart "
-                                       f"(min {MIN_GAP}px) -> move one or shrink it")
+                    issue(f"TOO CLOSE panels \"{a}\" and \"{b_}\" are {max(gx, gy):.0f}px apart "
+                          f"(min {MIN_GAP}px) -> move one or shrink it")
 
-    def edge_lint(self, e, pts, pill):
+    def edge_lint(self, e, label, pts, pill):
         a, b = e["from"].split(".")[0], e["to"].split(".")[0]
+        name = f"{e['from']}->{e['to']}"
+        xs, ys = [p[0] for p in pts], [p[1] for p in pts]
+        if min(xs) < 0 or max(xs) > self.W or min(ys) < 0 or (self.Hset is not None and max(ys) > self.Hset):
+            issue(f"CANVAS    edge {name} runs outside the canvas -> adjust midX/midY/detour or the sides")
         # segments must not pass through unrelated panels
         for pid, (x, y, w, h) in self.boxes.items():
             if "." in pid or pid in (a, b):
@@ -276,19 +271,22 @@ class Diagram:
             for (x1, y1), (x2, y2) in zip(pts, pts[1:]):
                 lx, hx, ly, hy = min(x1, x2), max(x1, x2), min(y1, y2), max(y1, y2)
                 if lx < x + w - 2 and hx > x + 2 and ly < y + h - 2 and hy > y + 2:
-                    self.issues.append(f"CROSSING  edge {e['from']}->{e['to']} passes through panel \"{pid}\" "
-                                       "-> set fromSide/toSide/midX/midY")
+                    issue(f"CROSSING  edge {name} passes through panel \"{pid}\" "
+                          "-> set fromSide/toSide/midX/midY")
                     break
-        # label pill must sit in open space, not on top of a panel border
+        # label pill must sit in open space, not on top of a panel border, and on the canvas
         if pill:
             px, py, pw, ph = pill
+            if px < 0 or px + pw > self.W or py < 0 or (self.Hset is not None and py + ph > self.Hset):
+                issue(f"CANVAS    label {short(label, 60)} on {name} (pill {pw:.0f}px wide) spills off the canvas "
+                      "-> shorten the label or move the edge")
             for pid, (x, y, w, h) in self.boxes.items():
                 if "." in pid:
                     continue
                 if px < x + w + 6 and px + pw > x - 6 and py < y + h + 6 and py + ph > y - 6:
-                    self.issues.append(f"LABEL     '{e['label']}' on {e['from']}->{e['to']} touches panel \"{pid}\" "
-                                       f"(pill {pw:.0f}px wide) -> widen the gap to ≥ pill+24px, shorten the label, "
-                                       "or route the edge through more open space")
+                    issue(f"LABEL     {short(label, 60)} on {name} touches panel \"{pid}\" "
+                          f"(pill {pw:.0f}px wide) -> widen the gap to >= pill+24px, shorten the label, "
+                          "or route the edge through more open space")
                     break
 
     # ---------- edges ----------
@@ -306,12 +304,23 @@ class Diagram:
             return "top", "bottom"
         return ("right", "left") if ax < bx else ("left", "right")
 
-    def edge(self, e):
-        a, b = e["from"], e["to"]
+    def edge(self, e, k):
+        where = f"edges[{k}]"
+        a, b = req(e, "from", where), req(e, "to", where)
+        for key, bid in (("from", a), ("to", b)):
+            if bid not in self.boxes:
+                raise SpecError(f'{where}.{key}: "{bid}" is not a panel id or "panel.item" id '
+                                f'(panels: {", ".join(k_ for k_ in self.boxes if "." not in k_)})')
+        where = f"edge {a}->{b}"
+        for key in ("fromSide", "toSide"):
+            if e.get(key) is not None and e.get(key) not in SIDES:
+                raise SpecError(f"{where}.{key}: {short(e.get(key))} is not one of {', '.join(SIDES)}")
         fs, ts = self.auto_sides(a, b)
-        fs, ts = e.get("fromSide", fs), e.get("toSide", ts)
-        p1 = self.anchor(a, fs, e.get("fromOffset", 0.5))
-        p2 = self.anchor(b, ts, e.get("toOffset", 0.5))
+        fs, ts = e.get("fromSide") or fs, e.get("toSide") or ts
+        p1 = self.anchor(a, fs, num(e.get("fromOffset"), f"{where}.fromOffset", 0.5))
+        p2 = self.anchor(b, ts, num(e.get("toOffset"), f"{where}.toOffset", 0.5))
+        midX = None if e.get("midX") is None else num(e.get("midX"), f"{where}.midX")
+        midY = None if e.get("midY") is None else num(e.get("midY"), f"{where}.midY")
         # auto-straighten: opposite sides + overlapping span + no explicit offsets
         if "fromOffset" not in e and "toOffset" not in e and {fs, ts} in ({"top", "bottom"}, {"left", "right"}):
             ax, ay, aw, ah = self.boxes[a]
@@ -326,7 +335,7 @@ class Diagram:
                 if hi - lo > 24:
                     m = (lo + hi) / 2
                     p1, p2 = (p1[0], m), (p2[0], m)
-        vert = lambda s: s in ("top", "bottom")
+        vert = lambda s: s in ("top", "bottom")   # noqa: E731
         # snap tiny jogs (< 28px) to a straight line when the target side can take it
         bx_, by_, bw_, bh_ = self.boxes[b]
         if vert(fs) and vert(ts) and fs != ts and 0 < abs(p1[0] - p2[0]) < 28 and bx_ + 14 < p1[0] < bx_ + bw_ - 14:
@@ -335,35 +344,36 @@ class Diagram:
             p2 = (p2[0], p1[1])
         pts = [p1]
         if fs == ts:  # U-route around the outside (e.g. bottom -> bottom)
-            o = e.get("detour", 36)
+            o = num(e.get("detour"), f"{where}.detour", 36)
             if vert(fs):
-                my = e.get("midY", max(p1[1], p2[1]) + o if fs == "bottom" else min(p1[1], p2[1]) - o)
+                my = midY if midY is not None else (max(p1[1], p2[1]) + o if fs == "bottom" else min(p1[1], p2[1]) - o)
                 pts += [(p1[0], my), (p2[0], my)]
             else:
-                mx = e.get("midX", max(p1[0], p2[0]) + o if fs == "right" else min(p1[0], p2[0]) - o)
+                mx = midX if midX is not None else (max(p1[0], p2[0]) + o if fs == "right" else min(p1[0], p2[0]) - o)
                 pts += [(mx, p1[1]), (mx, p2[1])]
         elif vert(fs) and vert(ts):
             if abs(p1[0] - p2[0]) > 1:
-                my = e.get("midY", (p1[1] + p2[1]) / 2)
+                my = midY if midY is not None else (p1[1] + p2[1]) / 2
                 pts += [(p1[0], my), (p2[0], my)]
         elif not vert(fs) and not vert(ts):
             if abs(p1[1] - p2[1]) > 1:
-                mx = e.get("midX", (p1[0] + p2[0]) / 2)
+                mx = midX if midX is not None else (p1[0] + p2[0]) / 2
                 pts += [(mx, p1[1]), (mx, p2[1])]
         elif vert(fs):
             pts.append((p1[0], p2[1]))
         else:
             pts.append((p2[0], p1[1]))
         pts.append(p2)
-        self.maxy = max(getattr(self, "maxy", 0), max(py for _, py in pts))
+        self.maxy = max(self.maxy, max(py for _, py in pts))
         d = "M" + " L".join(f"{px:.1f} {py:.1f}" for px, py in pts)
         dash = ' stroke-dasharray="8 6"' if e.get("dashed") else ""
-        color = THEMES[e["theme"]][0] if e.get("theme") else EDGE
+        color_ = item_theme(e.get("theme"), (EDGE,), where, "the default edge colour")[0]
         start = ' marker-start="url(#ahs)"' if e.get("both") else ""
-        self.parts.append(f'<path d="{d}" fill="none" stroke="{color}" stroke-width="3"{dash} '
+        self.parts.append(f'<path d="{d}" fill="none" stroke="{color_}" stroke-width="3"{dash} '
                           f'stroke-linejoin="round" marker-end="url(#ah)"{start}/>')
         pill = None
-        if e.get("label"):
+        label = opt_str(e, "label", where)
+        if label:
             # place the pill at the half-length point of the whole path (centre of the gap)
             segs = list(zip(pts, pts[1:]))
             lens = [abs(s[0][0]-s[1][0]) + abs(s[0][1]-s[1][1]) for s in segs]
@@ -375,12 +385,12 @@ class Diagram:
                     mx, my = sx + (ex - sx) * t, sy + (ey - sy) * t
                     break
                 acc += L
-            lw = approx_w(e["label"], 13, 600) + 18
+            lw = approx_w(label, 13, 600) + 18
             pill = (mx - lw / 2, my - 12, lw, 24)
             self.parts.append(f'<rect x="{mx-lw/2:.1f}" y="{my-12:.1f}" width="{lw:.1f}" height="24" '
-                              f'rx="12" fill="#fff" stroke="{color}" stroke-width="1.5"/>')
-            self.parts.append(text(mx, my, e["label"], 13, "#111827", 600))
-        self.edge_lint(e, pts, pill)
+                              f'rx="12" fill="#fff" stroke="{color_}" stroke-width="1.5"/>')
+            self.parts.append(text(mx, my, label, 13, "#111827", 600))
+        self.edge_lint(e, label, pts, pill)
 
     # ---------- page ----------
     def render(self):
@@ -388,19 +398,23 @@ class Diagram:
         W = self.W
         head = []
         ty = 30
-        if s.get("title"):
-            tw = approx_w(s["title"], 32, 700) + 80
+        title, subtitle = opt_str(s, "title", "spec"), opt_str(s, "subtitle", "spec")
+        if title:
+            tw = approx_w(title, 32, 700) + 80
+            check(title, 32, 700, W - 96, "page title")      # pill (text + 80px) must fit the canvas
             head.append(f'<rect x="{W/2-tw/2:.1f}" y="{ty}" width="{tw:.1f}" height="60" rx="12" fill="{NAVY}"/>')
-            head.append(text(W / 2, ty + 30, s["title"], 32, "#fff", 700))
-        if s.get("subtitle"):
-            head.append(text(W / 2, ty + 92, s["subtitle"], 22, "#2B3A55", 600))
-        for p in s.get("panels", []):
-            self.panel(p)
+            head.append(text(W / 2, ty + 30, title, 32, "#fff", 700))
+        if subtitle:
+            check(subtitle, 22, 600, W - 40, "page subtitle")
+            head.append(text(W / 2, ty + 92, subtitle, 22, "#2B3A55", 600))
+        for k, p in enumerate(opt_list(s, "panels", "spec")):
+            self.panel(p, k)
         # edges drawn after panels so arrows sit on top
         self.lint_layout()
-        for e in s.get("edges", []):
-            self.edge(e)
-        H = s.get("height") or int(max([b[1] + b[3] for b in self.boxes.values()] + [getattr(self, "maxy", 0)]) + 40)
+        for k, e in enumerate(opt_list(s, "edges", "spec")):
+            self.edge(e, k)
+        H = self.Hset if self.Hset is not None else \
+            int(max([b[1] + b[3] for b in self.boxes.values()] + [self.maxy]) + 40)
         defs = (
             '<defs>'
             f'<marker id="ah" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0L10 5L0 10z" fill="{EDGE}"/></marker>'
@@ -408,53 +422,147 @@ class Diagram:
             '<filter id="sh" x="-5%" y="-5%" width="110%" height="115%"><feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#0B1B3F" flood-opacity=".10"/></filter>'
             '<filter id="sh2" x="-5%" y="-5%" width="110%" height="120%"><feDropShadow dx="0" dy="2" stdDeviation="2.5" flood-color="#0B1B3F" flood-opacity=".18"/></filter>'
             '</defs>')
-        bg = s.get("background", "#FFFFFF")
-        return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}" '
-                f'font-family="{FONT}">{defs}<rect width="100%" height="100%" fill="{bg}"/>'
-                + "".join(head) + "".join(self.parts) + "</svg>")
+        bg = color(s.get("background"), "#FFFFFF", "background")
+        return svg_wrap(W, H, defs, bg, "".join(head) + "".join(self.parts)), W, H
 
 
-def to_png(svg_path, png_path, scale=2):
-    from playwright.sync_api import sync_playwright
-    svg = open(svg_path, encoding="utf-8").read()
-    with sync_playwright() as p:
-        b = p.chromium.launch()
-        pg = b.new_page(device_scale_factor=scale)
-        pg.set_content(f'<html><body style="margin:0">{svg}</body></html>')
-        pg.locator("svg").screenshot(path=png_path)
-        b.close()
-
-
-if __name__ == "__main__":
-    if len(sys.argv) < 3:
-        sys.exit(__doc__)
-    spec = json.load(open(sys.argv[1], encoding="utf-8"))
-    out = sys.argv[2]
+# ---------- entry points ----------
+def build(spec):
+    """Render a spec dict. Returns (svg_text, lint_issues, (width, height)). Raises SpecError."""
+    common.ISSUES.clear()
+    if not isinstance(spec, dict):
+        raise SpecError(f"spec: the top level must be a JSON object, got {type(spec).__name__}")
     kind = spec.get("type", "map")
     if kind == "layers":
         from layers import render_layers as render
     elif kind == "tree":
         from tree import render_tree as render
+    elif kind == "map":
+        render = lambda s: Diagram(s).render()   # noqa: E731
     else:
-        def render(s):
-            d = Diagram(s)
-            svg = d.render()
-            render.issues = d.issues
-            return svg
-    render.issues = []
-    open(out, "w", encoding="utf-8").write(render(spec))
-    issues = render.issues + [l for l in getattr(sys.modules.get("layers"), "ISSUES", [])] \
-        + [l for l in getattr(sys.modules.get("tree"), "ISSUES", [])]
+        raise SpecError(f"type: {short(kind)} is not one of map, layers, tree")
+    svg, W, H = render(spec)
+    return svg, list(dict.fromkeys(common.ISSUES)), (W, H)
+
+
+class PngUnavailable(RuntimeError):
+    pass
+
+
+def png_html(svg, W, H):
+    """Wrap the SVG as an <img> data: URL. An SVG loaded as an image runs no scripts and fetches
+    nothing; the CSP below forbids everything except that one data: image."""
+    b64 = base64.b64encode(svg.encode("utf-8")).decode("ascii")
+    return ('<!doctype html><html><head><meta charset="utf-8">'
+            '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; img-src data:; '
+            'style-src \'unsafe-inline\'">'
+            f'</head><body style="margin:0"><img id="diagram" width="{W}" height="{H}" '
+            f'src="data:image/svg+xml;base64,{b64}"></body></html>')
+
+
+def to_png(svg, png_path, W, H, scale=2):
+    """Render `svg` (text) to `png_path` with headless Chromium: JavaScript off, offline, every
+    non-data: request aborted. Raises PngUnavailable with an actionable message."""
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        raise PngUnavailable("the Python 'playwright' package is not installed -> "
+                             "pip install playwright && python3 -m playwright install chromium") from None
+    with sync_playwright() as p:
+        try:
+            b = p.chromium.launch()
+        except Exception as ex:   # missing browser binary, sandbox refusal, ...
+            first = (str(ex).strip().splitlines() or ["unknown error"])[0]
+            raise PngUnavailable(f"Chromium could not start ({first}) -> "
+                                 "python3 -m playwright install chromium") from None
+        try:
+            ctx = b.new_context(java_script_enabled=False, offline=True, device_scale_factor=scale,
+                                viewport={"width": int(math.ceil(W)), "height": int(math.ceil(H))})
+            ctx.route("**/*", lambda r: r.continue_() if r.request.url.startswith("data:") else r.abort())
+            pg = ctx.new_page()
+            pg.set_content(png_html(svg, W, H), wait_until="load", timeout=30000)
+            pg.locator("#diagram").screenshot(path=png_path, timeout=30000)
+        except Exception as ex:
+            first = (str(ex).strip().splitlines() or ["unknown error"])[0]
+            raise PngUnavailable(f"PNG rendering failed ({first})") from None
+        finally:
+            b.close()
+
+
+def _safe_stdio():
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(errors="backslashreplace")
+        except (AttributeError, ValueError):
+            pass
+
+
+def _ensure_dir(path):
+    d = os.path.dirname(os.path.abspath(path))
+    os.makedirs(d, exist_ok=True)
+
+
+def main(argv=None):
+    _safe_stdio()
+    ap = argparse.ArgumentParser(
+        prog="build.py", description="Render an infographic diagram (SVG, optional PNG) from a JSON spec.",
+        epilog="Exit codes: 0 ok; 1 lint issues with --strict; 2 bad arguments/spec; 3 PNG not made (SVG kept).")
+    ap.add_argument("spec", help="spec JSON file (UTF-8, BOM allowed)")
+    ap.add_argument("out", help="output SVG path (directories are created)")
+    ap.add_argument("--png", action="store_true", help="also write a 2x PNG next to the SVG (needs playwright)")
+    ap.add_argument("--png-out", metavar="PATH", help="write the PNG to PATH (implies --png)")
+    ap.add_argument("--strict", action="store_true", help="exit 1 while the LINT report has issues")
+    args = ap.parse_args(argv)
+
+    def fail(msg):
+        print(f"ERROR: {msg}", file=sys.stderr)
+        return 2
+
+    if args.out.lower().endswith(".png"):
+        return fail(f"output {args.out!r} ends in .png but the first output is the SVG -> "
+                    "give an .svg path and use --png or --png-out for the PNG")
+    png = None
+    if args.png or args.png_out:
+        png = args.png_out or os.path.splitext(args.out)[0] + ".png"
+        if os.path.abspath(png) == os.path.abspath(args.out):
+            return fail("--png-out must differ from the SVG output path")
+    try:
+        with open(args.spec, encoding="utf-8-sig") as f:
+            spec = json.load(f)
+    except OSError as ex:
+        return fail(f"cannot read spec {args.spec!r}: {ex.strerror or ex}")
+    except UnicodeDecodeError:
+        return fail(f"spec {args.spec!r} is not UTF-8 text")
+    except json.JSONDecodeError as ex:
+        return fail(f"spec {args.spec!r} is not valid JSON: {ex.msg} at line {ex.lineno} column {ex.colno}")
+    try:
+        svg, issues, (W, H) = build(spec)
+    except SpecError as ex:
+        return fail(f"bad spec {args.spec!r}: {ex}")
+    try:
+        _ensure_dir(args.out)
+        with open(args.out, "w", encoding="utf-8") as f:
+            f.write(svg)
+    except OSError as ex:
+        return fail(f"cannot write {args.out!r}: {ex.strerror or ex}")
     if issues:
-        print(f"\nLINT: {len(issues)} layout issue(s) — fix before delivering:", file=sys.stderr)
-        for i in dict.fromkeys(issues):
+        print(f"\nLINT: {len(issues)} layout issue(s) - fix before delivering:", file=sys.stderr)
+        for i in issues:
             print("  - " + i, file=sys.stderr)
     else:
         print("LINT: clean")
-    print("wrote", out)
-    if "--png" in sys.argv:
-        png = os.path.splitext(out)[0] + ".png"
-        to_png(out, png)
-        print("wrote", png)
-    if issues and "--strict" in sys.argv:
-        sys.exit(1)
+    print("wrote", args.out)
+    rc = 1 if issues and args.strict else 0
+    if png:
+        try:
+            _ensure_dir(png)
+            to_png(svg, png, W, H)
+            print("wrote", png)
+        except (PngUnavailable, OSError) as ex:
+            print(f"PNG skipped: {ex} (the SVG was written)", file=sys.stderr)
+            rc = rc or 3
+    return rc
+
+
+if __name__ == "__main__":
+    sys.exit(main())

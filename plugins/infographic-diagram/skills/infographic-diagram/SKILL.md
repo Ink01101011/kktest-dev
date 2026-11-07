@@ -1,6 +1,6 @@
 ---
-name: "infographic-diagram"
-description: Create polished infographic-style architecture, layer and stack diagrams as SVG + PNG from a JSON spec, in three looks — light system map (panels + arrows), editorial numbered layer stack (cream, serif, side rails, summary strip), and dark neon category tree. Use this whenever the user wants a system architecture diagram, tech-stack overview, agent/LLM pipeline, microservice or monorepo map, data flow, request lifecycle, or "a diagram like this" from a screenshot — including Thai requests like "ทำ diagram", "วาด flow", "ทำ infographic สถาปัตยกรรม", "ภาพ architecture". Prefer it over Mermaid when the user wants something presentation-ready or shareable rather than a quick sketch.
+name: infographic-diagram
+description: Infographic diagrams (system map, layer stack, neon tech tree) as SVG + PNG from a JSON spec. Use for architecture, tech-stack, pipeline or data-flow diagrams, incl. Thai requests.
 ---
 
 # Infographic Diagram
@@ -12,6 +12,14 @@ Produces "tech explainer infographic" diagrams as a crisp SVG plus a 2x PNG, in 
 | `map` (default) | how do components talk? | light tinted panels, cards, navy orthogonal arrows | `examples/langgraph-mcp.json` |
 | `layers` | what is each layer for? | cream paper, serif title, numbered rows, asides, side rails, summary strip | `examples/clean-arch-layers.json` |
 | `tree` | what's the landscape by category? | black bg, neon category icons, bracket tree | `examples/ts-fullstack-tree.json` |
+
+## When to use
+
+Use this whenever the user wants a system architecture diagram, tech-stack overview, agent/LLM
+pipeline, microservice or monorepo map, data flow, request lifecycle, or "a diagram like this"
+from a screenshot, including Thai requests like "ทำ diagram", "วาด flow",
+"ทำ infographic สถาปัตยกรรม", "ภาพ architecture". Prefer it over Mermaid when the user wants
+something presentation-ready or shareable rather than a quick sketch.
 
 **Before writing any spec, read `references/archetypes.md`** — it holds the thinking for each
 archetype (what goes in a layer's aside, when to use rails, how to order rows). Pick the
@@ -30,21 +38,40 @@ Don't hand-write SVG for these — the script owns spacing, icons, shadows and a
    middle → dependencies right → infra at the bottom (see the example).
 3. **Write the spec** (full schema: `references/spec.md`). Start from the example of the chosen archetype.
    For `layers`/`tree`, x/y are computed for you — you only supply content and order.
-4. **Build with lint** (run it from this skill's base directory, or give the full path to `scripts/build.py`):
-   `python3 scripts/build.py spec.json <out-dir>/name.svg --png --strict`
-   (`python` on Windows). `<out-dir>`: on claude.ai use `/mnt/user-data/outputs`; in Claude Code
-   use a folder the user names, or `./diagrams/` in the current project. `--png` needs the Python
-   `playwright` package and its Chromium (`pip install playwright && python3 -m playwright install chromium`);
-   without it, build the SVG only (drop `--png`) and say the PNG step was skipped and why.
+4. **Build with lint.** Run the script by its absolute path (the working directory is usually not
+   the skill folder): `python3 <skill-dir>/scripts/build.py spec.json <out-dir>/name.svg --png --strict`
+   (`python` where `python3` does not exist, e.g. Windows). Flags may go anywhere; `--png-out PATH`
+   picks the PNG path (default: the SVG path with `.png`). The output directory is created if missing.
+   `--png` needs the Python `playwright` package and its Chromium
+   (`pip install playwright && python3 -m playwright install chromium`). Without them the script
+   still writes the SVG, prints `PNG skipped: ...` and exits 3: deliver the SVG and say the PNG step
+   was skipped and why. Exit codes: 0 ok, 1 lint issues with `--strict`, 2 bad arguments or spec
+   (an `ERROR:` line says which field), 3 PNG not made.
    The build prints a `LINT:` report and `--strict` exits non-zero while issues remain:
-   `TOO CLOSE` / `OVERLAP` (panels < 32px apart), `CANVAS` (spills off the page),
-   `OVERFLOW` (title, subtitle, label or sublabel wider than its box), `LABEL` (edge pill sitting
-   on a panel border), `CROSSING` (edge cutting through an unrelated panel).
-   **Fix every lint issue by changing the spec, then rebuild — don't deliver with issues.**
-5. **Then look at the PNG** (claude.ai: the view tool; Claude Code: the Read tool on the PNG path). Lint catches geometry; your eye still has to
-   catch meaning (wrong arrow direction, awkward reading order, crowded panel).
-6. Present the PNG (and SVG): on claude.ai with `present_files`; in Claude Code give the full paths
-   of the files. Also hand over the spec JSON so the user can tweak it.
+   - `TOO CLOSE` / `OVERLAP`: map panels < 32px apart or overlapping.
+   - `CANVAS`: a map panel, edge route or edge label pill outside the canvas (x < 0, beyond
+     `width`, y < 0, or below an explicit `height`).
+   - `OVERFLOW` (estimated text width or height vs the room it has):
+     map: page title pill, page subtitle, panel title/subtitle/footer, card and column label/sublabel;
+     layers: kicker, title, subtitle, byline, each layer's header line (prefix + name + tagline),
+     icon_label, note, chip rows wider than the space, chip rows that no longer fit the layer
+     height after auto-wrap, aside text, rail title and bullets, summary text;
+     tree: title, root label, each row's width (group titles and item labels), box label, footer.
+   - `LABEL`: a map edge label pill on a panel border. `CROSSING`: a map edge through an unrelated panel.
+   - `SPEC`: an unknown theme name or an invalid colour; a safe default was used instead.
+   Widths are estimates (Inter-like metrics), so "clean" is approximate, especially for Thai.
+   **Fix every lint issue by changing the spec, then rebuild; don't deliver with issues.**
+5. **Then look at the PNG** with whatever image-viewing tool the host has. Lint catches geometry;
+   your eye still has to catch meaning (wrong arrow direction, awkward reading order, crowded panel).
+6. **Hand over** the PNG and SVG (and the spec JSON so the user can tweak it) by giving their full
+   paths, or with the host's file-sharing tool.
+
+**Any agent host:** run `python3` (or `python`) with the absolute path of `scripts/build.py`;
+write outputs to a directory the user can reach (one they name, or `./diagrams/` in the current
+project); if you can view images, open the PNG and check it; if the PNG step is unavailable,
+deliver the SVG alone and say why. Examples: on claude.ai write to `/mnt/user-data/outputs`, view
+the PNG with the view tool and share with `present_files`; in Claude Code use `./diagrams/` (or the
+user's folder), read the PNG with the Read tool and give the full paths.
 
 ## `map`: spacing rules (coordinates are hand-placed, so plan them)
 
@@ -81,5 +108,8 @@ theme, and use item-level `theme` to colour individual icons/cards (e.g. red cac
 - Labels short: 1–3 words; break with `\n`. Put tech names in `sublabel` like `(Cache)`.
 - Use the generic icons in `scripts/icons.py` (database, layers, vector, box, wheel, cpu, server,
   bolt, shield, gear, …). Product names go in text only; don't recreate company logos.
-- Thai text works (Noto Sans Thai fallback); keep Thai labels shorter since glyph widths vary.
+- Thai text works through the font stack (Noto Sans Thai, Leelawadee UI, Thonburi, Tahoma).
+  Fonts are not embedded: the SVG and PNG render with whatever fonts the viewing machine has, so
+  a system with no Thai font shows boxes (on Linux install `fonts-noto` or `fonts-thai-tlwg`).
+  Keep Thai labels shorter since glyph widths vary.
 - Need an icon that isn't there? Add a simple 24×24 stroke path to `ICONS` in `scripts/icons.py`.
