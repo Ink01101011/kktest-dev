@@ -10,20 +10,27 @@ bantamkit-mcp --remove-hooks      # takes them out again
 
 `--install-hooks` registers the global `bantamkit-mcp` you installed during onboarding, so
 `/kk-update` (which runs `npm i -g bantamkit-mcp@latest`) updates the hooks too. Running it twice
-changes nothing.
+changes nothing (bantamkit's own claim; this pack did not re-test it).
+
+If your shell says `bantamkit-mcp: command not found`:
+- after `npm i -g`, npm's global bin directory is not on PATH: run `npm prefix -g` and add its
+  `bin` subdirectory (macOS/Linux) or the prefix directory itself (Windows) to PATH, or
+- bantamkit was set up some other way (a checkout, another prefix; `claude mcp list` shows the
+  command it runs). Run that same command with `--install-hooks`, or install the npm package
+  first. `/kk-update` only updates the global npm install.
 
 ## What changes when the hooks are on
 
 | When | What happens |
 |---|---|
-| Session start | Your memory index (cross-project lessons, capped at 3,000 bytes, about 1k tokens) is added to context. |
+| Session start | Your memory index (cross-project lessons) is added to context: 3.8 to 4.2 KB, about 1k tokens, measured over 43 sessions on one Mac. |
 | Each prompt | Up to 3 matching memory **headers** are added (about 0.5 KB). Bodies come only on `memory_recall`. |
 | Reading a file | Re-reading a file that has **not changed** in the same session is refused **once**, with a reason. The next identical read goes through. |
 | After memory saves | If the memory index is ≥ 90 % of its byte budget, it auto-compacts: the stalest facts move to `~/.bantamkit/memory/archive/`. They are archived, not deleted, and `memory_recall` with `include_archived` still finds them. |
 | End of a long session | If ≥ 20 tool calls and nothing was saved, Claude is asked once to save durable lessons or say there are none. |
 
-Measured on one Mac (Node, `hook-log.jsonl`, 1,066 calls): median 4 ms (before Read) to 105 ms
-(session start) per hook call.
+Snapshot measured on one Mac on 2026-11-07 (Node, the first 1,066 rows of `hook-log.jsonl`):
+median 4 ms (before Read) to 105 ms (session start) per hook call. Your numbers will differ.
 
 ## Does it conflict with Claude's own auto-memory?
 

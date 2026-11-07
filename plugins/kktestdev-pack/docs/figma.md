@@ -8,4 +8,5 @@ Choose **one** of these. Using two gives you two copies of the same server and t
 - **Plugin** (Claude Code only): `claude plugin install figma@claude-plugins-official`, then
   `/mcp` → `figma` → authenticate.
 
-Check first with `claude mcp list | grep -i figma`. It may already be there from a synced plugin.
+Check first with `claude mcp list | grep -i figma` (PowerShell: `claude mcp list | Select-String -SimpleMatch figma`).
+It may already be there from a synced plugin.

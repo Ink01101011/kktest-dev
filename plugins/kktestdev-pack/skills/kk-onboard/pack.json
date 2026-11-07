@@ -1,6 +1,8 @@
 {
   "name": "kktestdev-pack",
   "policy": "Never pin versions: plugins follow their marketplace, npm packages use @latest. /kk-update refreshes everything.",
+  "keys": "Read by inventory.mjs: items[].id/profile/kind/detect/requires/what, overlapGroups. Read by the skills only: marketplaces, items[].plugin/steps/windows/scope/doc/publisher. detect keys: plugins (id prefix), mcpName (whole-token match at start or end of the server name), mcpNameExact, mcpUrl (substring), mcpCommand (binary name), mcpArgs (package or path segment), skills (exact name).",
+  "windowsNote": "On native Windows, npx and npm-installed bins are .cmd shims: stdio MCP servers must be registered through cmd /c. Each mcp item has a `windows` variant of its steps.",
   "marketplaces": {
     "claude-plugins-official": { "builtin": true },
     "kktest-dev": { "add": "claude plugin marketplace add Ink01101011/kktest-dev" },
@@ -10,19 +12,19 @@
   "items": [
     {
       "id": "superpowers", "profile": "core", "kind": "plugin",
-      "plugin": "superpowers@superpowers-dev",
+      "plugin": "superpowers@superpowers-dev", "publisher": "obra (Jesse Vincent), github.com/obra/superpowers",
       "detect": { "plugins": ["superpowers@"] },
       "what": "Workflow skills: brainstorm, plan, TDD, systematic debugging, code review, verification before completion."
     },
     {
       "id": "kkskills-essentials", "profile": "core", "kind": "plugin",
-      "plugin": "kkskills-essentials@kktest-dev",
+      "plugin": "kkskills-essentials@kktest-dev", "publisher": "Ink01101011 (this pack's author)",
       "detect": { "plugins": ["kkskills-essentials@"] },
       "what": "Everyday discipline: additive changes, no duplicate docs, proactive reminders, Conventional Commits."
     },
     {
       "id": "context7", "profile": "core", "kind": "plugin",
-      "plugin": "context7@claude-plugins-official",
+      "plugin": "context7@claude-plugins-official", "publisher": "Upstash; queries go to the hosted service mcp.context7.com",
       "detect": { "plugins": ["context7@"], "mcpUrl": ["context7.com"], "mcpArgs": ["@upstash/context7-mcp"] },
       "what": "Current library documentation lookup (Next.js, React, NestJS, Spring, ...) instead of the model's memory."
     },
@@ -30,8 +32,8 @@
       "id": "typescript-lsp", "profile": "core", "kind": "plugin",
       "plugin": "typescript-lsp@claude-plugins-official",
       "detect": { "plugins": ["typescript-lsp@"] },
-      "requires": [{ "bin": "typescript-language-server", "install": "npm i -g typescript typescript-language-server" }],
-      "what": "TS/JS code intelligence (go-to-definition, references, diagnostics)."
+      "requires": [{ "bin": "typescript-language-server", "install": "npm i -g typescript-language-server" }],
+      "what": "TS/JS code intelligence (go-to-definition, references, diagnostics). typescript-language-server uses the workspace's own typescript (node_modules/typescript, which provides tsserver), so each project needs typescript as a devDependency. typescript 7 (native) ships no tsserver; the server then has nothing to load. Needs Node 22.22.2+."
     },
     {
       "id": "gopls-lsp", "profile": "core", "kind": "plugin",
@@ -51,7 +53,7 @@
       "id": "jdtls-lsp", "profile": "core", "kind": "plugin",
       "plugin": "jdtls-lsp@claude-plugins-official",
       "detect": { "plugins": ["jdtls-lsp@"] },
-      "requires": [{ "bin": "jdtls", "install": "brew install jdtls  (Linux/Windows: see https://github.com/eclipse-jdtls/eclipse.jdt.ls)" }],
+      "requires": [{ "bin": "jdtls", "install": "macOS/Linuxbrew: brew install jdtls. Otherwise download a milestone build from https://github.com/eclipse-jdtls/eclipse.jdt.ls, unpack it, and put its bin/ (jdtls, jdtls.bat; needs Java 21+ and Python 3) on PATH" }],
       "what": "Java / Spring Boot code intelligence."
     },
     {
@@ -60,64 +62,77 @@
         "npm i -g bantamkit-mcp@latest",
         "claude mcp add --scope user bantamkit -- bantamkit-mcp"
       ],
+      "windows": [
+        "npm i -g bantamkit-mcp@latest",
+        "claude mcp add --scope user bantamkit -- cmd /c bantamkit-mcp"
+      ],
+      "publisher": "Ink01101011 / kktestdev (this pack's author)",
       "detect": { "mcpName": ["bantamkit"], "mcpCommand": ["bantamkit-mcp"], "mcpArgs": ["bantamkit-mcp"] },
       "what": "Cross-session memory (recall/save), token ledger, skill audit. Works alongside Claude's own auto-memory. Hooks are opt-in: see docs/bantamkit-hooks.md."
     },
     {
       "id": "playwright", "profile": "core", "kind": "mcp",
       "steps": ["claude mcp add --scope user playwright -- npx -y @playwright/mcp@latest --headless"],
+      "windows": ["claude mcp add --scope user playwright -- cmd /c npx -y @playwright/mcp@latest --headless"],
+      "publisher": "Microsoft",
       "detect": { "plugins": ["playwright@"], "mcpName": ["playwright"], "mcpArgs": ["@playwright/mcp"] },
       "what": "Browser automation and E2E checks (cross-browser, headless)."
     },
     {
       "id": "chrome-devtools", "profile": "core", "kind": "mcp",
       "steps": ["claude mcp add --scope user chrome-devtools -- npx -y chrome-devtools-mcp@latest"],
+      "windows": ["claude mcp add --scope user chrome-devtools -- cmd /c npx -y chrome-devtools-mcp@latest"],
+      "publisher": "Google (ChromeDevTools)",
       "detect": { "plugins": ["chrome-devtools-mcp@"], "mcpName": ["chrome-devtools"], "mcpArgs": ["chrome-devtools-mcp"] },
       "what": "Chrome performance traces, Lighthouse, network/console debugging."
     },
     {
       "id": "impeccable", "profile": "frontend", "kind": "plugin",
-      "plugin": "impeccable@impeccable",
+      "plugin": "impeccable@impeccable", "publisher": "pbakaus (Paul Bakaus), github.com/pbakaus/impeccable",
       "detect": { "plugins": ["impeccable@"] },
       "what": "Frontend design quality: build, critique and audit UI."
     },
     {
       "id": "next-devtools", "profile": "frontend", "kind": "mcp",
       "steps": ["claude mcp add --scope user next-devtools -- npx -y next-devtools-mcp@latest"],
+      "windows": ["claude mcp add --scope user next-devtools -- cmd /c npx -y next-devtools-mcp@latest"],
+      "publisher": "Vercel",
       "detect": { "mcpName": ["next-devtools"], "mcpArgs": ["next-devtools-mcp"] },
       "what": "Talks to a running Next.js 16+ dev server: routes, build/runtime errors, docs."
     },
     {
       "id": "shadcn", "profile": "frontend", "kind": "mcp", "scope": "project",
       "steps": ["(inside the project) npx shadcn@latest mcp init --client claude"],
+      "windows": ["(inside the project) npx shadcn@latest mcp init --client claude, then check .mcp.json: if the shadcn server's command is npx, change it to command cmd with args [\"/c\", \"npx\", ...]"],
+      "publisher": "shadcn-ui",
       "detect": { "mcpName": ["shadcn"], "mcpArgs": ["shadcn"] },
       "what": "Browse and add shadcn/ui components. Writes the project's .mcp.json, so run it per project."
     },
     {
       "id": "sentry", "profile": "investigate", "kind": "plugin",
-      "plugin": "sentry@claude-plugins-official",
+      "plugin": "sentry@claude-plugins-official", "publisher": "Sentry (getsentry); OAuth to sentry.io",
       "detect": { "plugins": ["sentry@"], "mcpUrl": ["mcp.sentry.dev"] },
       "what": "Read Sentry issues, events and stack traces (OAuth to your own Sentry account)."
     },
     {
       "id": "grafana-mcp", "profile": "investigate", "kind": "plugin",
-      "plugin": "grafana-mcp@claude-plugins-official",
+      "plugin": "grafana-mcp@claude-plugins-official", "publisher": "Grafana Labs",
       "detect": { "plugins": ["grafana-mcp@", "grafana-cloud-mcp@"], "mcpName": ["grafana"] },
       "what": "Query Prometheus/Loki, dashboards, alerts (needs a Grafana service-account token)."
     },
     {
       "id": "serena", "profile": "investigate", "kind": "plugin",
-      "plugin": "serena@claude-plugins-official",
+      "plugin": "serena@claude-plugins-official", "publisher": "Oraios (community-managed entry in the official catalog)",
       "detect": { "plugins": ["serena@"], "mcpName": ["serena"] },
       "what": "Semantic code navigation for large codebases (symbol-level find/refactor)."
     },
     {
-      "id": "jira-confluence", "profile": "docs", "kind": "docs", "doc": "docs/jira-confluence.md",
+      "id": "jira-confluence", "profile": "docs", "kind": "docs", "doc": "docs/jira-confluence.md", "publisher": "Server/DC: sooperset/mcp-atlassian (community, PyPI via uvx); Cloud: Atlassian",
       "detect": { "mcpUrl": ["mcp.atlassian.com"], "mcpName": ["atlassian", "mcp-atlassian", "jira", "confluence"], "mcpArgs": ["mcp-atlassian"] },
       "what": "Not installed by the pack: each person connects with their own credentials (LDAP)."
     },
     {
-      "id": "figma", "profile": "docs", "kind": "docs", "doc": "docs/figma.md",
+      "id": "figma", "profile": "docs", "kind": "docs", "doc": "docs/figma.md", "publisher": "Figma",
       "detect": { "plugins": ["figma@"], "mcpUrl": ["mcp.figma.com"], "mcpName": ["figma"] },
       "what": "Not installed by the pack: each person connects their own Figma account."
     }
@@ -126,8 +141,8 @@
     {
       "id": "browser",
       "label": "Browser automation",
-      "match": { "mcpArgs": ["@playwright/mcp", "chrome-devtools-mcp", "puppeteer"], "mcpName": ["playwright", "chrome-devtools", "puppeteer", "browser"], "skills": ["browser-automation", "claude-in-chrome"], "plugins": ["playwright@", "chrome-devtools-mcp@"] },
-      "note": "Playwright: scripted, cross-browser, E2E. chrome-devtools: perf traces, Lighthouse, live debugging. Claude in Chrome: drives your real logged-in browser. More of these means more tool descriptions loaded in every session."
+      "match": { "mcpArgs": ["@playwright/mcp", "chrome-devtools-mcp", "puppeteer", "@modelcontextprotocol/server-puppeteer"], "mcpName": ["playwright", "chrome-devtools", "puppeteer"], "mcpNameExact": ["browser"], "skills": ["browser-automation", "claude-in-chrome"], "plugins": ["playwright@", "chrome-devtools-mcp@"] },
+      "note": "Playwright: scripted, cross-browser, E2E. chrome-devtools: perf traces, Lighthouse, live debugging. Claude in Chrome (built into Claude Code; this scan cannot see it): drives your real logged-in browser. More of these means more tool descriptions loaded in every session."
     },
     {
       "id": "code-review",
@@ -156,7 +171,7 @@
     {
       "id": "memory",
       "label": "Memory",
-      "match": { "mcpName": ["bantamkit", "memory"], "plugins": ["memory-keeper@", "reflexion@"], "skills": ["memory-management"] },
+      "match": { "mcpName": ["bantamkit"], "mcpNameExact": ["memory", "server-memory", "mem0", "openmemory"], "mcpArgs": ["@modelcontextprotocol/server-memory"], "plugins": ["memory-keeper@", "reflexion@"], "skills": ["memory-management"] },
       "note": "Claude's auto-memory is always on unless disabled. bantamkit syncs with it (exports its project facts into MEMORY.md and mirrors new auto-memory files). Other memory tools usually do not sync."
     },
     {

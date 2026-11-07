@@ -29,8 +29,14 @@ claude plugin install kktestdev-pack@kktest-dev
 
 Then start `claude` and run `/kk-onboard`.
 
-Requirements: Node.js 18+ (`node`, `npx`). Optional per stack: Go (gopls), Java (jdtls),
-`uv` (Jira/Confluence on Server/DC).
+Requirements: Node.js 22.22.2+ or 24+ (`node`, `npx`): typescript-language-server needs
+22.22.2+, and chrome-devtools-mcp, shadcn and bantamkit-mcp need 20.19+ (the inventory script
+alone runs on 18+). Optional per stack: Go (gopls), Java 21+ (jdtls), `uv` (Jira/Confluence on
+Server/DC). TypeScript projects need `typescript` as a devDependency: the language server uses
+the project's own `tsserver` (TypeScript 7, the native compiler, ships no `tsserver`).
+
+Windows (native): stdio MCP servers are registered through `cmd /c` (each MCP item in
+`pack.json` has `windows` steps, and `/kk-onboard` uses them). WSL and Git Bash work like Linux.
 
 ## What's in the pack
 
@@ -43,11 +49,37 @@ Requirements: Node.js 18+ (`node`, `npx`). Optional per stack: Go (gopls), Java 
 
 The catalog is [`skills/kk-onboard/pack.json`](skills/kk-onboard/pack.json). To change the pack,
 edit that file: `detect` says how an item is recognised as already installed, `steps` /
-`plugin` say how to install it, and `overlapGroups` drive the redundancy audit.
+`windows` / `plugin` say how to install it, and `overlapGroups` drive the redundancy audit. Its
+`keys` field lists which keys the script reads; the script reports unknown `detect` keys in
+`notes`.
+
+## Who publishes what
+
+Everything below runs with your user's permissions once installed. `npx`/`uvx` servers fetch
+their newest release from the registry on each start (team policy: no pinned versions).
+
+| Item | Publisher | How it runs |
+|---|---|---|
+| `superpowers` | obra (Jesse Vincent), `obra/superpowers` marketplace | plugin (skills) |
+| `impeccable` | pbakaus (Paul Bakaus), `pbakaus/impeccable` marketplace | plugin (skills) |
+| `kkskills-essentials`, this pack | Ink01101011, `Ink01101011/kktest-dev` marketplace (the pack author) | plugins (skills) |
+| `bantamkit` | Ink01101011 / kktestdev (the pack author), npm `bantamkit-mcp` | global npm bin, stdio MCP |
+| `context7` | Upstash, official plugin catalog | remote MCP: queries go to `mcp.context7.com` |
+| `typescript-lsp`, `gopls-lsp`, `pyright-lsp`, `jdtls-lsp` | Anthropic official plugin catalog | plugins; the language servers come from typescript-language-server (community), Go team (`gopls`), Microsoft (`pyright`), Eclipse Foundation (`jdtls`) |
+| `playwright` | Microsoft, npm `@playwright/mcp` | `npx` stdio MCP |
+| `chrome-devtools` | Google (ChromeDevTools), npm `chrome-devtools-mcp` | `npx` stdio MCP |
+| `next-devtools` | Vercel, npm `next-devtools-mcp` | `npx` stdio MCP |
+| `shadcn` | shadcn-ui, npm `shadcn` | `npx`, writes the project's `.mcp.json` |
+| `sentry` | Sentry, official plugin catalog | remote MCP (OAuth to your Sentry) |
+| `grafana-mcp` | Grafana Labs, official plugin catalog | MCP with your Grafana token |
+| `serena` | Oraios, community-managed entry in the official catalog | MCP |
+| Jira / Confluence (docs) | Server/DC: `sooperset/mcp-atlassian` (community, PyPI via `uvx`; the npm package of the same name is a different project). Cloud: Atlassian | stdio MCP / remote MCP |
+| Figma (docs) | Figma | claude.ai connector or official plugin |
 
 ## What the audit checks
 
-The read-only script `skills/kk-onboard/scripts/inventory.mjs` reports:
+The read-only script `skills/kk-onboard/scripts/inventory.mjs` reports (it always prints JSON;
+anything it cannot read is listed in `notes`):
 
 - **Redundancy**: the same MCP endpoint or package configured more than once (for example a
   claude.ai connector plus a synced plugin), the same skill name in several places, several
@@ -55,7 +87,14 @@ The read-only script `skills/kk-onboard/scripts/inventory.mjs` reports:
   that are installed but disabled.
 - **Risk**: credentials stored in plain text in MCP config (key names only, never values),
   servers or hooks that run code from a local path, hooks that run on every tool call, MCP
-  servers not connected or not authenticated, third-party marketplaces, and skills that ship
-  executable scripts.
+  servers not connected or not authenticated, third-party marketplaces, skills that ship
+  executable scripts, and broad permission rules. Findings about the pack's own items are
+  marked `packManaged`.
+- **Info**: servers that fetch their newest release from the registry on each start.
 
-Run it yourself: `node skills/kk-onboard/scripts/inventory.mjs [--fast]`.
+Secret values never reach the output: env/header values are not read out, and URLs, args, hook
+commands and CLI messages are redacted (`***`) before printing.
+
+Run it yourself: `node skills/kk-onboard/scripts/inventory.mjs [--fast] [--full] [--pretty]`.
+Tests (stdlib only, fake HOMEs in the temp dir):
+`node --test plugins/kktestdev-pack/skills/kk-onboard/scripts/` from the repo root.

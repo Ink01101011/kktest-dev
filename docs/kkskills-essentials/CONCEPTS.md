@@ -56,9 +56,10 @@ skills — `user-profile` and `feedback-use-full-filenames` — were moved to th
 
 A skill's `description` is loaded into context in **every** session, and Claude Code enables or
 disables whole *plugins*, never individual skills. So the fourteen are split by how often they
-actually fire: the five that fire routinely stay in `kkskills-essentials` (always on), and the nine
-that wait for a matching task live in `kkskills-situational` (one toggle). The nine are **correct and
-maintained** — `secret-hygiene` and `timezone-handling` are exactly right, they just have not come up.
+actually fire: the four that fire routinely stay in `kkskills-essentials` (always on), and the ten
+that wait for a matching task (or, like `plan-decompose-orchestrate`, overlap superpowers' planning
+skills) live in `kkskills-situational` (one toggle). The ten are **correct and maintained** —
+`secret-hygiene` and `timezone-handling` are exactly right, they just have not come up.
 
 The **Plugin** column below says which one ships each skill.
 

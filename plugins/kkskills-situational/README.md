@@ -4,10 +4,11 @@ Generic working skills that are **correct but not everyday** — split out of
 [`kkskills-essentials`](../kkskills-essentials) so they can be switched on and off as one unit.
 
 > Every installed skill's `description` is loaded into context in **every** session, and Claude Code
-> enables or disables whole *plugins*, never individual skills. These nine had not matched a task in
-> the measured window, so they live behind one toggle. That is a routing fact, not a quality
+> enables or disables whole *plugins*, never individual skills. Nine of these ten had not matched a
+> task in the measured window, so they live behind one toggle. That is a routing fact, not a quality
 > judgement: `secret-hygiene` and `timezone-handling` are exactly right — they just wait for the work
-> that needs them.
+> that needs them. The tenth, `plan-decompose-orchestrate`, moved here for a different reason: it
+> overlaps superpowers' planning skills, so it is opt-in.
 
 Turn it on when the work calls for it:
 
@@ -49,10 +50,11 @@ Several skills here cross-link siblings with `[[skill-name]]`, and some of those
 
 - `feedback-migrations-additive-first` → `[[feedback-additive-changes]]` (×2)
 - `meta-skill-self-improve` → `[[feedback-additive-changes]]` (×2), `[[proactive-task-reminders]]`
+- `plan-decompose-orchestrate` → `[[feedback-additive-changes]]`, `[[proactive-task-reminders]]`
 - `reference-clean-architecture` → `[[feedback-additive-changes]]`
 - `secret-hygiene` → `[[proactive-task-reminders]]` (×2)
 
-That is 9 link instances across 5 skill pairs, measured.
+That is 10 link instances across 7 skill pairs, measured.
 
 `[[…]]` is a prose pointer, not a resolved link — nothing dereferences it, so nothing errors. Install
 both plugins together and every pointer names an available skill; run this one alone and those four
