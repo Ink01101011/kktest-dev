@@ -507,4 +507,8 @@ test('projectRootOf: highest marked ancestor below HOME; never HOME or above', (
   const outside = nodePath.join(fx.root, 'work', 'repo');
   mkdirSync(nodePath.join(outside, '.git'), { recursive: true }); mkdirSync(nodePath.join(outside, 'a', 'b'), { recursive: true });
   assert.equal(projectRootOf(r(nodePath.join(outside, 'a', 'b')), r(fx.home)), r(outside));
+  // no depth cap: 70 levels below the repo root still find it
+  const deep = nodePath.join(outside, ...Array(70).fill('d'));
+  mkdirSync(deep, { recursive: true });
+  assert.equal(projectRootOf(r(deep), r(fx.home)), r(outside));
 });

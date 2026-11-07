@@ -258,7 +258,8 @@ export function npxRoots({ home, env = {}, platform = process.platform, npmCache
  */
 export function projectRootOf(dir, home) {
   let root = dir; let cur = dir;
-  for (let i = 0; i < 64 && cur && cur !== home && cur !== nodePath.parse(cur).root; i++) {
+  // no depth cap: the walk ends at HOME or the filesystem root (a cap let a very deep cwd escape, O7 I1)
+  while (cur && cur !== home && cur !== nodePath.parse(cur).root) {
     if (['.git', '.npmrc', 'package.json', '.mcp.json'].some((m) => existsSync(nodePath.join(cur, m)))) root = cur;
     const up = nodePath.dirname(cur);
     if (up === cur) break;
