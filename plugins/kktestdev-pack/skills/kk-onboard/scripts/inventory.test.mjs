@@ -39,7 +39,7 @@ function stubClaude({ plugins = [], marketplaces = [], mcpList = '', fail = {} }
     return { ok: false, error: 'unexpected' };
   };
 }
-const inv = (fx, argv = [], extra = {}) => run(argv, { home: fx.home, cwd: fx.cwd, env: {}, findBin: () => ({ found: true }), runClaude: stubClaude(), ...extra });
+const inv = (fx, argv = [], extra = {}) => run(argv, { home: fx.home, cwd: fx.cwd, env: {}, findBin: () => ({ found: true }), execClaude: stubClaude(), ...extra });
 const cats = (out) => out.findings.map((f) => f.category);
 const byCat = (out, c) => out.findings.filter((f) => f.category === c);
 const item = (out, id) => out.pack.find((p) => p.id === id);
@@ -60,7 +60,7 @@ function secretFixture(t) {
 
 test('G1-1/G2-1: no secret value from args, url, env, headers or hook commands appears in output (full mode)', async (t) => {
   const fx = secretFixture(t);
-  const out = await inv(fx, ['--full'], { runClaude: stubClaude({ mcpList: 'srv: https://x.example/mcp?token=HEALTHTOK1 (HTTP) - ✗ Failed to connect\n', fail: { 'plugin marketplace list --json': { ok: false, code: 1, error: 'boom --token=STDERRTOK2' } } }) });
+  const out = await inv(fx, ['--full'], { execClaude: stubClaude({ mcpList: 'srv: https://x.example/mcp?token=HEALTHTOK1 (HTTP) - ✗ Failed to connect\n', fail: { 'plugin marketplace list --json': { ok: false, code: 1, error: 'boom --token=STDERRTOK2' } } }) });
   const text = JSON.stringify(out);
   for (const c of CANARIES) assert.ok(!text.includes(c), `leaked ${c}`);
   assert.ok(out.installed.mcp.length >= 2, 'servers still listed');
@@ -134,7 +134,7 @@ test('G1-8/G2-6/G3-12: malformed shapes and non-JSON claude output give JSON wit
   write(join(fx.home, '.claude.json'), { mcpServers: { x: null, y: 'str', z: { command: 'node', args: 'notalist', env: 'nope' } }, projects: 'bad' });
   write(join(fx.home, '.claude', 'settings.json'), { hooks: { PreToolUse: 'x', PostToolUse: [null, { hooks: 'y' }] }, permissions: { allow: 'Bash' } });
   write(join(fx.cwd, '.mcp.json'), '{bad');
-  const out = await inv(fx, ['--full'], { runClaude: stubClaude({ plugins: 'Update available: 9.9\n[{"id":"p@m","enabled":true}]\n', marketplaces: 'Loading plugins...' }) });
+  const out = await inv(fx, ['--full'], { execClaude: stubClaude({ plugins: 'Update available: 9.9\n[{"id":"p@m","enabled":true}]\n', marketplaces: 'Loading plugins...' }) });
   assert.ok(!out.error, JSON.stringify(out.notes));
   assert.deepEqual(out.installed.plugins.map((p) => p.id), ['p@m'], 'JSON array extracted after a banner line');
   assert.ok(out.notes.some((n) => /marketplace list.*no JSON/.test(n)));
@@ -154,7 +154,7 @@ test('G3-6: settings.json with a UTF-8 BOM is read', async (t) => {
 
 test('G3-5: CRLF `claude mcp list` output is parsed', async (t) => {
   const fx = fakeHome(t);
-  const out = await inv(fx, ['--full'], { runClaude: stubClaude({ mcpList: 'Checking MCP server health...\r\n\r\nfoo: npx foo - ✓ Connected\r\nbar: https://b.example/mcp (HTTP) - ! Needs authentication\r\n' }) });
+  const out = await inv(fx, ['--full'], { execClaude: stubClaude({ mcpList: 'Checking MCP server health...\r\n\r\nfoo: npx foo - ✓ Connected\r\nbar: https://b.example/mcp (HTTP) - ! Needs authentication\r\n' }) });
   assert.equal(out.installed.mcpHealth.length, 2);
   assert.ok(byCat(out, 'mcp-unhealthy')[0].evidence[0].startsWith('bar: Needs authentication'));
   assert.deepEqual(parseMcpListLine('x: C:\\Users\\a\\npx.cmd y - ✓ Connected'), { name: 'x', target: 'C:\\Users\\a\\npx.cmd y', status: 'Connected' });
@@ -163,11 +163,11 @@ test('G3-5: CRLF `claude mcp list` output is parsed', async (t) => {
 test('G3-13/G4-1: claude missing or mcp list timing out still yields JSON; plugin items read unknown', async (t) => {
   const fx = fakeHome(t);
   const enoent = { ok: false, code: 'ENOENT', error: 'spawn claude ENOENT' };
-  const out = await inv(fx, [], { runClaude: stubClaude({ fail: { 'plugin list --json': enoent, 'plugin marketplace list --json': enoent, 'mcp list': enoent } }) });
+  const out = await inv(fx, [], { execClaude: stubClaude({ fail: { 'plugin list --json': enoent, 'plugin marketplace list --json': enoent, 'mcp list': enoent } }) });
   assert.match(out.notes[0], /claude was not found on PATH/);
   assert.equal(item(out, 'superpowers').status, 'unknown');
   assert.equal(item(out, 'playwright').status, 'missing');
-  const out2 = await inv(fx, [], { runClaude: stubClaude({ fail: { 'mcp list': { ok: false, code: 'ETIMEDOUT', error: 'timed out' } } }) });
+  const out2 = await inv(fx, [], { execClaude: stubClaude({ fail: { 'mcp list': { ok: false, code: 'ETIMEDOUT', error: 'timed out' } } }) });
   assert.ok(out2.notes.some((n) => /did not finish within 45 s/.test(n)));
   assert.equal(LIMITS.mcpListTimeoutMs, 45000);
 });
@@ -241,7 +241,7 @@ test('G1-7: plugin mcpServers as a path string or array, and flat .mcp.json non-
   write(join(pb, 'a.json'), { arr: { command: 'node' } });
   write(join(pb, '.mcp.json'), { srvx: { command: 'node' }, note: 'readme' });
   const plugins = [{ id: 'pa@m', enabled: true, installPath: pa, scope: 'user' }, { id: 'pb@m', enabled: true, installPath: pb, scope: 'user' }];
-  const out = await inv(fx, ['--full'], { runClaude: stubClaude({ plugins }) });
+  const out = await inv(fx, ['--full'], { execClaude: stubClaude({ plugins }) });
   assert.deepEqual(out.installed.mcp.map((s) => s.name).sort(), ['arr', 'fromfile', 'inline', 'srvx']);
   assert.ok(out.notes.some((n) => /not an MCP server config \(note\)/.test(n)));
 });
@@ -253,7 +253,7 @@ test('G1-6: a plugin enabled in two scopes is scanned once', async (t) => {
   write(join(pa, 'skills', 'sk', 'SKILL.md'), 'x');
   const plugins = [{ id: 'pa@m', enabled: true, installPath: pa, scope: 'user' }, { id: 'pa@m', enabled: true, installPath: pa, scope: 'project' },
     { id: 'fd@m', enabled: false, scope: 'user' }, { id: 'fd@m', enabled: false, scope: 'project' }];
-  const out = await inv(fx, [], { runClaude: stubClaude({ plugins }) });
+  const out = await inv(fx, [], { execClaude: stubClaude({ plugins }) });
   assert.equal(out.counts.mcp, 1);
   assert.equal(out.counts.skills, 1);
   assert.ok(!cats(out).includes('same-endpoint'));
@@ -288,7 +288,7 @@ test('G1-13: pack item present only as an unauthenticated or project-disabled se
   const fx = fakeHome(t);
   write(join(fx.home, '.claude.json'), { mcpServers: { playwright: { command: 'npx', args: ['-y', '@playwright/mcp@latest'] } }, projects: { [fx.cwd]: { disabledMcpServers: ['playwright'] } } });
   const plugins = [{ id: 'figma@claude-plugins-official', enabled: true, scope: 'user' }];
-  const out = await inv(fx, [], { runClaude: stubClaude({ plugins, mcpList: 'plugin:figma:figma: https://mcp.figma.com/mcp (HTTP) - ! Needs authentication\n' }) });
+  const out = await inv(fx, [], { execClaude: stubClaude({ plugins, mcpList: 'plugin:figma:figma: https://mcp.figma.com/mcp (HTTP) - ! Needs authentication\n' }) });
   assert.equal(item(out, 'figma').status, 'needs-attention');
   assert.match(item(out, 'figma').foundAs[0], /Needs authentication/);
   assert.equal(item(out, 'playwright').status, 'disabled');
@@ -297,7 +297,7 @@ test('G1-13: pack item present only as an unauthenticated or project-disabled se
 test('G1-14: the pack\'s own marketplaces and all-pack overlap groups are marked packManaged', async (t) => {
   const fx = fakeHome(t);
   const marketplaces = [{ name: 'superpowers-dev', source: 'github', repo: 'obra/superpowers' }, { name: 'other', source: 'github', repo: 'x/y' }, { name: 'claude-plugins-official', source: 'github', repo: 'anthropics/claude-plugins-official' }];
-  const out = await inv(fx, [], { runClaude: stubClaude({ marketplaces }) });
+  const out = await inv(fx, [], { execClaude: stubClaude({ marketplaces }) });
   const f = byCat(out, 'third-party-marketplace');
   assert.equal(f.length, 2);
   assert.equal(f.find((x) => x.title.includes('superpowers-dev')).packManaged, true);
@@ -423,7 +423,7 @@ test('G5-N1: marketplace repo/url carrying a token is redacted in installed list
     { name: 'tok', source: 'git', repo: 'https://ghp_CANAN1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@github.com/o/r.git' },
     { name: 'u', source: 'git', url: 'https://bob:CANAN12@git.example/r.git' },
   ];
-  const out = await inv(fx, ['--full'], { runClaude: stubClaude({ marketplaces }) });
+  const out = await inv(fx, ['--full'], { execClaude: stubClaude({ marketplaces }) });
   const txt = JSON.stringify(out);
   assert.ok(!txt.includes('CANAN1aaaa') && !txt.includes('CANAN12'), 'token leaked');
   const ev = byCat(out, 'third-party-marketplace').flatMap((f) => f.evidence).join('\n');
@@ -481,7 +481,7 @@ test('G7-4: text over LIMITS.redactChars is cut before redaction and a secret pa
 
 test('G7-5: marketplace source is redacted too', async (t) => {
   const fx = fakeHome(t);
-  const out = await inv(fx, ['--full'], { runClaude: stubClaude({ marketplaces: [{ name: 's', source: 'https://bob:CANAG13@git.example/r.git' }] }) });
+  const out = await inv(fx, ['--full'], { execClaude: stubClaude({ marketplaces: [{ name: 's', source: 'https://bob:CANAG13@git.example/r.git' }] }) });
   assert.ok(!JSON.stringify(out).includes('CANAG13'));
 });
 
@@ -566,7 +566,7 @@ const SERENA_MCP = { serena: { command: 'uvx', args: ['--from', 'git+https://git
 test('I3: code-nav fires for a hand-added serena MCP plus an LSP plugin; serena alone or an LSP plugin alone does not', async (t) => {
   const fx = fakeHome(t);
   write(join(fx.home, '.claude.json'), { mcpServers: SERENA_MCP });
-  const both = await inv(fx, [], { runClaude: stubClaude({ plugins: [LSP] }) });
+  const both = await inv(fx, [], { execClaude: stubClaude({ plugins: [LSP] }) });
   const f = byCat(both, 'overlap:code-nav')[0];
   assert.ok(f, 'serena MCP + typescript-lsp must report code-nav');
   assert.match(f.title, /2 tools/);
@@ -575,9 +575,9 @@ test('I3: code-nav fires for a hand-added serena MCP plus an LSP plugin; serena 
   const alone = await inv(fx);
   assert.equal(byCat(alone, 'overlap:code-nav').length, 0, 'serena alone is not an overlap');
   write(join(fx.home, '.claude.json'), {});
-  const lspOnly = await inv(fx, [], { runClaude: stubClaude({ plugins: [LSP] }) });
+  const lspOnly = await inv(fx, [], { execClaude: stubClaude({ plugins: [LSP] }) });
   assert.equal(byCat(lspOnly, 'overlap:code-nav').length, 0, 'an LSP plugin alone is not an overlap (every core machine has one)');
-  const twoLsp = await inv(fx, [], { runClaude: stubClaude({ plugins: [LSP, { id: 'gopls-lsp@claude-plugins-official', enabled: true, scope: 'user' }] }) });
+  const twoLsp = await inv(fx, [], { execClaude: stubClaude({ plugins: [LSP, { id: 'gopls-lsp@claude-plugins-official', enabled: true, scope: 'user' }] }) });
   assert.equal(byCat(twoLsp, 'overlap:code-nav').length, 0, 'several LSP plugins and no serena: not code-nav');
 });
 
@@ -588,12 +588,12 @@ test('I3: a plugin and the MCP server it starts count as one tool (serena plugin
   const pw = join(fx.home, 'pw-plugin');
   write(join(pw, '.mcp.json'), { mcpServers: { playwright: { command: 'npx', args: ['@playwright/mcp@latest'] } } });
   const plugins = [{ id: 'serena@claude-plugins-official', enabled: true, scope: 'user', installPath: serena }, { id: 'playwright@claude-plugins-official', enabled: true, scope: 'user', installPath: pw }];
-  const out = await inv(fx, [], { runClaude: stubClaude({ plugins }) });
+  const out = await inv(fx, [], { execClaude: stubClaude({ plugins }) });
   assert.equal(byCat(out, 'overlap:code-nav').length, 0, cats(out).join());
   assert.equal(byCat(out, 'overlap:browser').length, 0, cats(out).join());
   // a second, different browser tool still fires, and the plugin's own server is listed but not counted
   write(join(fx.home, '.claude.json'), { mcpServers: { 'chrome-devtools': { command: 'npx', args: ['chrome-devtools-mcp@latest'] } } });
-  const out2 = await inv(fx, [], { runClaude: stubClaude({ plugins }) });
+  const out2 = await inv(fx, [], { execClaude: stubClaude({ plugins }) });
   const b = byCat(out2, 'overlap:browser')[0];
   assert.ok(b);
   assert.match(b.title, /2 tools/);

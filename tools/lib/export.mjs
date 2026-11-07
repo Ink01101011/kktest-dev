@@ -7,8 +7,10 @@ import { createZip, readZip } from './zip.mjs';
 import { CONFIG_KEY, codexToml, jsonEntry } from './mcp.mjs';
 import { homeDir, liveToolDirs } from './paths.mjs';
 import { lexists } from './safefs.mjs';
+import { EXPORT_TARGETS, TARGET } from './providers.mjs';
 
-export const EXPORT_TARGETS = ['agents', 'claude-ai', 'chatgpt', 'gemini-extension', 'codex', 'cursor', 'vscode', 'claude-desktop', 'windsurf'];
+// The target list, snippet file names and how-to lines live in providers.mjs.
+export { EXPORT_TARGETS } from './providers.mjs';
 // Manifest of what the last export wrote into a folder; a re-export deletes only those files (G2-04).
 export const MARKER = '.kktest-dev-export';
 const MARKER_TOOL = 'kktest-dev export';
@@ -22,24 +24,6 @@ const ZIP_MAX_FILE_BYTES = 25 * MB;
 const ZIP_MAX_BYTES = 50 * MB;
 const SERVERS_NOTE =
   'The config points at the servers/ folder inside this export with absolute paths: keep this folder, or move it first and fix the paths (or use `kktest-dev install`, which copies the servers to ~/.kktest-dev/servers).';
-
-const CONFIG_FILE = {
-  codex: 'config.toml',
-  cursor: 'mcp.json',
-  vscode: 'mcp.json',
-  'claude-desktop': 'claude_desktop_config.json',
-  windsurf: 'mcp_config.json',
-};
-
-const HOW_TO = {
-  codex: 'Append config.toml to ~/.codex/config.toml (or .codex/config.toml in a trusted project).',
-  cursor: 'Merge mcp.json into ~/.cursor/mcp.json (or .cursor/mcp.json in the project).',
-  vscode: 'Merge mcp.json ("servers") into .vscode/mcp.json, or run "MCP: Open User Configuration" and paste there.',
-  'claude-desktop':
-    'Merge into claude_desktop_config.json (macOS ~/Library/Application Support/Claude/, Windows %APPDATA%\\Claude\\, Linux ~/.config/Claude/) and restart Claude Desktop.',
-  windsurf:
-    'Windsurf is now Devin Local (docs.devin.ai). Merge mcp_config.json ("mcpServers") into .devin/mcp_config.json (project), ~/.config/devin/mcp_config.json (user) or %APPDATA%\\devin\\mcp_config.json (Windows user). UNVERIFIED: whether Devin Local reads exactly these files (its page links to the Devin CLI docs for them).',
-};
 
 /** Files a server needs, keyed by path relative to the server copy root. */
 export function serverRuntimeFiles(plugin, server, root) {
@@ -71,7 +55,7 @@ export function planExport(catalog, target, { outDir, plugin, skill, log = () =>
   refuseLiveOut(out, { env, platform });
   let dir;
 
-  if (target === 'agents' || target === 'claude-ai' || target === 'chatgpt') {
+  if (TARGET[target].export === 'skills') {
     dir = target === 'agents' ? path.join(out, '.agents') : path.join(out, target);
     reportSkipped(plugins, log);
     for (const p of skillPlugins(plugins, log)) {
@@ -99,15 +83,7 @@ export function planExport(catalog, target, { outDir, plugin, skill, log = () =>
         files.push({ rel: `${s.name}.zip`, data: zipBuf });
       }
     }
-    if (target !== 'agents') {
-      notes.push(
-        target === 'claude-ai'
-          ? 'Upload each zip at claude.ai: Customize > Skills > + > Create skill > Upload a skill (code execution must be enabled). Documented: name at most 64 characters, description at most 200, the skill folder at the zip root. Zip size limit: UNVERIFIED (not documented; these zips stay within the OpenAI API limits of 50 MB / 500 files / 25 MB per file).'
-          : 'Upload each zip in ChatGPT: Plugins > Skills > Create > Upload from your computer. The zips stay within the documented OpenAI API skill limits (50 MB zip, 500 files, 25 MB per file); the ChatGPT app\'s own size limit and Plus/Pro eligibility are UNVERIFIED (its help page refuses automated reads).',
-      );
-    } else {
-      notes.push('Copy skills/<name>/ into .agents/skills/ (project) or ~/.agents/skills/ (user). Read by Codex, Gemini CLI, VS Code Copilot, Copilot CLI and Cursor.');
-    }
+    notes.push(TARGET[target].howTo);
   } else if (target === 'gemini-extension') {
     const extName = plugin && !String(plugin).includes(',') ? String(plugin) : 'kktest-dev';
     dir = path.join(out, 'gemini-extension', extName);
@@ -164,8 +140,8 @@ export function planExport(catalog, target, { outDir, plugin, skill, log = () =>
       }
       text = JSON.stringify({ [CONFIG_KEY[target]]: block }, null, 2) + '\n';
     }
-    if (servers.length) files.push({ rel: CONFIG_FILE[target], data: Buffer.from(text) });
-    notes.push(HOW_TO[target], ...allNotes);
+    if (servers.length) files.push({ rel: TARGET[target].exportFile, data: Buffer.from(text) });
+    notes.push(TARGET[target].howTo, ...allNotes);
     if (servers.length) notes.push(SERVERS_NOTE);
     if (target === 'windsurf') notes.push('Env references in "env" are UNVERIFIED for Windsurf/Devin (${env:VAR} is documented for OAuth fields only); secrets are left as placeholders.');
   }

@@ -3,11 +3,11 @@
 // Exit codes: 0 ok, 1 usage error, 2 refused or failed (one REFUSED:/ERROR: line, never a stack trace).
 import { parseArgs } from 'node:util';
 import readline from 'node:readline';
-import { loadCatalog, RefusedError, UsageError, SKILL_TARGETS, MCP_TARGETS, skillTargets } from './lib/catalog.mjs';
+import { loadCatalog, RefusedError, UsageError, skillTargets } from './lib/catalog.mjs';
 import { FrontmatterError, LIMITS } from './lib/frontmatter.mjs';
-import { EXPORT_TARGETS, planExport, writeExport } from './lib/export.mjs';
+import { planExport, writeExport } from './lib/export.mjs';
 import { applyPlan, formatPlan, pendingChanges, planInstall } from './lib/install.mjs';
-import { INSTALL_TARGETS } from './lib/paths.mjs';
+import { EXPORT_TARGETS, INSTALL_TARGETS, MCP_TARGETS, SKILL_TARGETS, UNVERIFIED_TARGETS, helpRows } from './lib/providers.mjs';
 import { ApplyError } from './lib/safefs.mjs';
 
 const HELP = {
@@ -30,15 +30,7 @@ that accept each.`,
   export: `Usage: kktest-dev export --target <t> [--out dir] [--plugin p[,p]] [--skill s[,s]]
 
 Targets:
-  agents            .agents/skills/<name>/ (Codex, Gemini CLI, VS Code Copilot, Copilot CLI, Cursor)
-  claude-ai         one .zip per skill for claude.ai upload (description <= 200 chars)
-  chatgpt           one .zip per skill for ChatGPT upload
-  gemini-extension  a Gemini CLI extension folder (gemini-extension.json + skills + MCP servers)
-  codex             config.toml [mcp_servers.*] snippet + server files
-  cursor            mcp.json snippet + server files
-  vscode            .vscode/mcp.json ("servers") snippet + server files
-  claude-desktop    claude_desktop_config.json snippet + server files
-  windsurf          mcp_config.json snippet (UNVERIFIED format) + server files
+${helpRows(EXPORT_TARGETS, 'exportHelp', 16)}
 
 Options:
   --out <dir>       output folder (default: ./kktest-dev-export)
@@ -53,15 +45,7 @@ MCP configs point at the servers/ folder inside the export with absolute paths: 
                           [--only all|skills|mcp] [--plugin p[,p]] [--skill s[,s]]
 
 Targets: ${INSTALL_TARGETS.join(', ')}
-  agents          skills -> ~/.agents/skills (or ./.agents/skills with --scope project)
-  codex           skills + [mcp_servers.*] appended to ~/.codex/config.toml, $CODEX_HOME/config.toml
-                  when CODEX_HOME is set (or .codex/config.toml with --scope project)
-  gemini          skills + mcpServers merged into ~/.gemini/settings.json (or .gemini/settings.json)
-  cursor          skills + mcpServers merged into ~/.cursor/mcp.json (or .cursor/mcp.json)
-  vscode          skills + servers merged into .vscode/mcp.json (project); user scope prints
-                  the "code --add-mcp" command to run
-  claude-desktop  mcpServers merged into claude_desktop_config.json (user scope only)
-  windsurf        refused: config format unverified (use export --target windsurf)
+${helpRows(INSTALL_TARGETS, 'installHelp', 14)}
 
 Without --apply nothing is written: the exact changes are printed.
 With --apply: each changed file is backed up to <file>.kktest-dev.bak-<timestamp>-<random>, JSON is
@@ -101,7 +85,7 @@ function cmdList(args) {
   if (values.json) return out(JSON.stringify(rows, null, 2)), 0;
   out(`kktest-dev ${catalog.version}: ${rows.length} plugins`);
   out(`skill targets: ${SKILL_TARGETS.join(', ')}`);
-  out(`MCP targets:   ${MCP_TARGETS.join(', ')} (windsurf unverified)\n`);
+  out(`MCP targets:   ${MCP_TARGETS.join(', ')} (${UNVERIFIED_TARGETS.join(', ')} unverified)\n`);
   for (const r of rows) {
     out(`${r.plugin}  [${r.tier}]${r.optIn ? ' (opt-in)' : ''}${r.note ? `  - ${r.note}` : ''}`);
     for (const s of r.skills) out(`  skill ${s.name}${s.descriptionChars > LIMITS.zipDescription ? ' (zip uses short description)' : ''} -> ${s.targets.join(', ') || 'none'}`);

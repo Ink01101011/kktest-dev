@@ -172,7 +172,7 @@ test('#20/G3-20/G3-14a: CLAUDE_CONFIG_DIR under APPDATA is honoured; a binary th
 
 test('#20/G3-14b: under WSL (platform linux + WSL_DISTRO_NAME) the inventory says Windows-side configs were not read', async (t) => {
   const fx = fakeHome(t);
-  const out = await inventoryRun([], { home: fx.home, cwd: fx.cwd, platform: 'linux', env: { WSL_DISTRO_NAME: 'Ubuntu' }, findBin: () => ({ found: true }), runClaude: async () => ({ ok: true, stdout: '[]' }) });
+  const out = await inventoryRun([], { home: fx.home, cwd: fx.cwd, platform: 'linux', env: { WSL_DISTRO_NAME: 'Ubuntu' }, findBin: () => ({ found: true }), execClaude: async () => ({ ok: true, stdout: '[]' }) });
   assert.ok(!out.error, JSON.stringify(out.notes));
   assert.ok(out.notes.some((n) => /WSL detected/.test(n)), JSON.stringify(out.notes));
 });
@@ -209,7 +209,7 @@ test('O2-8 (all OSes; win32 = directory junction, no admin needed): a linked doc
   const runStub = async (cmd, args) => (cmd === 'npm' && args[0] === 'root' ? { ok: true, stdout: npmRoot + '\n' } : { ok: false, code: 1, error: 'not stubbed' });
   const out = await optionsRun(['--item', 'demo'], {
     home: fx.home, cwd: fx.cwd, env: { CLAUDE_CONFIG_DIR: nodePath.join(fx.home, '.claude') }, platform: process.platform === 'win32' ? 'win32' : 'linux',
-    pack, findBin: () => ({ found: false }), run: runStub, runClaude: async () => ({ ok: false, code: 1, error: 'not stubbed' }),
+    pack, findBin: () => ({ found: false }), exec: runStub, execClaude: async () => ({ ok: false, code: 1, error: 'not stubbed' }),
   });
   const demo = out.items.find((i) => i.id === 'demo');
   assert.ok(demo, JSON.stringify(out));

@@ -101,7 +101,8 @@ export function targetPaths(target, { platform = process.platform, env = process
   }
 }
 
-export const INSTALL_TARGETS = ['agents', 'codex', 'gemini', 'cursor', 'vscode', 'claude-desktop', 'windsurf'];
+// The target list lives in providers.mjs; re-exported here for existing importers.
+export { INSTALL_TARGETS } from './providers.mjs';
 
 /** Folders other tools read live; `export --out` must not point at (or inside) them. */
 export function liveToolDirs({ platform = process.platform, env = process.env } = {}) {

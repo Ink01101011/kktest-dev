@@ -104,3 +104,13 @@ export function readJsonText(input, { jsonc = false } = {}) {
 export function isMain(importMetaUrl) {
   try { return !!process.argv[1] && importMetaUrl === pathToFileURL(realpathSync(process.argv[1])).href; } catch { return false; }
 }
+
+/**
+ * The injected process runners are opts.exec (any command) and opts.execClaude (the claude CLI); they were called
+ * run / runClaude before issue #23. An old name would be ignored and the REAL command run, so it is refused.
+ */
+export function refuseOldRunnerNames(opts) {
+  for (const [old, now] of [['run', 'exec'], ['runClaude', 'execClaude']]) {
+    if (opts && Object.hasOwn(opts, old)) throw new TypeError(`opts.${old} was renamed to opts.${now}`);
+  }
+}

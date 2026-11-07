@@ -73,6 +73,10 @@ def item_theme(name, fallback, where, what="the panel colours"):
     return fallback
 
 
+def _vert(side):
+    return side in ("top", "bottom")
+
+
 class Diagram:
     def __init__(self, spec):
         self.spec = spec
@@ -98,36 +102,51 @@ class Diagram:
         title = req(p, "title", where)
         subtitle = opt_str(p, "subtitle", where)
         self.boxes[pid] = (x, y, w, h)
-        P = self.parts
-        P.append(f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="18" fill="{tint}" '
-                 f'stroke="{base}" stroke-width="2.5" filter="url(#sh)"/>')
-
         style = p.get("style", "cards")   # cards | columns | solid (whole panel = one node)
         if style not in ("cards", "columns", "solid"):
             raise SpecError(f'{where}.style: {short(style)} is not one of cards, columns, solid')
         if style == "solid":
-            # single highlighted node, e.g. "API Gateway"
-            P[-1] = (f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="16" fill="{base}" '
-                     f'filter="url(#sh)"/>')
-            has_sub = bool(subtitle)
-            cy = y + h / 2
-            tw = approx_w(title, 24, 700)
-            sw = approx_w(subtitle, 15, 500) if has_sub else 0
-            bw = max(tw, sw)                       # text block width
-            ic = 34 if p.get("icon") else 0
-            gap = 14 if ic else 0
-            check(title, 24, 700, w - 2 * PAD_IN - ic - gap, f'{where} title')
-            if has_sub:
-                check(subtitle, 15, 500, w - 2 * PAD_IN - ic - gap, f'{where} subtitle')
-            tx = x + w / 2 + (ic + gap) / 2          # centre of text block
-            if ic:
-                P.append(icon(p["icon"], tx - bw / 2 - gap - ic, cy - ic / 2, ic, "#fff", 2.2))
-            P.append(text(tx, cy - (12 if has_sub else 0), title, 24, "#fff", 700))
-            if has_sub:
-                P.append(text(tx, cy + 18, subtitle, 15, "#E6EEFF", 500))
+            self.solid_panel(p, where, (x, y, w, h), title, subtitle, base)
             return
+        self.parts.append(f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="18" fill="{tint}" '
+                          f'stroke="{base}" stroke-width="2.5" filter="url(#sh)"/>')
+        top = self.panel_header(p, where, (x, y, w, h), title, subtitle, ink)
+        items = opt_list(p, "items", where)
+        if not items:
+            return
+        footer = opt_str(p, "footer", where)
+        bottom = y + h - 16 - (40 if footer else 0)
+        self.panel_items(p, pid, where, items, (x, w), top, bottom, style, (base, soft, ink))
+        if footer:
+            self.panel_footer(footer, where, (x, w), bottom)
 
-        # header
+    def solid_panel(self, p, where, box, title, subtitle, base):
+        """single highlighted node, e.g. "API Gateway": icon + title (+ subtitle) centred on a solid fill"""
+        x, y, w, h = box
+        P = self.parts
+        P.append(f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="16" fill="{base}" '
+                 f'filter="url(#sh)"/>')
+        has_sub = bool(subtitle)
+        cy = y + h / 2
+        tw = approx_w(title, 24, 700)
+        sw = approx_w(subtitle, 15, 500) if has_sub else 0
+        bw = max(tw, sw)                       # text block width
+        ic = 34 if p.get("icon") else 0
+        gap = 14 if ic else 0
+        check(title, 24, 700, w - 2 * PAD_IN - ic - gap, f'{where} title')
+        if has_sub:
+            check(subtitle, 15, 500, w - 2 * PAD_IN - ic - gap, f'{where} subtitle')
+        tx = x + w / 2 + (ic + gap) / 2          # centre of text block
+        if ic:
+            P.append(icon(p["icon"], tx - bw / 2 - gap - ic, cy - ic / 2, ic, "#fff", 2.2))
+        P.append(text(tx, cy - (12 if has_sub else 0), title, 24, "#fff", 700))
+        if has_sub:
+            P.append(text(tx, cy + 18, subtitle, 15, "#E6EEFF", 500))
+
+    def panel_header(self, p, where, box, title, subtitle, ink):
+        """icon + title (+ subtitle) at the top of a cards/columns panel; returns the y where items start"""
+        x, y, w, _ = box
+        P = self.parts
         hy = y + 34
         tw = approx_w(title, 22, 700)
         ic = 28 if p.get("icon") else 0
@@ -139,16 +158,16 @@ class Diagram:
         if ic:
             P.append(icon(p["icon"], tx - tw / 2 - gap - ic, hy - ic / 2, ic, ink, 2.1))
         P.append(text(tx, hy, title, 22, "#111827", 700))
-        top = y + 58
         if subtitle:
             P.append(text(x + w / 2, y + 60, subtitle, 15, "#1F2937", 600))
-            top = y + 80
+            return y + 80
+        return y + 58
 
-        items = opt_list(p, "items", where)
-        if not items:
-            return
-        footer = opt_str(p, "footer", where)
-        bottom = y + h - 16 - (40 if footer else 0)
+    def panel_items(self, p, pid, where, items, xw, top, bottom, style, colours):
+        """the items side by side between top and bottom, as cards or columns, with flow arrows between them"""
+        x, w = xw
+        base, soft, ink = colours
+        P = self.parts
         pad, gapc = 18, (34 if p.get("flow") else 14)
         n = len(items)
         cw = (w - 2 * pad - (n - 1) * gapc) / n
@@ -172,14 +191,18 @@ class Diagram:
                 ay = top + ch / 2
                 P.append(f'<line x1="{ax}" y1="{ay}" x2="{ax+gapc-10}" y2="{ay}" stroke="{EDGE}" '
                          f'stroke-width="3" marker-end="url(#ah)"/>')
-        if footer:
-            fx1, fx2 = x + pad + 30, x + w - pad - 30
-            fy = bottom + 8
-            mid = (fx1 + fx2) / 2
-            check(footer, 15, 600, w - 2 * pad, f'{where} footer')
-            P.append(f'<path d="M{fx1} {fy} q0 10 10 10 H{mid-10} q10 0 10 8 q0 -8 10 -8 '
-                     f'H{fx2-10} q10 0 10 -10" fill="none" stroke="{EDGE}" stroke-width="2"/>')
-            P.append(text(mid, fy + 32, footer, 15, "#111827", 600))
+
+    def panel_footer(self, footer, where, xw, bottom):
+        """a brace under the items with the footer text below it"""
+        x, w = xw
+        pad = 18
+        fx1, fx2 = x + pad + 30, x + w - pad - 30
+        fy = bottom + 8
+        mid = (fx1 + fx2) / 2
+        check(footer, 15, 600, w - 2 * pad, f'{where} footer')
+        self.parts.append(f'<path d="M{fx1} {fy} q0 10 10 10 H{mid-10} q10 0 10 8 q0 -8 10 -8 '
+                          f'H{fx2-10} q10 0 10 -10" fill="none" stroke="{EDGE}" stroke-width="2"/>')
+        self.parts.append(text(mid, fy + 32, footer, 15, "#111827", 600))
 
     def card(self, x, y, w, h, it, lab, base, soft, ink, where):
         P = self.parts
@@ -315,10 +338,23 @@ class Diagram:
                 raise SpecError(f"{where}.{key}: {short(e.get(key))} is not one of {', '.join(SIDES)}")
         fs, ts = self.auto_sides(a, b)
         fs, ts = e.get("fromSide") or fs, e.get("toSide") or ts
+        p1, p2 = self.edge_ends(e, where, a, b, fs, ts)
+        pts = self.route(e, where, fs, ts, p1, p2)
+        self.maxy = max(self.maxy, max(py for _, py in pts))
+        d = "M" + " L".join(f"{px:.1f} {py:.1f}" for px, py in pts)
+        dash = ' stroke-dasharray="8 6"' if e.get("dashed") else ""
+        color_ = item_theme(e.get("theme"), (EDGE,), where, "the default edge colour")[0]
+        start = ' marker-start="url(#ahs)"' if e.get("both") else ""
+        self.parts.append(f'<path d="{d}" fill="none" stroke="{color_}" stroke-width="3"{dash} '
+                          f'stroke-linejoin="round" marker-end="url(#ah)"{start}/>')
+        label = opt_str(e, "label", where)
+        pill = self.edge_label(label, pts, color_) if label else None
+        self.edge_lint(e, label, pts, pill)
+
+    def edge_ends(self, e, where, a, b, fs, ts):
+        """start and end points on the chosen sides, straightened or snapped when the boxes allow it"""
         p1 = self.anchor(a, fs, num(e.get("fromOffset"), f"{where}.fromOffset", 0.5))
         p2 = self.anchor(b, ts, num(e.get("toOffset"), f"{where}.toOffset", 0.5))
-        midX = None if e.get("midX") is None else num(e.get("midX"), f"{where}.midX")
-        midY = None if e.get("midY") is None else num(e.get("midY"), f"{where}.midY")
         # auto-straighten: opposite sides + overlapping span + no explicit offsets
         if "fromOffset" not in e and "toOffset" not in e and {fs, ts} in ({"top", "bottom"}, {"left", "right"}):
             ax, ay, aw, ah = self.boxes[a]
@@ -333,62 +369,59 @@ class Diagram:
                 if hi - lo > 24:
                     m = (lo + hi) / 2
                     p1, p2 = (p1[0], m), (p2[0], m)
-        vert = lambda s: s in ("top", "bottom")   # noqa: E731
         # snap tiny jogs (< 28px) to a straight line when the target side can take it
         bx_, by_, bw_, bh_ = self.boxes[b]
-        if vert(fs) and vert(ts) and fs != ts and 0 < abs(p1[0] - p2[0]) < 28 and bx_ + 14 < p1[0] < bx_ + bw_ - 14:
+        if _vert(fs) and _vert(ts) and fs != ts and 0 < abs(p1[0] - p2[0]) < 28 and bx_ + 14 < p1[0] < bx_ + bw_ - 14:
             p2 = (p1[0], p2[1])
-        if not vert(fs) and not vert(ts) and fs != ts and 0 < abs(p1[1] - p2[1]) < 28 and by_ + 14 < p1[1] < by_ + bh_ - 14:
+        if not _vert(fs) and not _vert(ts) and fs != ts and 0 < abs(p1[1] - p2[1]) < 28 and by_ + 14 < p1[1] < by_ + bh_ - 14:
             p2 = (p2[0], p1[1])
+        return p1, p2
+
+    def route(self, e, where, fs, ts, p1, p2):
+        """orthogonal path p1 -> p2: a U around the outside (same sides), a Z (opposite sides) or an L"""
+        midX = None if e.get("midX") is None else num(e.get("midX"), f"{where}.midX")
+        midY = None if e.get("midY") is None else num(e.get("midY"), f"{where}.midY")
         pts = [p1]
         if fs == ts:  # U-route around the outside (e.g. bottom -> bottom)
             o = num(e.get("detour"), f"{where}.detour", 36)
-            if vert(fs):
+            if _vert(fs):
                 my = midY if midY is not None else (max(p1[1], p2[1]) + o if fs == "bottom" else min(p1[1], p2[1]) - o)
                 pts += [(p1[0], my), (p2[0], my)]
             else:
                 mx = midX if midX is not None else (max(p1[0], p2[0]) + o if fs == "right" else min(p1[0], p2[0]) - o)
                 pts += [(mx, p1[1]), (mx, p2[1])]
-        elif vert(fs) and vert(ts):
+        elif _vert(fs) and _vert(ts):
             if abs(p1[0] - p2[0]) > 1:
                 my = midY if midY is not None else (p1[1] + p2[1]) / 2
                 pts += [(p1[0], my), (p2[0], my)]
-        elif not vert(fs) and not vert(ts):
+        elif not _vert(fs) and not _vert(ts):
             if abs(p1[1] - p2[1]) > 1:
                 mx = midX if midX is not None else (p1[0] + p2[0]) / 2
                 pts += [(mx, p1[1]), (mx, p2[1])]
-        elif vert(fs):
+        elif _vert(fs):
             pts.append((p1[0], p2[1]))
         else:
             pts.append((p2[0], p1[1]))
         pts.append(p2)
-        self.maxy = max(self.maxy, max(py for _, py in pts))
-        d = "M" + " L".join(f"{px:.1f} {py:.1f}" for px, py in pts)
-        dash = ' stroke-dasharray="8 6"' if e.get("dashed") else ""
-        color_ = item_theme(e.get("theme"), (EDGE,), where, "the default edge colour")[0]
-        start = ' marker-start="url(#ahs)"' if e.get("both") else ""
-        self.parts.append(f'<path d="{d}" fill="none" stroke="{color_}" stroke-width="3"{dash} '
-                          f'stroke-linejoin="round" marker-end="url(#ah)"{start}/>')
-        pill = None
-        label = opt_str(e, "label", where)
-        if label:
-            # place the pill at the half-length point of the whole path (centre of the gap)
-            segs = list(zip(pts, pts[1:]))
-            lens = [abs(s[0][0]-s[1][0]) + abs(s[0][1]-s[1][1]) for s in segs]
-            half, acc = sum(lens) / 2, 0
-            mx, my = pts[0]
-            for ((sx, sy), (ex, ey)), L in zip(segs, lens):
-                if acc + L >= half and L > 0:
-                    t = (half - acc) / L
-                    mx, my = sx + (ex - sx) * t, sy + (ey - sy) * t
-                    break
-                acc += L
-            lw = approx_w(label, 13, 600) + 18
-            pill = (mx - lw / 2, my - 12, lw, 24)
-            self.parts.append(f'<rect x="{mx-lw/2:.1f}" y="{my-12:.1f}" width="{lw:.1f}" height="24" '
-                              f'rx="12" fill="#fff" stroke="{color_}" stroke-width="1.5"/>')
-            self.parts.append(text(mx, my, label, 13, "#111827", 600))
-        self.edge_lint(e, label, pts, pill)
+        return pts
+
+    def edge_label(self, label, pts, color_):
+        """a pill at the half-length point of the whole path (centre of the gap); returns its box"""
+        segs = list(zip(pts, pts[1:]))
+        lens = [abs(s[0][0]-s[1][0]) + abs(s[0][1]-s[1][1]) for s in segs]
+        half, acc = sum(lens) / 2, 0
+        mx, my = pts[0]
+        for ((sx, sy), (ex, ey)), L in zip(segs, lens):
+            if acc + L >= half and L > 0:
+                t = (half - acc) / L
+                mx, my = sx + (ex - sx) * t, sy + (ey - sy) * t
+                break
+            acc += L
+        lw = approx_w(label, 13, 600) + 18
+        self.parts.append(f'<rect x="{mx-lw/2:.1f}" y="{my-12:.1f}" width="{lw:.1f}" height="24" '
+                          f'rx="12" fill="#fff" stroke="{color_}" stroke-width="1.5"/>')
+        self.parts.append(text(mx, my, label, 13, "#111827", 600))
+        return (mx - lw / 2, my - 12, lw, 24)
 
     # ---------- page ----------
     def render(self):

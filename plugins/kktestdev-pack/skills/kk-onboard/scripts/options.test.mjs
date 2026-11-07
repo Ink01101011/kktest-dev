@@ -10,7 +10,7 @@ import {
   OPT_LIMITS, cleanVersion, compareVersions, derivePrefix, diffItem, envMentions, hashLines, helpEnv, helpFlags, locatePackage, npxRoots,
   parseArgs, run, sanitizePluginConfig, serverIsItem, stateFile, writeState, projectRootOf
 } from './options.mjs';
-import { runCommand, validatePack } from './inventory.mjs';
+import { run as inventoryRun, runCommand, validatePack } from './inventory.mjs';
 import { canonical } from './common.mjs';
 
 const posix = process.platform !== 'win32';
@@ -45,25 +45,25 @@ const installDemo = (fx, o = {}) => installPkg(nodePath.join(fx.npmRoot, 'demo-m
 
 const HELP = 'usage: demo-mcp [options]\n  --port PORT   listen port\n  -v, --verbose  more logs\n  -h, --help  this text\nEnv: DEMO_HOST sets the host\n';
 function stubs(fx, calls = [], { latest } = {}) {
-  const run = async (cmd, args, ms, o) => {
+  const exec = async (cmd, args, ms, o) => {
     calls.push({ line: [cmd, ...args].join(' '), opts: o });
     if (cmd === 'npm' && args[0] === 'root') return { ok: true, stdout: fx.npmRoot + '\n' };
     if (cmd === 'npm' && args[0] === 'view') return latest ? { ok: true, stdout: JSON.stringify(latest) } : { ok: false, code: 1, error: 'offline' };
     if (cmd === process.execPath && args[1] === '--help') return { ok: true, stdout: HELP };
     return { ok: false, code: 1, error: 'not stubbed' };
   };
-  const runClaude = async (args) => {
+  const execClaude = async (args) => {
     calls.push({ line: ['claude', ...args].join(' ') });
     if (args[0] === 'plugin' && args[1] === 'list') return { ok: true, stdout: JSON.stringify([{ id: 'plug@m', enabled: true }, { id: 'off@m', enabled: false }]) };
     if (args[0] === 'plugin' && args[1] === 'configure') return { ok: true, stdout: JSON.stringify({ pluginId: 'plug@m', schema: { API_KEY: { type: 'string', description: 'key', sensitive: true, default: 'CANAOPT2' }, REGION: { type: 'string', description: 'region', default: 'eu' } }, choices: {}, configured: ['REGION'], unconfigured: ['API_KEY'] }) };
     return { ok: false, code: 1, error: 'not stubbed' };
   };
-  return { run, runClaude };
+  return { exec, execClaude };
 }
 /** stubs for npm/claude, but node <bin> --help really runs (to prove what is and is not executed) */
 function realHelp(fx, calls = []) {
   const s = stubs(fx, calls);
-  return { ...s, run: (cmd, args, ms, o) => (cmd === process.execPath ? (calls.push({ line: [cmd, ...args].join(' '), opts: o }), runCommand(cmd, args, ms, o)) : s.run(cmd, args, ms, o)) };
+  return { ...s, exec: (cmd, args, ms, o) => (cmd === process.execPath ? (calls.push({ line: [cmd, ...args].join(' '), opts: o }), runCommand(cmd, args, ms, o)) : s.exec(cmd, args, ms, o)) };
 }
 
 const opt = (fx, extra = {}) => ({ home: fx.home, cwd: fx.cwd, env: { CLAUDE_CONFIG_DIR: nodePath.join(fx.home, '.claude') }, platform: OS, pack: PACK, findBin: () => ({ found: false }), ...stubs(fx), ...extra });
@@ -369,16 +369,16 @@ test('O4-F1/F2/F3: compact output stays near 25 KB, --item near 40 KB, with a no
   fx.write(nodePath.join(fx.home, '.claude', '.claude.json'), { mcpServers: { ...servers, demo: { command: 'demo-mcp' } } });
   const bigSchema = Object.fromEntries(Array.from({ length: 80 }, (_, i) => [`OPT_${i}`, { type: 'string', description: 'd'.repeat(240), default: 'x'.repeat(120) }]));
   const s = stubs(fx);
-  const runClaude = async (args) => (args[1] === 'configure' ? { ok: true, stdout: JSON.stringify({ schema: bigSchema, configured: [] }) } : s.runClaude(args));
+  const execClaude = async (args) => (args[1] === 'configure' ? { ok: true, stdout: JSON.stringify({ schema: bigSchema, configured: [] }) } : s.execClaude(args));
   const pack = { items: [PACK.items[0], ...Array.from({ length: 6 }, (_, i) => ({ id: `p${i}`, kind: 'plugin', plugin: 'plug@m', detect: {} }))] };
-  const out = await run([], opt(fx, { ...s, runClaude, pack }));
+  const out = await run([], opt(fx, { ...s, execClaude, pack }));
   const bytes = Buffer.byteLength(JSON.stringify(out));
   assert.ok(bytes <= 27 * 1024, `compact output ${bytes} bytes`);
   const cc = out.hosts.find((h) => h.id === 'claude-code');
   assert.equal(cc.serverCount, 401);
   assert.deepEqual(cc.servers.map((x) => x.name), ['demo']);
   assert.ok(out.notes.some((n) => /output trimmed/.test(n)));
-  const one = await run(['--item', 'p0', '--item', 'p1', '--item', 'p2', '--item', 'demo'], opt(fx, { ...s, runClaude, pack }));
+  const one = await run(['--item', 'p0', '--item', 'p1', '--item', 'p2', '--item', 'demo'], opt(fx, { ...s, execClaude, pack }));
   assert.ok(Buffer.byteLength(JSON.stringify(one)) <= 42 * 1024);
 });
 
@@ -484,9 +484,9 @@ test('O5 N1: a repo .npmrc cannot steer npm to a planted npx copy, also from a s
   // a vulnerable npm would answer `config get cache` with the repo's cache when run from the repo
   const run2 = (cmd, args, ms, o) => {
     if (cmd === 'npm' && args[0] === 'config') { calls.push({ line: 'npm config get cache', opts: o }); return Promise.resolve({ ok: true, stdout: nodePath.join(repo, 'evilcache') + '\n' }); }
-    return base.run(cmd, args, ms, o);
+    return base.exec(cmd, args, ms, o);
   };
-  const out = await run(['--item', 'demo', '--run-help'], opt(fx, { ...base, run: run2, cwd: deeper, env: { PATH: process.env.PATH } }));
+  const out = await run(['--item', 'demo', '--run-help'], opt(fx, { ...base, exec: run2, cwd: deeper, env: { PATH: process.env.PATH } }));
   assert.equal(existsSync(marker), false, 'planted npx copy ran');
   assert.equal(execs(calls).length, 0);
   const demo = out.items.find((i) => i.id === 'demo');
@@ -513,4 +513,57 @@ test('projectRootOf: highest marked ancestor below HOME; never HOME or above', (
   const deep = nodePath.join(outside, ...Array(70).fill('d'));
   mkdirSync(deep, { recursive: true });
   assert.equal(projectRootOf(r(deep), r(fx.home)), r(outside));
+});
+
+// ------------------------------------------------------------------ other package managers' globals (#23, from I3)
+test('locatePackage: a pnpm/yarn/bun/Volta/mise global copy is a trusted candidate, ranked with the npm global copy', (t) => {
+  const fx = fixture(t);
+  const pnpmMods = nodePath.join(fx.root, 'pnpm', 'global', '5', 'node_modules');
+  installPkg(nodePath.join(pnpmMods, 'demo-mcp'), { version: '3.0.0' });
+  const globalDirs = [{ manager: 'pnpm', modules: [pnpmMods], bins: [] }];
+  const base = { home: fx.home, cwd: fx.cwd, env: {}, platform: OS, globalDirs };
+  // the only copy: chosen, trusted, named by its manager
+  const only = locatePackage('demo-mcp', base);
+  assert.equal(only.chosen?.via, 'pnpm global');
+  assert.equal(only.chosen.version, '3.0.0');
+  assert.equal(only.chosen.trusted, true);
+  // with an older npm global copy and a newer npx copy: globals rank together (newest global wins) before npx ...
+  installDemo(fx, { version: '1.0.0' });
+  const npx = nodePath.join(fx.root, 'cache', '_npx', 'abc', 'node_modules', 'demo-mcp');
+  installPkg(npx, { version: '9.0.0' });
+  const both = locatePackage('demo-mcp', { ...base, npmRoot: fx.npmRoot, npmCache: nodePath.join(fx.root, 'cache') });
+  assert.deepEqual(both.candidates.map((c) => c.via).sort(), ['npm global', 'npx cache', 'pnpm global']);
+  assert.equal(both.chosen.via, 'pnpm global');
+  // ... unless the item's servers launch through npx
+  assert.equal(locatePackage('demo-mcp', { ...base, npmRoot: fx.npmRoot, npmCache: nodePath.join(fx.root, 'cache'), preferNpx: true }).chosen.via, 'npx cache');
+});
+
+test('locatePackage: a global-folder copy inside the current project is untrusted (the cwd guard applies)', (t) => {
+  const fx = fixture(t);
+  const mods = nodePath.join(fx.cwd, 'tools', 'yarn', 'global', 'node_modules');
+  installPkg(nodePath.join(mods, 'demo-mcp'), { version: '7.0.0' });
+  const loc = locatePackage('demo-mcp', { home: fx.home, cwd: fx.cwd, env: {}, platform: OS, globalDirs: [{ manager: 'yarn', modules: [mods], bins: [] }] });
+  assert.equal(loc.chosen, null);
+  assert.equal(loc.candidates[0].via, 'yarn global');
+  assert.equal(loc.candidates[0].reason, 'cwd');
+});
+
+test('run: reads a package installed only in the pnpm global folder (PNPM_HOME, all OSes)', async (t) => {
+  const fx = fixture(t);
+  const pnpmHome = nodePath.join(fx.root, 'pnpm-home');
+  installPkg(nodePath.join(pnpmHome, 'global', '5', 'node_modules', 'demo-mcp'), { version: '4.5.6' });
+  const out = await run(['--item', 'demo'], opt(fx, { env: { CLAUDE_CONFIG_DIR: nodePath.join(fx.home, '.claude'), PNPM_HOME: pnpmHome } }));
+  const demo = out.items.find((i) => i.id === 'demo');
+  assert.equal(demo.via, 'pnpm global');
+  assert.equal(demo.version, '4.5.6');
+  assert.ok(demo.options.some((o) => o.name === 'DEMO_LEVEL'), 'docs of the pnpm copy were read');
+});
+
+test('run: the old runner names (run / runClaude) are refused, never silently replaced by the real command', async (t) => {
+  const fx = fixture(t);
+  // every runner is stubbed as well, so even without the guard nothing real would run
+  const stubbed = { ...opt(fx), execClaude: async () => ({ ok: false, code: 1, error: 'stub' }) };
+  await assert.rejects(run([], { ...stubbed, runClaude: async () => ({ ok: true, stdout: '[]' }) }), /opts\.runClaude was renamed to opts\.execClaude/);
+  await assert.rejects(run([], { ...stubbed, run: async () => ({ ok: false }) }), /opts\.run was renamed to opts\.exec/);
+  await assert.rejects(inventoryRun([], { home: fx.home, cwd: fx.cwd, env: {}, findBin: () => ({ found: true }), execClaude: async () => ({ ok: true, stdout: '[]' }), runClaude: async () => ({ ok: true, stdout: '[]' }) }), /opts\.runClaude was renamed/);
 });

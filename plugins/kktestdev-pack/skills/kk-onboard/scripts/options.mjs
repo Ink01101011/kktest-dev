@@ -31,8 +31,8 @@ import { closeSync, copyFileSync, existsSync, lstatSync, mkdirSync, openSync, re
 import { homedir } from 'node:os';
 import nodePath from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { cap, findBinDefault, packageSpecOf, parseJsonOutput, redactText, runClaudeDefault, runCommand, secretKey, shortPath } from './inventory.mjs';
-import { asArray, canonical, decodeText, isInside, isMain, isObject, readJsonText, samePath } from './common.mjs';
+import { cap, execClaudeDefault, findBinDefault, findGlobalPackage, globalPackageDirs, packageSpecOf, parseJsonOutput, redactText, runCommand, secretKey, shortPath } from './inventory.mjs';
+import { asArray, canonical, decodeText, isInside, isMain, isObject, readJsonText, refuseOldRunnerNames, samePath } from './common.mjs';
 import { detectProviders, readHosts } from './hosts.mjs';
 
 export const OPT_LIMITS = Object.freeze({
@@ -247,7 +247,8 @@ export function npxRoots({ home, env = {}, platform = process.platform, npmCache
  * every copy of `pkg` on this machine and the one the host most likely runs.
  * configPaths: [{ path, trusted, where }] from the MCP configs of servers that run this item.
  * Order of choice among TRUSTED copies: a user-scope config path, then (preferNpx: the item's servers launch
- * through npx) the newest npx copy before the npm global copy, otherwise npm global before npx.
+ * through npx) the newest npx copy before the global copies, otherwise global copies before npx. Global copies are
+ * npm's (`npmRoot`) and those of pnpm, yarn, bun, Volta and mise (`globalDirs`, from globalPackageDirs()).
  * Untrusted (found only through a project config, or whose real path is inside the current project) copies are
  * reported but never chosen.
  */
@@ -268,7 +269,7 @@ export function projectRootOf(dir, home) {
   return root;
 }
 
-export function locatePackage(pkg, { home, cwd, env = process.env, platform = process.platform, configPaths = [], npmRoot = null, npmCache = null, preferNpx = false } = {}) {
+export function locatePackage(pkg, { home, cwd, env = process.env, platform = process.platform, configPaths = [], npmRoot = null, npmCache = null, preferNpx = false, globalDirs = null } = {}) {
   const cands = [];
   // The guard covers the whole PROJECT the cwd belongs to, not just the cwd: from repo/sub, a repo's .npmrc
   // (cache=../../x) can point npm at a copy planted elsewhere in the same repo (O5 N1).
@@ -291,12 +292,14 @@ export function locatePackage(pkg, { home, cwd, env = process.env, platform = pr
   };
   for (const c of configPaths) add(pkgRootFrom(c.path, pkg, cwd ?? process.cwd()), `${c.where} config path`, !!c.trusted);
   if (npmRoot) add(nodePath.join(npmRoot, ...pkg.split('/')), 'npm global', true);
+  // the other package managers' global folders: as trusted as npm's (the cwd guard in add() still applies)
+  for (const g of findGlobalPackage(pkg, globalDirs ?? globalPackageDirs({ home, env, platform }), { platform })) add(g.dir, `${g.manager} global`, true);
   for (const root of npxRoots({ home, env, platform, npmCache })) {
     let entries = [];
     try { entries = readdirSync(root).slice(0, OPT_LIMITS.npxDirs); } catch { /* no npx cache: nothing to add */ }
     for (const e of entries) add(nodePath.join(root, e, 'node_modules', ...pkg.split('/')), 'npx cache', true);
   }
-  const rank = (c) => (/config path$/.test(c.via) ? 0 : c.via === 'npm global' ? (preferNpx ? 2 : 1) : (preferNpx ? 1 : 2));
+  const rank = (c) => (/config path$/.test(c.via) ? 0 : / global$/.test(c.via) ? (preferNpx ? 2 : 1) : (preferNpx ? 1 : 2));
   const trusted = cands.filter((c) => c.trusted).sort((a, b) => rank(a) - rank(b) || compareVersions(b.rawVersion, a.rawVersion));
   return { chosen: trusted[0] ?? null, candidates: cands };
 }
@@ -386,7 +389,7 @@ async function packageHelp(found, binName, ctx) {
   // real paths on both sides: a symlinked bin that leaves the package is refused (O2-2)
   if (samePath(real, found.real) || !isInside(real, found.real)) return { skipped: 'bin resolves outside the package; not run' };
   if (!isJsEntry(real, found.real)) return { skipped: 'bin is not a JavaScript file; not run' };
-  const r = await ctx.run(process.execPath, [real, '--help'], OPT_LIMITS.helpTimeoutMs,
+  const r = await ctx.exec(process.execPath, [real, '--help'], OPT_LIMITS.helpTimeoutMs,
     { shell: false, cwd: found.real, env: helpEnv(ctx.env, ctx.platform), maxStdout: OPT_LIMITS.helpStdout, killTree: true });
   return { ok: r.ok, truncated: !!r.truncated, text: String(r.stdout ?? ''), error: r.ok ? null : cap(redactText(r.error ?? '').text, 160) };
 }
@@ -395,7 +398,7 @@ async function packageHelp(found, binName, ctx) {
 function fetchLatest(pkg, ctx) {
   ctx.latest ??= new Map();
   if (!ctx.latest.has(pkg)) {
-    ctx.latest.set(pkg, ctx.run('npm', ['view', `${pkg}@latest`, 'version', 'readme', '--json'], OPT_LIMITS.networkTimeoutMs, { shell: ctx.platform === 'win32' }).then((r) => {
+    ctx.latest.set(pkg, ctx.exec('npm', ['view', `${pkg}@latest`, 'version', 'readme', '--json'], OPT_LIMITS.networkTimeoutMs, { shell: ctx.platform === 'win32' }).then((r) => {
       const p = r.ok ? parseJsonOutput(r.stdout) : { ok: false };
       if (!p.ok || !isObject(p.value)) return { ok: false };
       return { ok: true, version: cleanVersion(p.value.version), readme: String(p.value.readme ?? '').slice(0, OPT_LIMITS.docBytes) };
@@ -451,7 +454,7 @@ async function discoverPluginConfig(it, ctx, out) {
         : 'plugin not installed: nothing to configure yet');
     return;
   }
-  const r = await ctx.runClaude(['plugin', 'configure', it.plugin, '--json'], OPT_LIMITS.pluginConfigTimeoutMs);
+  const r = await ctx.execClaude(['plugin', 'configure', it.plugin, '--json'], OPT_LIMITS.pluginConfigTimeoutMs);
   const parsed = r.ok ? parseJsonOutput(r.stdout) : { ok: false };
   if (parsed.ok) {
     out.sources.push({ kind: 'claude plugin configure --json', ref: it.plugin });
@@ -473,7 +476,7 @@ async function discoverPackage(it, ctx, prefix, out) {
     }
   }
   const npm = await ctx.npmInfo();
-  const loc = locatePackage(o.package, { home: ctx.home, cwd: ctx.cwd, env: ctx.env, platform: ctx.platform, configPaths, npmRoot: npm.root, npmCache: npm.cache, preferNpx });
+  const loc = locatePackage(o.package, { home: ctx.home, cwd: ctx.cwd, env: ctx.env, platform: ctx.platform, configPaths, npmRoot: npm.root, npmCache: npm.cache, preferNpx, globalDirs: ctx.globalDirs() });
   const found = loc.chosen;
   if (loc.candidates.length) {
     // brief: one entry per (version, place, trust), the copy read first, at most `candidates` entries
@@ -710,6 +713,7 @@ export function fitBudget(out, budget, detail) {
 
 // ---------------------------------------------------------------- run
 export async function run(argv = [], opts = {}) {
+  refuseOldRunnerNames(opts);
   const here = nodePath.dirname(fileURLToPath(import.meta.url));
   const home = opts.home ?? homedir();
   const cwd = opts.cwd ?? process.cwd();
@@ -731,24 +735,27 @@ export async function run(argv = [], opts = {}) {
     const hostsInfo = readHosts({ home, cwd, env, platform, fs: opts.fs, short });
     notes.push(...hostsInfo.notes.map((n) => redactText(n).text));
     const findBin = opts.findBin ?? ((b) => findBinDefault(b, { env, platform }));
-    const runClaude = opts.runClaude ?? runClaudeDefault;
-    const runFn = opts.run ?? runCommand;
-    const pl = await runClaude(['plugin', 'list', '--json'], OPT_LIMITS.pluginListTimeoutMs);
+    const execClaude = opts.execClaude ?? execClaudeDefault;
+    const exec = opts.exec ?? runCommand;
+    const pl = await execClaude(['plugin', 'list', '--json'], OPT_LIMITS.pluginListTimeoutMs);
     const plParsed = pl.ok ? parseJsonOutput(pl.stdout) : { ok: false };
     const pluginRows = plParsed.ok ? asArray(plParsed.value).filter(isObject) : [];
     const installedPlugins = new Set(pluginRows.filter((p) => p.enabled !== false).map((p) => String(p.id)));
     const disabledPlugins = new Set(pluginRows.filter((p) => p.enabled === false).map((p) => String(p.id)));
     if (!plParsed.ok) notes.push(`claude plugin list --json: ${cap(redactText(pl.error ?? 'no JSON').text, 160)}`);
     let npmP = null;
+    let globalDirs = null;
     const ctx = {
       installedPlugins, disabledPlugins, pluginListOk: plParsed.ok,
       home, cwd, env, platform, hostsInfo, network: has('--network'), runHelp: has('--run-help'),
-      run: runFn, runClaude, short,
+      exec, execClaude, short,
+      // pnpm / yarn / bun / Volta / mise global folders: listed once per run, shared by every item
+      globalDirs: () => (globalDirs ??= opts.globalDirs ?? globalPackageDirs({ home, env, platform })),
       // `npm root -g` and the npm cache dir: asked once per run, shared by every item
       npmInfo: () => (npmP ??= Promise.all([
         // from HOME, never the project: a project .npmrc must not steer the npm cache / global root (O5 N1)
-        runFn('npm', ['root', '-g'], OPT_LIMITS.npmTimeoutMs, { shell: platform === 'win32', cwd: home }),
-        runFn('npm', ['config', 'get', 'cache'], OPT_LIMITS.npmTimeoutMs, { shell: platform === 'win32', cwd: home }),
+        exec('npm', ['root', '-g'], OPT_LIMITS.npmTimeoutMs, { shell: platform === 'win32', cwd: home }),
+        exec('npm', ['config', 'get', 'cache'], OPT_LIMITS.npmTimeoutMs, { shell: platform === 'win32', cwd: home }),
       ]).then(([r, c]) => {
         let root = r.ok ? String(r.stdout).trim() : null;
         if (root && platform !== 'win32' && /^[A-Za-z]:[\\/]/.test(root)) {

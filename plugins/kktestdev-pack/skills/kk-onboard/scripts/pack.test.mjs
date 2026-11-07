@@ -41,14 +41,14 @@ function onboarded(t, profiles, extra = {}) {
   }
   write(join(home, '.claude.json'), { mcpServers: { ...mcpServers, ...(extra.mcpServers ?? {}) } });
   for (const s of extra.userSkills ?? []) write(join(home, '.claude', 'skills', s, 'SKILL.md'), `---\nname: ${s}\n---\n`);
-  const runClaude = async (args) => {
+  const execClaude = async (args) => {
     const key = args.join(' ');
     if (key === 'plugin list --json') return { ok: true, stdout: JSON.stringify(plugins) };
     if (key === 'plugin marketplace list --json') return { ok: true, stdout: '[]' };
     if (key === 'mcp list') return { ok: true, stdout: '' };
     return { ok: false, error: 'unexpected' };
   };
-  return run([], { home, cwd, env: {}, findBin: () => ({ found: true }), runClaude });
+  return run([], { home, cwd, env: {}, findBin: () => ({ found: true }), execClaude });
 }
 const overlaps = (out) => out.findings.filter((f) => f.category.startsWith('overlap:'));
 const finding = (out, c) => out.findings.find((f) => f.category === c);

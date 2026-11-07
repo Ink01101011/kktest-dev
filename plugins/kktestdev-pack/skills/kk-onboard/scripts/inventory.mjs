@@ -20,7 +20,7 @@ import { existsSync, lstatSync, readFileSync, readdirSync, statSync } from 'node
 import { homedir } from 'node:os';
 import nodePath from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CONFIG_MAX_BYTES, OPTION_HINT_KEYS, asArray, canonical, caseInsensitive, isEnvRef, isMain, isObject, readJsonText, samePath } from './common.mjs';
+import { CONFIG_MAX_BYTES, OPTION_HINT_KEYS, asArray, canonical, caseInsensitive, isEnvRef, isMain, isObject, readJsonText, refuseOldRunnerNames, samePath } from './common.mjs';
 import { detectProviders, readHosts } from './hosts.mjs';
 import { REDACT_CHARS, inlineSecretKeys, redactArgs, redactText, redactUrl } from './redact.mjs';
 
@@ -55,7 +55,7 @@ const REMOTE_PROXIES = new Set(['mcp-remote', 'supergateway', '@modelcontextprot
 const EVERY_TOOL_MATCHERS = new Set(['', '*', '.*']);
 const SKIP_DIRS = new Set(['node_modules', '.git']);
 const SCRIPT_EXT = /\.(sh|bash|zsh|py|mjs|cjs|js|ts|cmd|bat|ps1|rb|pl)$/i;
-const KNOWN_DETECT_KEYS = new Set(['plugins', 'mcpName', 'mcpNameExact', 'mcpUrl', 'mcpCommand', 'mcpArgs', 'skills']);
+export const KNOWN_DETECT_KEYS = new Set(['plugins', 'mcpName', 'mcpNameExact', 'mcpUrl', 'mcpCommand', 'mcpArgs', 'skills']);
 const RAW = Symbol('raw'); // raw config on server objects; Symbol keys never reach JSON.stringify
 
 // ---------------------------------------------------------------- small pure helpers
@@ -276,7 +276,7 @@ export function runCommand(cmd, args, timeoutMs, { shell = false, cwd, env, maxS
   });
 }
 // claude is a .cmd shim on Windows, so it needs the shell there; args are always fixed literals.
-export const runClaudeDefault = (args, timeoutMs) => runCommand('claude', args, timeoutMs, { shell: process.platform === 'win32' });
+export const execClaudeDefault = (args, timeoutMs) => runCommand('claude', args, timeoutMs, { shell: process.platform === 'win32' });
 /** find an executable on PATH in-process (no `which`/`where`; never the current directory) */
 export function findBinDefault(bin, { env = process.env, platform = process.platform } = {}) {
   const dirs = String(env.PATH ?? env.Path ?? '').split(platform === 'win32' ? ';' : ':').filter((d) => d && d !== '.');
@@ -569,7 +569,7 @@ export async function collect(opts) {
   const ctx = makeCtx(opts);
   const { home, cwd, platform } = ctx;
   const env = opts.env ?? process.env;
-  const runClaude = opts.runClaude ?? runClaudeDefault;
+  const execClaude = opts.execClaude ?? execClaudeDefault;
   const data = {
     ctx, plugins: [], marketplaces: [], mcp: [], health: [], skills: [], hooks: [], permissions: [],
     seenSkillDirs: new Set(), seenSettings: new Set(), claudeAvailable: true, pluginListOk: true, healthChecked: !opts.fast,
@@ -580,9 +580,9 @@ export async function collect(opts) {
   };
   // the three CLI calls run in parallel; mcp list (health check) is the slow one
   const [pl, ml, hl] = await Promise.all([
-    runClaude(['plugin', 'list', '--json'], LIMITS.cliTimeoutMs),
-    runClaude(['plugin', 'marketplace', 'list', '--json'], LIMITS.cliTimeoutMs),
-    opts.fast ? Promise.resolve(null) : runClaude(['mcp', 'list'], LIMITS.mcpListTimeoutMs),
+    execClaude(['plugin', 'list', '--json'], LIMITS.cliTimeoutMs),
+    execClaude(['plugin', 'marketplace', 'list', '--json'], LIMITS.cliTimeoutMs),
+    opts.fast ? Promise.resolve(null) : execClaude(['mcp', 'list'], LIMITS.mcpListTimeoutMs),
   ]);
 
   // plugins (one row per scope; the same installPath may appear twice)
@@ -929,13 +929,14 @@ export function buildOutput(data, pack, findings, { full = false, now = new Date
 }
 
 export async function run(argv = [], opts = {}) {
+  refuseOldRunnerNames(opts);
   const full = argv.includes('--full') || argv.includes('--detail');
   const fast = argv.includes('--fast');
   const here = nodePath.dirname(fileURLToPath(import.meta.url));
   const notes = [];
   try {
     const pack = opts.pack ?? JSON.parse(readFileSync(nodePath.join(here, '..', 'pack.json'), 'utf8'));
-    const data = await collect({ home: opts.home ?? homedir(), cwd: opts.cwd ?? process.cwd(), platform: opts.platform, env: opts.env, runClaude: opts.runClaude, fast });
+    const data = await collect({ home: opts.home ?? homedir(), cwd: opts.cwd ?? process.cwd(), platform: opts.platform, env: opts.env, execClaude: opts.execClaude, fast });
     for (const p of validatePack(pack)) data.ctx.note(p);
     const major = Number(process.versions.node.split('.')[0]);
     if (major < 22) data.ctx.note(`Node ${process.versions.node}: some pack servers need Node 22.22+ (typescript-language-server) or 20.19+ (chrome-devtools-mcp, shadcn, bantamkit-mcp)`);
