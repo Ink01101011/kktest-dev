@@ -56,8 +56,8 @@
       "id": "jdtls-lsp", "profile": "core", "kind": "plugin",
       "plugin": "jdtls-lsp@claude-plugins-official",
       "detect": { "plugins": ["jdtls-lsp@"] },
-      "requires": [{ "bin": "jdtls", "install": "macOS/Linuxbrew: brew install jdtls. Otherwise download a milestone build from https://github.com/eclipse-jdtls/eclipse.jdt.ls, unpack it, and put its bin/ (jdtls, jdtls.bat; needs Java 21+ and Python 3) on PATH" }],
-      "what": "Java / Spring Boot code intelligence."
+      "requires": [{ "bin": "jdtls", "install": "macOS/Linuxbrew: brew install jdtls. Otherwise download a milestone build from https://github.com/eclipse-jdtls/eclipse.jdt.ls, unpack it, and put its bin/ (jdtls, jdtls.bat; needs Java 25+ and Python 3) on PATH" }],
+      "what": "Java / Spring Boot code intelligence. jdtls 1.63+ needs Java 25+ to run (its bundles require JavaSE 25; on 17 or 21 it fails with 'Unresolved requirement ... osgi.ee'). The brew wrapper uses $JAVA_HOME when it is set (mise, sdkman, asdf set it), so that JDK must be 25+, not only the openjdk brew installs as a dependency."
     },
     {
       "id": "bantamkit", "profile": "core", "kind": "mcp",
