@@ -12,15 +12,26 @@ const strArray = (x) => asArray(x).filter((a) => typeof a === 'string' || typeof
 // ---------------------------------------------------------------- named patterns
 // Key segments that make an env/header/flag/query name secret-like. Matched on whole segments of the
 // snake_cased name, so AUTHOR_NAME does not match "auth" but OAUTH_TOKEN matches "token".
-const SECRET_SEGMENTS = 'token|secret|password|passwd|pwd|pw|pass|api_?key|apikey|access_?key|private_?key|client_?secret|auth|authorization|bearer|cookie|credentials?|pat|signature|sig';
+// F1 (gate G1-M2): + passphrase, creds, and the *_key names that hold key material (ssh, encryption, signing,
+// session, license, master, deploy, app keys); the key compounds also in the plural (API_KEYS, ACCESS_KEYS).
+const SECRET_SEGMENTS = 'token|secret|password|passwd|pwd|pw|pass|passphrase|api_?keys?|apikeys?|access_?keys?|private_?keys?|(?:ssh|encryption|signing|session|license|master|deploy|app)_?keys?|client_?secret|auth|authorization|bearer|cookie|credentials?|creds|pat|signature|sig';
 const SECRET_KEY = new RegExp(`(^|_)(${SECRET_SEGMENTS})(_|$)`);
 // The long secret words also count glued to a prefix (#19: PGPASSWORD, DBPASSWD, CSRFTOKEN, APPSECRET), at
 // the END of the name only: a glued word mid-name is too often a value (`-pXsecretY` is a flag + password).
-const GLUED_SECRET = /(password|passwd|secret|token|apikey)$/;
+const GLUED_SECRET = /(password|passwd|passphrase|secret|token|apikey|dbpass)$/;
+// `jwt` only as the last word (JWT, APP_JWT): JWT_ALGORITHM / JWT_ISSUER are settings, not secrets.
+const LAST_SECRET = /(^|_)jwt$/;
+// The strong words with a plural or a number glued on (TOKEN2, SECRET1, PASSWORD2, SECRETS, TOKENS, CREDENTIALS2) ...
+const NUMBERED_SECRET = /(^|_)(token|secret|password|passwd|pwd|passphrase|credential|apikey)(s|\d+|s\d+)(_|$)/;
+// ... except in a name that counts or limits them (max_tokens, prompt_tokens, total_tokens, TOKENS_USED: numbers).
+const COUNT_WORD = /(^|_)(max|min|num|n|total|count|limit|prompt|completion|input|output|used|remaining|reasoning|cached|thinking|budget|per)(_|$)/;
+// A trailing version or number segment does not change what a name is (MYTOKEN_V2, DB_PASSWORD_2).
+const VERSION_TAIL = /(_v?\d+)+$/;
 // Query parameter names that carry a credential even though the word alone is generic (?key=, ?sig=).
 const QUERY_SECRET = /^(key|sig|code|access_token|apikey)$/i;
-// Well-known credential prefixes (OpenAI/Anthropic sk-, Stripe, GitHub, GitLab, Slack, AWS, Google, JWT).
-const TOKEN_PREFIX = /\b(?:sk-[A-Za-z0-9_-]{8,}|sk_(?:live|test)_[A-Za-z0-9]{8,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{16,}|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]+)/g;
+// Well-known credential prefixes (OpenAI/Anthropic sk-, Stripe, GitHub, GitLab, Slack, AWS, Google, JWT; F1: npm,
+// Hugging Face, PyPI, Slack app-level, Google OAuth ya29., SendGrid, Shopify, Linear, Figma, Perplexity, DigitalOcean).
+const TOKEN_PREFIX = /\b(?:npm_[A-Za-z0-9]{20,}|hf_[A-Za-z0-9]{20,}|pypi-[A-Za-z0-9_-]{40,}|xapp-\d-[A-Za-z0-9-]{10,}|ya29\.[A-Za-z0-9_-]{20,}|SG\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}|shp(?:at|ss|ca|pa)_[A-Za-z0-9]{20,}|lin_api_[A-Za-z0-9]{20,}|figd_[A-Za-z0-9_-]{20,}|pplx-[A-Za-z0-9]{20,}|do[por]_v1_[a-f0-9]{64}|sk-[A-Za-z0-9_-]{8,}|sk_(?:live|test)_[A-Za-z0-9]{8,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{16,}|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]+)/g;
 // URL_IN_TEXT and KEY_RUN match a WHOLE run of key/scheme characters (the lookbehind allows one start per
 // run, so a long run is scanned once: linear, G7-4), then the callback drops leading digits, dots and dashes
 // to find the key or scheme the old unanchored forms found (G8-M3: `1api_key=`, `-https://`) with no length
@@ -33,12 +44,21 @@ const AUTH_SCHEME = /\b(Bearer|Basic|Token)(\s+)([^\s'":=][^\s'"]*)/gi;
 const KEY_RUN = /(?<![\w.-])([\w.-]+)(\\?["']?[ \t]*(?:=|:)[ \t]*)/g;
 // escaped-quoted (\"x\"), double-, single-quoted, or a bare run
 const PAIR_VALUE = /\\"(?:[^"\\]|\\(?!"))*\\"|"[^"]*"|'[^']*'|[^\s'"&]+/y;
+// blanks then `=` right after a masked value (see replaceKeyValues)
+const CONT = /[ \t]+=[ \t]*/y;
 const unquote = (v) => v.replace(/^\\?["']|\\?["']$/g, '');
 // Schemeless userinfo `user:password@host.tld` (git remotes, DSNs without a scheme, #19). One start per run
 // of user characters (lookbehind), the password stops at whitespace, `:`, `@` or `/`, so each `@` has one
 // candidate start: linear. The host must have a dot or be localhost (`image:tag@sha256:..` is not a login).
 // A start after `:` or `/` is allowed (`/bob:pw@h.com`, `x:bob:pw@h.com`): the password is the last field.
 const USERINFO = /(?<![\w.+%-])([\w.+%-]+):([^\s@:/'"<>`]+)@((?:[\w-]+\.)+[\w-]+|localhost)\b/g;
+// Webhook URLs whose PATH is the credential (Slack, Discord, Telegram bot token): the secret part becomes ***.
+const SECRET_PATH = /(hooks\.slack\.com\/(?:services|workflows|triggers)\/)[^?#\s'"<>`]+|(discord(?:app)?\.com\/api\/webhooks\/\d+\/)[^?#\s'"<>`/]+|(\/bot)\d+:[A-Za-z0-9_-]+/gi;
+// A PEM private key block (also inside a JSON string with \n escapes); no END line reads to the end of the text
+// (one match, so linear).
+const PEM_PRIVATE = /-----BEGIN [A-Z0-9 ]{0,40}PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z0-9 ]{0,40}PRIVATE KEY-----|$)/g;
+// <password>X</password> (XML / plist-ish configs): one candidate per `<`, the value stops at the next `<`: linear.
+const XML_PAIR = /<([A-Za-z_][\w.-]{0,63})>([^<]*)<\/\1>/g;
 const FLAG = /^--?[A-Za-z][\w.-]*$/;
 // `-u user:password` / `--user user:password`: the part after the first colon is a password.
 const USER_FLAG = /^(-u|--user|--proxy-user)$/;
@@ -96,7 +116,19 @@ function gluedPSecret(val, ctx) {
 
 // ---------------------------------------------------------------- detection + redaction
 const snake = (k) => String(k).replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
-export const secretKey = (k) => { const s = snake(String(k).replace(/^-+/, '')); return SECRET_KEY.test(s) || GLUED_SECRET.test(s); };
+const baseSecret = (s) => SECRET_KEY.test(s) || GLUED_SECRET.test(s) || LAST_SECRET.test(s) || (NUMBERED_SECRET.test(s) && !COUNT_WORD.test(s));
+export const secretKey = (k) => {
+  const s = snake(String(k).replace(/^-+/, ''));
+  if (baseSecret(s)) return true;
+  const t = s.replace(VERSION_TAIL, '');
+  return t !== s && t !== '' && baseSecret(t);
+};
+/** a count, not a credential: the name is secret only as the plural `tokens` and the value is a plain number (`tokens: 1200`) */
+const tokenCount = (k, v) => {
+  if (!/^\d{1,12}$/.test(v)) return false;
+  const s = snake(String(k).replace(/^-+/, ''));
+  return /(^|_)tokens(_|$)/.test(s) && !SECRET_KEY.test(s) && !GLUED_SECRET.test(s);
+};
 
 /** redact one URL; returns { text, hits } where hits name what looked like a credential */
 export function redactUrl(u) {
@@ -105,7 +137,8 @@ export function redactUrl(u) {
   try { url = new URL(u); } catch { url = null; }
   if (!url || !url.host) {
     const text = String(u).replace(/\/\/[^/@\s]+@/, () => { hits.push('url userinfo'); return '//***@'; })
-      .replace(/([?&][^=&#\s]+=)[^&#\s]*/g, '$1***');
+      .replace(/([?&][^=&#\s]+=)[^&#\s]*/g, '$1***')
+      .replace(SECRET_PATH, (m, slack, discord, bot) => { hits.push('webhook url'); return `${slack ?? discord ?? bot}***`; });
     return { text, hits };
   }
   if (url.password || (url.username && new RegExp(TOKEN_PREFIX.source).test(decodeURIComponent(url.username)))) hits.push('url userinfo');
@@ -116,6 +149,7 @@ export function redactUrl(u) {
     if (v && (secretKey(k) || QUERY_SECRET.test(k)) && !isEnvRef(v)) hits.push(`url query "${k}"`);
   }
   if (keys.length) text += '?' + keys.join('&');
+  text = text.replace(SECRET_PATH, (m, slack, discord, bot) => { hits.push('webhook url'); return `${slack ?? discord ?? bot}***`; });
   text = text.replace(TOKEN_PREFIX, () => { hits.push('token in url'); return '***'; });
   return { text, hits };
 }
@@ -186,10 +220,19 @@ export function replaceKeyValues(t, hits = []) {
     val.lastIndex = m.index + whole.length;
     const v = val.exec(t);
     // `"***"` was masked by an earlier pass; a value starting with = is a comparison (`token == x`), not a value
-    if (!v || unquote(v[0]) === '***' || v[0][0] === '=' || isEnvRef(unquote(v[0]))) continue;
+    if (!v || unquote(v[0]) === '***' || v[0][0] === '=' || isEnvRef(unquote(v[0])) || tokenCount(key, unquote(v[0]))) continue;
     hits.push(`"${run}"`);
     out += t.slice(last, m.index) + `${run}${sep}***`;
     last = val.lastIndex;
+    // gate G2-L1: a masked bare value that swallowed a key (`x=AAA?token`) followed by blanks + `=` leaves that
+    // key's value behind (`\t=BBB`): mask it too. Each step consumes input, so this stays linear.
+    for (;;) {
+      CONT.lastIndex = last;
+      const c = CONT.exec(t); if (!c) break;
+      val.lastIndex = last + c[0].length;
+      const v2 = val.exec(t); if (!v2) break;
+      out += `${c[0]}***`; last = val.lastIndex;
+    }
     re.lastIndex = last;
   }
   return out + t.slice(last);
@@ -200,6 +243,24 @@ export function cutAtWhitespace(s) {
   let i = s.length;
   while (i > 0 && !/\s/.test(s[i - 1])) i--;
   return s.slice(0, i);
+}
+
+/**
+ * `--token VALUE` (space separated) with a secret-like flag. The value of a NOT secret flag is not masked, but when
+ * it is a quoted string (`bash -c "notify --api-key X"`, `sh -c 'x --password X'`) the same pass runs inside it
+ * (gate G2-M1: the quoted command used to be swallowed whole as the value of -c). Linear: a quoted value is
+ * re-scanned once per nesting level, and quotes nest at most two deep (inside "..." only '...' can open).
+ */
+const FLAG_VALUE = /(^|\s)(--?[A-Za-z][\w.-]*)(\s+)("[^"]*"|'[^']*'|[^\s'"-][^\s'"]*)/g;
+function flagValues(t, hits, depth = 0) {
+  return t.replace(new RegExp(FLAG_VALUE.source, 'g'), (m, pre, flag, sp, val) => {
+    const quoted = /^["']/.test(val);
+    if (!secretKey(flag) || val === '***' || isEnvRef(val.replace(/^["']|["']$/g, '')) || tokenCount(flag, val)) {
+      if (!quoted || depth >= 2 || !/\s/.test(val)) return m;
+      return `${pre}${flag}${sp}${val[0]}${flagValues(val.slice(1, -1), hits, depth + 1)}${val[0]}`;
+    }
+    hits.push(`"${flag}"`); return `${pre}${flag}${sp}***`;
+  });
 }
 
 /** redact free text (hook commands, args, CLI output); returns { text, hits } */
@@ -213,10 +274,17 @@ export function redactText(s) {
 /** every redaction pass, with NO length cut: exported so redact.test.mjs can time each pass at 200k+ chars */
 export function redactPasses(t) {
   const hits = [];
+  t = t.replace(PEM_PRIVATE, () => { hits.push('private key block'); return '-----BEGIN PRIVATE KEY-----***-----END PRIVATE KEY-----'; });
   t = t.replace(URL_IN_TEXT, (m, run, rest) => {
     const lead = run.match(/^[^a-z]*/i)[0];
     if (lead === run) return m;
     const r = redactUrl(run.slice(lead.length) + rest); hits.push(...r.hits); return lead + r.text;
+  });
+  // webhook paths also without a scheme (`hooks.slack.com/services/...`); already-masked ones are left alone
+  t = t.replace(SECRET_PATH, (m, slack, discord, bot) => {
+    const keep = slack ?? discord ?? bot;
+    if (m.slice(keep.length) === '***') return m;
+    hits.push('webhook url'); return `${keep}***`;
   });
   t = t.replace(AUTH_SCHEME, (m, scheme, sp, val) => {
     if (val === '***' || isEnvRef(val)) return m;
@@ -224,20 +292,21 @@ export function redactPasses(t) {
   });
   // "key": "value" (JSON / YAML-ish quoted pairs); the key length is capped so each match is bounded
   t = t.replace(/"([^"\\\n]{1,200})"(\s*:\s*)"((?:[^"\\\n]|\\.)*)"/g, (m, key, sep, val) => {
-    if (!secretKey(key) || val === '***' || val === '' || isEnvRef(val)) return m;
+    if (!secretKey(key) || val === '***' || val === '' || isEnvRef(val) || tokenCount(key, val)) return m;
     hits.push(`"${key}"`); return `"${key}"${sep}"***"`;
   });
   t = replaceKeyValues(t, hits);
+  t = t.replace(XML_PAIR, (m, tag, val) => {
+    if (!secretKey(tag) || !val.trim() || val === '***' || isEnvRef(val.trim()) || tokenCount(tag, val.trim())) return m;
+    hits.push(`"${tag}"`); return `<${tag}>***</${tag}>`;
+  });
   // user:password@host.tld without a scheme (URLs with a scheme were handled above)
   t = t.replace(USERINFO, (m, user, pw, host) => {
     if (pw === '***' || isEnvRef(pw) || /^mailto$/i.test(user)) return m;
     hits.push('userinfo'); return `${user}:***@${host}`;
   });
   // --token VALUE (space separated) inside a command line
-  t = t.replace(/(^|\s)(--?[A-Za-z][\w.-]*)(\s+)("[^"]*"|'[^']*'|[^\s'"-][^\s'"]*)/g, (m, pre, flag, sp, val) => {
-    if (!secretKey(flag) || val === '***' || isEnvRef(val.replace(/^["']|["']$/g, ''))) return m;
-    hits.push(`"${flag}"`); return `${pre}${flag}${sp}***`;
-  });
+  t = flagValues(t, hits);
   // -u user:password and mysql -pSECRET, judged per shell segment (split outside quotes) by its commands
   t = splitShell(t).map((seg, i) => (i % 2 ? seg : redactSegment(seg, hits))).join('');
   t = t.replace(TOKEN_PREFIX, () => { hits.push('token-like value'); return '***'; });
@@ -272,7 +341,7 @@ export function redactArgs(args, command = '') {
       if (isEnvRef(a)) out.push(a); else { hits.push('"-p" password'); out.push('***'); }
       continue;
     }
-    if (prev !== undefined && FLAG.test(prev) && secretKey(prev) && !a.startsWith('-')) {
+    if (prev !== undefined && FLAG.test(prev) && secretKey(prev) && !a.startsWith('-') && !tokenCount(prev, a)) {
       if (isEnvRef(a)) out.push(a); else { hits.push(`"${prev}"`); out.push('***'); }
       continue;
     }

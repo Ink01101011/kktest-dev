@@ -279,8 +279,10 @@ Still UNVERIFIED, so `install --target windsurf` refuses and `export --target wi
 ## Releasing (maintainers)
 
 `.github/workflows/publish.yml` publishes to npm when a `v*` tag is pushed. It checks that the tag is
-`v<package.json version>`, runs the same three test suites as CI and `npm pack --dry-run`, skips a version
-that is already on the registry, then runs `npm publish --provenance --access public`. Provenance (signed
+`v<package.json version>` and that the tagged commit is on master (an ancestor of `origin/master`; a tag on a
+side branch is refused), runs the same three test suites as CI and `npm pack --dry-run`, skips a version
+that is already on the registry (a registry lookup that fails for another reason, such as the network, stops
+the run), then runs `npm publish --provenance --access public`. Provenance (signed
 with the job's `id-token: write` OIDC token) links the tarball on npmjs.com to the commit and workflow run;
 it needs a GitHub-hosted runner and a public repo (this one is). Node is the latest LTS (`lts/*`).
 
@@ -293,8 +295,11 @@ One-time setup by the package owner, before the first tagged release:
 1. Create an npm token that can publish `kktest-dev` (granular access token, or an automation token) and
    save it in GitHub > Settings > Secrets and variables > Actions as `NPM_TOKEN` (a repository secret, or a
    secret of the `npm-publish` environment).
-2. Optional: GitHub > Settings > Environments > `npm-publish` (created on the first run): add required
-   reviewers to make each publish wait for approval.
+2. GitHub > Settings > Environments > `npm-publish` (created on the first run): add required reviewers
+   (each publish waits for approval) and, under Deployment branches and tags, allow only the `v*` tag
+   pattern. The workflow's own checks run inside the job; anyone who can push a tag can start that job, so
+   these two settings are what keep `NPM_TOKEN` from being used without a maintainer. They cannot be set
+   from the repository files: the owner sets them once.
 
 Without `NPM_TOKEN` the publish step fails and nothing is published; publish by hand (`pnpm publish`) as
 before, and the workflow then skips that version. npm trusted publishing (OIDC, no stored token,

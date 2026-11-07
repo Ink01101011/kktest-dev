@@ -147,7 +147,7 @@ test('detectProviders: env names from the shell and settings, local binaries; no
 });
 
 // ---------------------------------------------------------------- I2: Codex CLI and Gemini CLI
-// Paths and keys: .shiftwork/reports-xp/P0-providers.md sections 2 (Codex) and 3 (Gemini).
+// Paths and keys: learn.chatgpt.com/docs/extend/mcp?surface=cli (Codex), geminicli.com/docs/tools/mcp-server/ (Gemini).
 const CODEX_TOML = `# my Codex config
 model = "o3"
 [projects."/somewhere/repo"]

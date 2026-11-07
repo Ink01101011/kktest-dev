@@ -32,7 +32,7 @@ import { homedir } from 'node:os';
 import nodePath from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { cap, execClaudeDefault, findBinDefault, findGlobalPackage, globalPackageDirs, packageSpecOf, parseJsonOutput, redactText, runCommand, secretKey, shortPath } from './inventory.mjs';
-import { asArray, canonical, decodeText, isInside, isMain, isObject, readJsonText, refuseOldRunnerNames, samePath } from './common.mjs';
+import { asArray, canonical, decodeText, isInside, isMain, isObject, projectRootOf, readJsonText, refuseOldRunnerNames, samePath } from './common.mjs';
 import { detectProviders, readHosts } from './hosts.mjs';
 
 export const OPT_LIMITS = Object.freeze({
@@ -256,22 +256,8 @@ export function npxRoots({ home, env = {}, platform = process.platform, npmCache
  * Untrusted (found only through a project config, or whose real path is inside the current project) copies are
  * reported but never chosen.
  */
-/**
- * the top of the project that contains `dir`: the highest ancestor that holds .git, .npmrc, package.json or
- * .mcp.json (a project marker), else `dir` itself. The walk stops at HOME and at the filesystem root, so the
- * result is never HOME or above, also for a repo outside HOME (e.g. /work/repo).
- */
-export function projectRootOf(dir, home) {
-  let root = dir; let cur = dir;
-  // no depth cap: the walk ends at HOME or the filesystem root (a cap let a very deep cwd escape, O7 I1)
-  while (cur && cur !== home && cur !== nodePath.parse(cur).root) {
-    if (['.git', '.npmrc', 'package.json', '.mcp.json'].some((m) => existsSync(nodePath.join(cur, m)))) root = cur;
-    const up = nodePath.dirname(cur);
-    if (up === cur) break;
-    cur = up;
-  }
-  return root;
-}
+// projectRootOf moved to common.mjs (inventory.mjs's Java probe uses the same guard); re-exported for importers
+export { projectRootOf };
 
 export function locatePackage(pkg, { home, cwd, env = process.env, platform = process.platform, configPaths = [], npmRoot = null, npmCache = null, preferNpx = false, globalDirs = null } = {}) {
   const cands = [];
@@ -280,11 +266,17 @@ export function locatePackage(pkg, { home, cwd, env = process.env, platform = pr
   const cwdReal = projectRootOf(canonical(cwd ?? process.cwd()), canonical(home));
   // when the project root is HOME (or above it) every install is "inside" it: the guard then does not apply
   const guardCwd = !isInside(canonical(home), cwdReal);
-  const add = (dir, via, trusted) => {
+  const add = (dir, via, trusted, within = null) => {
     if (!dir) return;
     const j = readPkgJson(dir);
     if (j?.name !== pkg) return;
     let real; try { real = realpathSync.native(dir); } catch { return; }
+    // a package-manager global copy that is a link leading OUT of its node_modules folder (`bun link`, a planted
+    // link to a download) is not that manager's install: listed, never read or run (gate G2-L5)
+    if (within) {
+      let base = null; try { base = realpathSync.native(within); } catch {}
+      if (base && !isInside(real, base)) { trusted = false; via = `${via} (a link out of its folder)`; }
+    }
     const underCwd = guardCwd && isInside(real, cwdReal);
     const known = cands.find((c) => c.real === real);
     if (known) {
@@ -297,7 +289,12 @@ export function locatePackage(pkg, { home, cwd, env = process.env, platform = pr
   for (const c of configPaths) add(pkgRootFrom(c.path, pkg, cwd ?? process.cwd()), `${c.where} config path`, !!c.trusted);
   if (npmRoot) add(nodePath.join(npmRoot, ...pkg.split('/')), 'npm global', true);
   // the other package managers' global folders: as trusted as npm's (the cwd guard in add() still applies)
-  for (const g of findGlobalPackage(pkg, globalDirs ?? globalPackageDirs({ home, env, platform }), { platform })) add(g.dir, `${g.manager} global`, true);
+  // pnpm's global entries are links into its own store (<pnpm home>/global/5/.pnpm/...): the containment check
+  // there is the version folder (two levels up from node_modules), for the others the node_modules folder itself.
+  for (const g of findGlobalPackage(pkg, globalDirs ?? globalPackageDirs({ home, env, platform }), { platform })) {
+    const modules = pkg.split('/').reduce((d) => nodePath.dirname(d), g.dir);
+    add(g.dir, `${g.manager} global`, true, g.manager === 'pnpm' ? nodePath.dirname(modules) : modules);
+  }
   for (const root of npxRoots({ home, env, platform, npmCache })) {
     let entries = [];
     try { entries = readdirSync(root).slice(0, OPT_LIMITS.npxDirs); } catch { /* no npx cache: nothing to add */ }
@@ -497,7 +494,9 @@ async function discoverPackage(it, ctx, prefix, out) {
   for (const c of loc.candidates.filter((x) => !x.trusted)) {
     out.notes.push(c.reason === 'cwd'
       ? `a copy of ${o.package} (${c.version}) lies inside the current project: it could be planted by a cloned repo, so nothing was read from it`
-      : `a copy of ${o.package} (${c.version}) was found via a project config: it could be planted by a cloned repo, so nothing was read from it`);
+      : /a link out of its folder\)$/.test(c.via)
+        ? `a copy of ${o.package} (${c.version}) in ${c.via.replace(/ \(a link out of its folder\)$/, '')} is a link to a folder outside it (a linked checkout or a planted link), so nothing was read from it`
+        : `a copy of ${o.package} (${c.version}) was found via a project config: it could be planted by a cloned repo, so nothing was read from it`);
   }
   if (new Set(loc.candidates.map((c) => c.version)).size > 1 && found) out.notes.push(`several copies with different versions are installed; read: ${found.version} (${found.via})`);
 

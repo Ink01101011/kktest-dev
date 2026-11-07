@@ -140,6 +140,71 @@ test('publish.yml: the tag check passes for v<version>, fails for other tags and
   assert.equal(run('v0.0.0-nope', 'tag', 'true').status, 1); // dry run on a wrong tag still fails
 });
 
+// ---- release gate fixes (G2-M2, G1 minor): tag must be on master; a failed registry lookup is not "unpublished" ----
+const git = (cwd, ...args) => {
+  const r = spawnSync('git', args, { cwd, encoding: 'utf8', env: { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t', GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' } });
+  assert.equal(r.status, 0, `git ${args.join(' ')}: ${r.stderr}`);
+  return r.stdout.trim();
+};
+
+test('publish.yml: full-history checkout, and the master check runs before any test or publish step', () => {
+  assert.match(WORKFLOW, /uses: actions\/checkout@v4\n {8}with:\n {10}fetch-depth: 0/);
+  const s = step('Tagged commit must be on master');
+  assert.ok(s.index > step('Tag must match package.json version').index && s.index < step('Node tests').index);
+  assert.match(s.text, /git merge-base --is-ancestor "\$\{GITHUB_SHA\}" refs\/remotes\/origin\/master/);
+});
+
+test('publish.yml: a v* tag on a commit that is not on master is refused; one on master passes', { skip: process.platform === 'win32' && 'bash step, run on POSIX' }, () => {
+  const dir = tmpdir('pub-');
+  const origin = path.join(dir, 'origin.git'); const work = path.join(dir, 'work');
+  git(dir, 'init', '-q', '--bare', '-b', 'master', origin);
+  git(dir, 'init', '-q', '-b', 'master', work);
+  fs.writeFileSync(path.join(work, 'a'), '1'); git(work, 'add', 'a'); git(work, 'commit', '-qm', 'one');
+  git(work, 'remote', 'add', 'origin', origin); git(work, 'push', '-q', 'origin', 'master');
+  const onMaster = git(work, 'rev-parse', 'HEAD');
+  git(work, 'checkout', '-qb', 'side'); fs.writeFileSync(path.join(work, 'a'), '2'); git(work, 'commit', '-qam', 'side');
+  const offMaster = git(work, 'rev-parse', 'HEAD');
+  const script = runBlock('Tagged commit must be on master');
+  const run = (sha, type = 'tag') => spawnSync('bash', ['-c', script], { cwd: work, encoding: 'utf8', env: { ...process.env, GITHUB_SHA: sha, GITHUB_REF_TYPE: type, GITHUB_REF_NAME: 'v9.9.9', GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' } });
+  assert.equal(run(onMaster).status, 0);
+  const bad = run(offMaster);
+  assert.equal(bad.status, 1);
+  assert.match(bad.stdout, /::error::tag v9\.9\.9 \([0-9a-f]+\) is not on master/);
+  assert.equal(run(offMaster, 'branch').status, 0, 'a manual dry run off a branch is not a tag');
+  git(work, 'remote', 'set-url', 'origin', path.join(dir, 'gone.git'));
+  assert.match(run(onMaster).stdout, /::error::could not fetch origin\/master/);
+});
+
+test('publish.yml: the registry lookup tells published / not published / failed apart', { skip: process.platform === 'win32' && 'bash step, run on POSIX' }, () => {
+  const dir = tmpdir('pub-');
+  const bin = path.join(dir, 'bin'); fs.mkdirSync(bin);
+  // a stub npm: prints NPM_OUT, exits NPM_CODE (node stays the real one, for package.json)
+  fs.writeFileSync(path.join(bin, 'npm'), '#!/bin/sh\nprintf "%s" "$NPM_OUT"\nexit "${NPM_CODE:-0}"\n', { mode: 0o755 });
+  const script = runBlock('Skip a version that is already published');
+  const run = (out, code) => {
+    const ghOut = path.join(dir, `out-${code}-${out.length}`); fs.writeFileSync(ghOut, '');
+    const r = spawnSync('bash', ['-c', script], { cwd: ROOT, encoding: 'utf8', env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, NPM_OUT: out, NPM_CODE: String(code), GITHUB_OUTPUT: ghOut } });
+    return { status: r.status, out: fs.readFileSync(ghOut, 'utf8'), stdout: r.stdout };
+  };
+  assert.deepEqual([run(`${PKG.version}\n`, 0).status, run(`${PKG.version}\n`, 0).out], [0, 'published=true\n']);
+  assert.equal(run('', 0).out, 'published=false\n'); // the package exists, this version does not
+  assert.equal(run('npm error code E404\nnpm error 404 Not Found', 1).out, 'published=false\n'); // no package yet
+  const net = run('npm error code ETIMEDOUT\nnpm error network request failed', 1);
+  assert.equal(net.status, 1, 'a network failure stops the run');
+  assert.equal(net.out, '');
+  assert.match(net.stdout, /::error::could not ask the registry/);
+  assert.equal(run('npm error code E401', 1).status, 1);
+  assert.equal(run('1.0.0-other\n', 0).status, 1, 'an answer that is not this version is not trusted either');
+});
+
+test('docs: Releasing tells the owner to add required reviewers and a v* tag rule to npm-publish', () => {
+  const docs = read('docs/providers.md');
+  const rel = docs.slice(docs.indexOf('## Releasing'), docs.indexOf('## Sources'));
+  assert.match(rel, /required reviewers/);
+  assert.match(rel, /`v\*` tag/);
+  assert.match(rel, /ancestor of `origin\/master`/);
+});
+
 test('trusted publishing prerequisites: repository.url matches this repo; docs name the same workflow and environment', () => {
   assert.equal(PKG.repository.url.replace(/^git\+/, '').replace(/\.git$/, ''), 'https://github.com/Ink01101011/kktest-dev');
   const docs = read('docs/providers.md');

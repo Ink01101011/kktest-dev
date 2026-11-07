@@ -1,6 +1,6 @@
 // Small helpers shared by inventory.mjs, hosts.mjs and options.mjs (single source: a change to what counts as
 // "a reference" or "the same path" is made here once). Node stdlib only, no I/O at import time.
-import { realpathSync } from 'node:fs';
+import { existsSync, realpathSync } from 'node:fs';
 import nodePath from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -58,6 +58,23 @@ export function isInside(child, parent, platform = process.platform) {
   const n = (p) => { const s = String(p ?? '').replace(/\\/g, '/').replace(/\/+$/, ''); return caseInsensitive(platform) ? s.toLowerCase() : s; };
   const c = n(child); const p = n(parent);
   return !!p && (c === p || c.startsWith(p + '/'));
+}
+
+/**
+ * the top of the project that contains `dir`: the highest ancestor that holds .git, .npmrc, package.json or
+ * .mcp.json (a project marker), else `dir` itself. The walk stops at HOME and at the filesystem root, so the
+ * result is never HOME or above, also for a repo outside HOME (e.g. /work/repo).
+ */
+export function projectRootOf(dir, home) {
+  let root = dir; let cur = dir;
+  // no depth cap: the walk ends at HOME or the filesystem root (a cap let a very deep cwd escape, O7 I1)
+  while (cur && cur !== home && cur !== nodePath.parse(cur).root) {
+    if (['.git', '.npmrc', 'package.json', '.mcp.json'].some((m) => existsSync(nodePath.join(cur, m)))) root = cur;
+    const up = nodePath.dirname(cur);
+    if (up === cur) break;
+    cur = up;
+  }
+  return root;
 }
 
 // ---------------------------------------------------------------- JSON / JSONC text

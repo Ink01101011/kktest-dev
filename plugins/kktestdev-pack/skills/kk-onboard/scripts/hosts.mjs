@@ -5,7 +5,7 @@
 // Codex CLI keeps MCP servers in TOML (config.toml); a minimal read-only reader for that subset is below.
 // Codex does not expand ${VAR}: there `ref` = a name in env_vars / env_http_headers / bearer_token_env_var, and any
 // non-empty env value is `literal`.
-import { existsSync, lstatSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import nodePath from 'node:path';
 import { CONFIG_MAX_BYTES, canonicalFile, decodeText, isInside, isObject, readJsonText, samePath, valueState } from './common.mjs';
 
@@ -26,9 +26,9 @@ export function appDataDir({ home, env = process.env, platform = process.platfor
  * where each host keeps MCP config; `key` is the property that holds the server map, `jsonc` marks editors whose
  * files may carry comments and trailing commas (VS Code, Cursor). Claude Code's user file follows
  * CLAUDE_CONFIG_DIR like inventory.mjs does.
- * Codex CLI (.shiftwork/reports-xp/P0-providers.md section 2, learn.chatgpt.com/docs/extend/mcp?surface=cli): user
+ * Codex CLI (learn.chatgpt.com/docs/extend/mcp?surface=cli): user
  * `$CODEX_HOME/config.toml` (default `~/.codex/config.toml`), project `.codex/config.toml` (trusted projects only),
- * tables `[mcp_servers.<name>]`. Gemini CLI (P0 section 3, geminicli.com/docs/tools/mcp-server/): user
+ * tables `[mcp_servers.<name>]`. Gemini CLI (geminicli.com/docs/tools/mcp-server/): user
  * `~/.gemini/settings.json`, project `.gemini/settings.json`, key `mcpServers`, `url` (SSE) or `httpUrl`.
  */
 export function hostDefinitions({ home, cwd, env = process.env, platform = process.platform, managedFile = null }) {
@@ -143,7 +143,10 @@ function codexDefinition({ home, cwd, env, p }) {
 export function readConfig(file, { readFile = readFileSync, stat = statSync, exists = existsSync } = {}, { jsonc = false } = {}) {
   try {
     if (!exists(file)) return { ok: false, missing: true };
-    if (stat(file).size > CONFIG_MAX_BYTES) return { ok: false, error: 'over 50 MB, skipped' };
+    const st = stat(file);
+    // a FIFO or device would block the read forever (gate G2-L3): regular files only
+    if (typeof st.isFile === 'function' && !st.isFile()) return { ok: false, error: 'not a regular file, skipped' };
+    if (st.size > CONFIG_MAX_BYTES) return { ok: false, error: 'over 50 MB, skipped' };
     return { ok: true, value: readJsonText(readFile(file), { jsonc }) };
   } catch (e) {
     return { ok: false, error: e?.code || 'not valid JSON' };
@@ -154,7 +157,9 @@ export function readConfig(file, { readFile = readFileSync, stat = statSync, exi
 export function readTomlConfig(file, { readFile = readFileSync, stat = statSync, exists = existsSync } = {}) {
   try {
     if (!exists(file)) return { ok: false, missing: true };
-    if (stat(file).size > CONFIG_MAX_BYTES) return { ok: false, error: 'over 50 MB, skipped' };
+    const st = stat(file);
+    if (typeof st.isFile === 'function' && !st.isFile()) return { ok: false, error: 'not a regular file, skipped' };
+    if (st.size > CONFIG_MAX_BYTES) return { ok: false, error: 'over 50 MB, skipped' };
     return parseToml(decodeText(readFile(file)));
   } catch (e) {
     return { ok: false, error: e?.code || 'TOML not understood' };
@@ -424,6 +429,7 @@ function ioOf(fs) {
   return {
     exists: fs.exists ?? existsSync, readFile: fs.readFile ?? readFileSync, stat: fs.stat ?? statSync,
     lstat: fs.lstat ?? lstatSync, readdir: fs.readdir ?? ((d) => readdirSync(d)),
+    realpath: fs.realpath ?? ((x) => realpathSync.native(x)),
   };
 }
 
@@ -446,7 +452,17 @@ function subDirs(io, p, dir, max, filter = () => true) {
 /** read one config: a file found by a listing (`found`) must not be a link; same { ok, value, error, missing } contract */
 function readDef(def, io) {
   if (def.found) {
-    try { if (io.lstat(def.file).isSymbolicLink()) return { ok: false, error: 'a link; not followed' }; } catch { return { ok: false, missing: true }; }
+    let st; try { st = io.lstat(def.file); } catch { return { ok: false, missing: true }; }
+    if (st.isSymbolicLink()) return { ok: false, error: 'a link; not followed' };
+    if (typeof st.isFile === 'function' && !st.isFile()) return { ok: false, error: 'not a regular file, skipped' };
+  }
+  // a plugin file must really be inside the plugin: a linked folder on the way (`plugin/lnk -> /elsewhere`,
+  // a linked .claude-plugin) is not followed out of it (gate G2-L2). Real paths are compared; when either
+  // cannot be resolved the file does not exist and the read below reports it missing.
+  if (def.pluginRoot) {
+    let real = null; let root = null;
+    try { real = io.realpath(def.file); root = io.realpath(def.pluginRoot); } catch {}
+    if (real && root && !isInside(real, root)) return { ok: false, error: 'outside the plugin folder (through a link); not read' };
   }
   return def.format === 'codex-toml' ? readTomlConfig(def.file, io) : readConfig(def.file, io, { jsonc: def.jsonc });
 }
@@ -500,8 +516,8 @@ function pluginDefs(h, enabled, io, p, { cwd, platform, notes, short }) {
     const row = rows.find((r) => typeof r.installPath === 'string' && p.isAbsolute(r.installPath)
       && (typeof r.projectPath !== 'string' || samePath(r.projectPath, cwd, platform)));
     if (!row) continue;
-    out.push({ file: p.join(row.installPath, '.mcp.json'), key: 'mcpServers', flat: true, scope: 'plugin', plugin: id, optional: true, found: true });
-    out.push({ file: p.join(row.installPath, '.claude-plugin', 'plugin.json'), key: 'mcpServers', scope: 'plugin', plugin: id, optional: true, found: true, manifestRoot: row.installPath });
+    out.push({ file: p.join(row.installPath, '.mcp.json'), key: 'mcpServers', flat: true, scope: 'plugin', plugin: id, optional: true, found: true, pluginRoot: row.installPath });
+    out.push({ file: p.join(row.installPath, '.claude-plugin', 'plugin.json'), key: 'mcpServers', scope: 'plugin', plugin: id, optional: true, found: true, manifestRoot: row.installPath, pluginRoot: row.installPath });
   }
   return out;
 }
@@ -536,7 +552,8 @@ function wslWindowsHome(io, env, mount) {
 function wslDefs(winHome) {
   const p = nodePath.posix;
   const roaming = p.join(winHome, 'AppData', 'Roaming');
-  const w = (file, key, extra = {}) => ({ file, key, scope: 'user', optional: true, side: 'windows', variant: 'Windows side (WSL)', ...extra });
+  // found: a file under a folder this script picked by listing, so a link there is not followed (gate G2-L6)
+  const w = (file, key, extra = {}) => ({ file, key, scope: 'user', optional: true, found: true, side: 'windows', variant: 'Windows side (WSL)', ...extra });
   return {
     'claude-code': [w(p.join(winHome, '.claude.json'), 'mcpServers')],
     'claude-desktop': [w(p.join(roaming, 'Claude', 'claude_desktop_config.json'), 'mcpServers')],

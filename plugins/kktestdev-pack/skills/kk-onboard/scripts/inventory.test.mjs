@@ -658,11 +658,17 @@ test('#22: env vars move the folders (absolute only), and a linked version folde
   write(join(fx.home, 'real-node', 'lib', 'node_modules', 'linked', 'package.json'), { name: 'linked' });
   mkdirSync(join(mise, 'installs', 'node'), { recursive: true });
   symlinkSync(join(fx.home, 'real-node'), join(mise, 'installs', 'node', 'latest'), 'junction');
-  const dirs = globalPackageDirs({ home: fx.home, env: { PNPM_HOME: pn, MISE_DATA_DIR: mise }, platform: 'linux' });
-  assert.deepEqual(findGlobalPackage('envpkg', dirs, { platform: 'linux' }).map((x) => x.manager), ['pnpm']);
-  assert.deepEqual(findGlobalPackage('linked', dirs, { platform: 'linux' }), []);
-  const rel = globalPackageDirs({ home: fx.home, env: { PNPM_HOME: 'rel/pnpm' }, platform: 'linux' });
-  assert.deepEqual(findGlobalPackage('envpkg', rel, { platform: 'linux' }), [], 'a relative PNPM_HOME is not used');
+  write(join(fx.home, 'real-node', 'node_modules', 'linked', 'package.json'), { name: 'linked' }); // mise's Windows layout
+  for (const lib of [['lib', 'node_modules'], ['node_modules']]) write(join(mise, 'installs', 'node', '22.0.0', ...lib, 'realmise', 'package.json'), { name: 'realmise' });
+  // The fixture paths are host paths (D:\a\... on a Windows runner), so the platform must be the host's: under
+  // 'linux' rules a Windows absolute path is relative and the env var is ignored (the 1.1.0 Windows CI failure).
+  const platform = process.platform;
+  const dirs = globalPackageDirs({ home: fx.home, env: { PNPM_HOME: pn, MISE_DATA_DIR: mise }, platform });
+  assert.deepEqual(findGlobalPackage('envpkg', dirs, { platform }).map((x) => x.manager), ['pnpm']);
+  assert.deepEqual(findGlobalPackage('realmise', dirs, { platform }).map((x) => x.manager), ['mise'], 'MISE_DATA_DIR is used');
+  assert.deepEqual(findGlobalPackage('linked', dirs, { platform }), []);
+  const rel = globalPackageDirs({ home: fx.home, env: { PNPM_HOME: 'rel/pnpm' }, platform });
+  assert.deepEqual(findGlobalPackage('envpkg', rel, { platform }), [], 'a relative PNPM_HOME is not used');
 });
 
 test('#22: a required bin installed by a package manager but off PATH is named in missingBins (inventory, all OSes)', async (t) => {

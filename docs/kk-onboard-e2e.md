@@ -6,7 +6,7 @@ What was run for release 1.1.0, what it found, and what is left for a person on 
 
 Creating a macOS user needs `sudo`, so a clean account was simulated instead:
 
-- `HOME` = an empty folder under `.shiftwork/tmp/110/I7/home`, started through `env -i` (no inherited
+- `HOME` = an empty scratch folder (outside the repo's tracked files), started through `env -i` (no inherited
   variables), so no plugins, MCP servers, skills, settings or AI tool configs exist.
 - `PATH` = a folder with only `node` 26.13, `npm`/`npx` and `claude` 2.1.319, plus `/usr/bin:/bin`, so
   no language server or package manager from the real account is visible.

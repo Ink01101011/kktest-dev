@@ -11,18 +11,20 @@
 //
 // usage: node inventory.mjs [--fast] [--full] [--pretty]
 // Processes it may start besides `claude`: for a pack.json requires[] entry with `java` whose bin is on PATH, one
-// `<java> -version` (and on macOS, when java is the /usr/bin/java stub, /usr/libexec/java_home), 10 s timeout each.
+// `<java> -version` (and on macOS, when java is the /usr/bin/java stub, /usr/libexec/java_home), 10 s timeout each,
+// only when the JDK has no `release` file to read the version from, and never a java given by a relative path or
+// lying inside the current project (a cloned repo can set JAVA_HOME and ship bin/java).
 //   --fast    skip `claude mcp list` (the slow health check; claude.ai connectors are then not seen)
 //   --full    also print the installed lists (plugins, marketplaces, mcp, skills, hooks)
 //   --pretty  indent the JSON
 //
 // Single file, Node stdlib only. The pure helpers are exported for inventory.test.mjs.
 import { spawn } from 'node:child_process';
-import { existsSync, lstatSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import nodePath from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CONFIG_MAX_BYTES, OPTION_HINT_KEYS, asArray, canonical, caseInsensitive, isEnvRef, isMain, isObject, readJsonText, refuseOldRunnerNames, samePath } from './common.mjs';
+import { CONFIG_MAX_BYTES, OPTION_HINT_KEYS, asArray, canonical, caseInsensitive, isEnvRef, isInside, isMain, isObject, projectRootOf, readJsonText, refuseOldRunnerNames, samePath } from './common.mjs';
 import { detectProviders, readHosts } from './hosts.mjs';
 import { REDACT_CHARS, inlineSecretKeys, redactArgs, redactText, redactUrl } from './redact.mjs';
 
@@ -418,7 +420,11 @@ export function findBinOffPath(bin, dirs, { env = process.env, platform = proces
 //   1. $JAVA_HOME (mise, sdkman and asdf set it; the brew jdtls wrapper and the jdtls launcher both honour it),
 //   2. the default a wrapper script writes as JAVA_HOME="${JAVA_HOME:-<dir>}" (Homebrew's jdtls wrapper: its openjdk),
 //   3. `java` on PATH; on macOS /usr/bin/java is a stub, so the JDK it would pick is asked from /usr/libexec/java_home.
-// Then `<java> -version` runs with a timeout (fixed args, no shell). The version is read from its stderr + stdout.
+// The version is read from <JDK>/release (JAVA_VERSION="25.0.1") with no process at all; only when that file is
+// missing does `<java> -version` run, with a timeout (fixed args, no shell; the version is read from stderr + stdout).
+// Trust (F1, gate G1-M1/G2-L4): a repo can set JAVA_HOME (its .claude/settings.json env, a direnv .envrc) and ship
+// bin/java, so a JAVA_HOME / wrapper default / PATH java that is relative, or whose real path is inside the current
+// project, is never run (and a relative one is not even read): the note says so instead.
 export const JAVA_TIMEOUT_MS = 10000;
 const WRAPPER_MAX_BYTES = 4096;
 
@@ -444,33 +450,74 @@ function readHead(file) {
   } catch { return ''; }
 }
 
+/** real path of x, also when x does not exist yet: the deepest existing ancestor is resolved, the rest appended */
+export function realPathOf(x) {
+  const want = nodePath.resolve(String(x));
+  const rest = []; let cur = want;
+  for (;;) {
+    try { return nodePath.join(realpathSync.native(cur), ...rest.reverse()); } catch {}
+    const up = nodePath.dirname(cur);
+    if (up === cur) return want;
+    rest.push(nodePath.basename(cur)); cur = up;
+  }
+}
+
+/** feature version from a JDK's `release` file (JAVA_VERSION="25.0.1"), else null */
+export function releaseJavaVersion(text) {
+  const m = String(text ?? '').match(/^JAVA_VERSION="?([^"\r\n]+)"?/m);
+  return m ? parseJavaVersion(`version "${m[1].trim()}"`) : null;
+}
+
 /**
  * which Java `bin` (found at binPath) will start on, and its feature version. Resolves
  * { java: <path or null>, from: <where that choice came from>, version: <int or null>, error?: <why unknown> }.
- * io: exec (runCommand-shaped), findBin (returns { found, path }), readHead (first bytes of a file), exists.
+ * io: exec (runCommand-shaped), findBin (returns { found, path }), readHead (first bytes of a file), exists,
+ * realpath (canonical path), cwd + home (the project guard: nothing whose real path is inside the project runs).
  */
-export async function javaForBin(binPath, { env = process.env, platform = process.platform, exec = runCommand, findBin, readHead: head = readHead, exists = existsSync } = {}) {
+export async function javaForBin(binPath, { env = process.env, platform = process.platform, exec = runCommand, findBin, readHead: head = readHead, exists = existsSync, realpath = realPathOf, cwd = process.cwd(), home = homedir() } = {}) {
   const p = platform === 'win32' ? nodePath.win32 : nodePath.posix;
-  const javaIn = (home) => p.join(home, 'bin', platform === 'win32' ? 'java.exe' : 'java');
-  let java = null; let from = null;
+  const javaIn = (h) => p.join(h, 'bin', platform === 'win32' ? 'java.exe' : 'java');
+  // the project the cwd belongs to (as options.mjs guards --run-help); none when the cwd is HOME or above it
+  // (and, in any case, the cwd itself unless the cwd is HOME or above it: a HOME that sits inside a repo turns the
+  // project guard off, the cwd guard still holds)
+  const realCwd = realpath(cwd); const realHome = realpath(home);
+  const root = projectRootOf(realCwd, realHome);
+  const guard = !isInside(realHome, root, platform);
+  const cwdGuard = !isInside(realHome, realCwd, platform);
+  const inProject = (x) => { const r = realpath(x); return (guard && isInside(r, root, platform)) || (cwdGuard && isInside(r, realCwd, platform)); };
+  let java = null; let from = null; let jdkHome = null;
+  const untrusted = (what, why) => ({ java: null, from: what, version: null, error: why });
+  const fromHome = (h, label) => {
+    if (!p.isAbsolute(h)) return untrusted(label, `${label} is not an absolute path, so it was not used (a relative one resolves inside whatever folder jdtls starts in)`);
+    jdkHome = h; java = javaIn(h); from = label; return null;
+  };
   const jh = typeof env.JAVA_HOME === 'string' ? env.JAVA_HOME.trim() : '';
-  if (jh) { java = javaIn(jh); from = `$JAVA_HOME (${jh})`; }
+  if (jh) { const bad = fromHome(jh, `$JAVA_HOME (${jh})`); if (bad) return bad; }
   if (!java && binPath) {
     const d = wrapperJavaHome(head(binPath));
-    if (d) { java = javaIn(d); from = `the default JAVA_HOME in its wrapper script (${d})`; }
+    if (d) { const bad = fromHome(d, `the default JAVA_HOME in its wrapper script (${d})`); if (bad) return bad; }
   }
   if (!java) {
     const f = (findBin ?? ((b) => findBinDefault(b, { env, platform })))('java');
     if (f?.found && f.path) {
       if (platform === 'darwin' && f.path === '/usr/bin/java') {
         const r = await exec('/usr/libexec/java_home', [], JAVA_TIMEOUT_MS, { env });
-        const home = r.ok ? String(r.stdout ?? '').trim().split(/\r?\n/)[0] : '';
-        if (!home) return { java: null, from: '/usr/bin/java (the macOS stub)', version: null, error: 'no JDK is installed (/usr/libexec/java_home found none)' };
-        java = javaIn(home); from = `java on PATH (/usr/bin/java, the macOS stub; /usr/libexec/java_home picks ${home})`;
-      } else { java = f.path; from = `java on PATH (${f.path})`; }
+        const h = r.ok ? String(r.stdout ?? '').trim().split(/\r?\n/)[0] : '';
+        if (!h) return { java: null, from: '/usr/bin/java (the macOS stub)', version: null, error: 'no JDK is installed (/usr/libexec/java_home found none)' };
+        const bad = fromHome(h, `java on PATH (/usr/bin/java, the macOS stub; /usr/libexec/java_home picks ${h})`); if (bad) return bad;
+      } else {
+        if (!p.isAbsolute(f.path)) return untrusted(`java on PATH (${f.path})`, `java on PATH (${f.path}) is not an absolute path, so it was not run`);
+        java = f.path; from = `java on PATH (${f.path})`;
+        jdkHome = p.dirname(p.dirname(realpath(f.path))); // <jdk>/bin/java -> <jdk> (through the /usr/bin/java-style links)
+      }
     }
   }
   if (!java) return { java: null, from: 'nothing', version: null, error: 'no Java found: $JAVA_HOME is not set and java is not on PATH' };
+  if (inProject(java) || (jdkHome && inProject(jdkHome))) return { java, from, version: null, error: 'that Java is inside the current project, so it was not run (a cloned repo can ship its own bin/java)' };
+  // 1. the JDK's release file: no process at all
+  const rv = jdkHome ? releaseJavaVersion(head(p.join(jdkHome, 'release'))) : null;
+  if (rv != null) return { java, from, version: rv };
+  // 2. `<java> -version`
   if (!exists(java)) return { java, from, version: null, error: `${java} does not exist` };
   const r = await exec(java, ['-version'], JAVA_TIMEOUT_MS, { env });
   const text = `${r.stderr ?? ''}\n${r.stdout ?? ''}\n${r.ok ? '' : r.error ?? ''}`;
@@ -483,7 +530,7 @@ export async function javaForBin(binPath, { env = process.env, platform = proces
  * runtime checks for pack.json requires[] entries that carry `java`: { [itemId]: [{ bin, note, java?, needs }] }.
  * Only for a bin that is on PATH (a missing bin is already in missingBins). One Java probe per distinct bin.
  */
-export async function requiresRuntimeNotes(pack, { findBin, env = process.env, platform = process.platform, exec = runCommand, readHead: head, exists, short = (x) => x } = {}) {
+export async function requiresRuntimeNotes(pack, { findBin, env = process.env, platform = process.platform, exec = runCommand, readHead: head, exists, cwd, home, short = (x) => x } = {}) {
   const out = {};
   const cache = new Map();
   for (const it of asArray(pack?.items)) {
@@ -491,7 +538,7 @@ export async function requiresRuntimeNotes(pack, { findBin, env = process.env, p
       if (!isObject(r) || typeof r.bin !== 'string' || !Number.isInteger(r.java)) continue;
       const f = findBin(r.bin);
       if (!f?.found) continue;
-      if (!cache.has(r.bin)) cache.set(r.bin, await javaForBin(f.path ?? null, { env, platform, exec, findBin, readHead: head, exists }));
+      if (!cache.has(r.bin)) cache.set(r.bin, await javaForBin(f.path ?? null, { env, platform, exec, findBin, readHead: head, exists, ...(cwd ? { cwd } : {}), ...(home ? { home } : {}) }));
       const j = cache.get(r.bin);
       let note = null;
       if (j.version == null) note = `could not tell which Java ${r.bin} will use (${j.error}; looked at ${short(j.from)}). ${r.bin} needs Java ${r.java}+.`;
@@ -1106,7 +1153,7 @@ export async function run(argv = [], opts = {}) {
     const pmDirs = opts.globalDirs ?? globalPackageDirs({ home: data.ctx.home, env, platform: data.ctx.platform });
     const pk = packStatus(data, pack, findBin, (bin) => findBinOffPath(bin, pmDirs, { env, platform: data.ctx.platform }));
     // requires[].java: the Java a found bin will start on (runs only `java -version` / java_home, with a timeout)
-    const runtime = await requiresRuntimeNotes(pack, { findBin, env, platform: data.ctx.platform, exec: opts.exec ?? runCommand, short: data.ctx.shortText });
+    const runtime = await requiresRuntimeNotes(pack, { findBin, env, platform: data.ctx.platform, exec: opts.exec ?? runCommand, cwd: data.ctx.cwd, home: data.ctx.home, short: data.ctx.shortText });
     for (const item of pk) if (runtime[item.id]) item.requiresNotes = runtime[item.id];
     const out = buildOutput(data, pk, audit(data, pack), { full });
     // AI hosts and model-provider signals (names only) for the options step; options.mjs has the per-item detail

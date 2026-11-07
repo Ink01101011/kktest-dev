@@ -22,7 +22,8 @@ the release step.
   then apply only after a yes. New risk finding `node-version-path`: an MCP server or hook that runs
   from a mise/nvm/fnm/asdf/Volta node version that is gone or not active; `/kk-update` re-checks hooks
   after updates. New `onboard-e2e.test.mjs` and the owner checklist [docs/kk-onboard-e2e.md](./docs/kk-onboard-e2e.md).
-- **Secret redaction: eight known gaps closed** (50273f3, 5ba8e54, #19). Redaction moved to
+- **Secret redaction: eight known gaps closed** (50273f3, 5ba8e54, #19; more in the release gate fixes
+  below). Redaction is best effort over known shapes, not a guarantee that every secret is masked. Redaction moved to
   `redact.mjs`. Now masked: `-p VALUE` after password-taking commands, `PGPASSWORD=x`, a glued
   `-pX` (ports and flag bundles exempt), escaped JSON keys, schemeless `user:S@host`, `KEY = value`
   with spaces, unquoted numbers, single-quoted keys. Nothing the old code masked leaks now (6195
@@ -33,7 +34,8 @@ the release step.
   configs from inside WSL. Global folders of pnpm, yarn, bun, Volta and mise are found without
   running a package manager. Overlap groups get an optional `with` rule, and a plugin, its servers and
   its skills count as one tool.
-- **Windows CI** (47dd777, #20). CI runs the inventory on an empty fake HOME on every OS and an opt-in
+- **Windows CI** (47dd777, #20; the windows-latest cells were red on one test until the gate fix below,
+  so re-check the matrix on the release commit). CI runs the inventory on an empty fake HOME on every OS and an opt-in
   MCP `initialize` smoke test on Windows. New Windows tests (junctions, `taskkill /T`, `cmd /c` step
   shapes, WSL, `CLAUDE_CONFIG_DIR`). [docs/windows.md](./docs/windows.md) lists every POSIX-only skip
   with what protects that path, kept in step by a test.
@@ -58,7 +60,36 @@ the release step.
   sections point to one place instead of repeating the SKILL, and a test keeps its publisher table in
   step with `pack.json`.
 
+- **Release gate fixes** (G1 review, G2 pentest).
+  - Windows CI: the `#22` env-var test built Windows paths but checked them with Linux rules; it now
+    uses the host's rules, and a win32 simulation pins why.
+  - The Java probe never runs a `java` given by a relative path or lying inside the current project
+    (`JAVA_HOME`, the jdtls wrapper default, `java` on PATH): a cloned repo could set `JAVA_HOME` and
+    ship `bin/java`. The version is read from the JDK's `release` file first, with no process at all.
+  - Redaction: numbered and plural secret names (`TOKEN2`, `SECRETS`, `API_KEYS`), `PASSPHRASE`,
+    `JWT`, `CREDS`, `dbpass` and the key-material `*_KEY` names (`SSH_KEY`, `SIGNING_KEY`,
+    `ENCRYPTION_KEY`, `SESSION_KEY`, `LICENSE_KEY`, `APP_KEY`); a secret `--flag VALUE` inside a quoted
+    command (`bash -c "notify --api-key X"`, which leaked into hook findings); npm, Hugging Face,
+    PyPI, Slack app, Google `ya29.`, SendGrid, Shopify, Linear, Figma, Perplexity and DigitalOcean
+    tokens; Slack/Discord/Telegram webhook URLs; PEM private key blocks; `<password>X</password>`.
+    Counts stay readable (`max_tokens`, `tokens: 1200`). Diffed old vs new: 0 new leaks on the 6195-case
+    corpus, the 547 curated cases and the gate's fuzz harnesses (200k+ random cases).
+  - Host reads: a plugin's `mcpServers` path that leaves the plugin through a linked folder, a FIFO
+    as a config file (the scan hung), and a linked Windows-side config seen from WSL are no longer
+    read. `--run-help` never picks a package-manager global copy that is a link out of its folder.
+  - `publish.yml`: the tagged commit must be on master (`git merge-base --is-ancestor` against
+    `origin/master`), and a registry lookup that fails for any reason other than "not found" stops the
+    run instead of publishing. docs/providers.md asks the owner to give the `npm-publish` environment
+    required reviewers and a `v*` tag rule.
+  - Smaller: kk-update backs settings up with `cp -p` (keeps mode 0600); infographic-diagram 0.1.1
+    (its render scripts were split in #23); the prompt-evolve SKILL links the spec by URL (the
+    relative link did not resolve inside an installed plugin); no tracked file cites the ignored
+    `.shiftwork` folder.
+
 ### Owner checks still open
+
+- **`npm-publish` environment protection**: required reviewers and a deployment rule for `v*` tags
+  (docs/providers.md, "Releasing"). Anyone who can push a tag can otherwise start the publish job.
 
 - **Windows "Connected" check on a real machine** (#20): register the pack's MCP servers through
   Claude Code with `cmd /c` and see "Connected". CI covers launch and `initialize` only. Checklist in

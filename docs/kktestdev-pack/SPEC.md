@@ -34,7 +34,8 @@ status, where it was found, missing bins, `requiresNotes`), `findings`, `package
 `installed` (with `--full`), `notes`.
 
 Processes it may start: `claude` (plugin, marketplace and MCP lists), and for an item whose `requires`
-names a Java version, one `java -version` (10 s timeout).
+names a Java version, one `java -version` (10 s timeout) when the JDK has no `release` file to read the
+version from. A Java given by a relative path, or lying inside the current project, is never run.
 
 ### Findings
 

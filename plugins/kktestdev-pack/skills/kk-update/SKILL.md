@@ -66,8 +66,8 @@ minutes: every step is network-bound.
    match": nothing to do. Exit 2: the hook command no longer matches this install, typically because a
    node upgrade (mise, nvm, fnm, asdf, Volta) moved `bantamkit-mcp` to another version's folder and the
    old absolute path is gone or stale. Then show the plan as in `../../docs/bantamkit-hooks.md`
-   ("Turning them on from Claude Code"), ask, back up `~/.claude/settings.json` to
-   `~/.claude/settings.json.bak-kk-update-<YYYYMMDDHHMM>`, and only after the user's yes run
+   ("Turning them on from Claude Code"), ask, back up `~/.claude/settings.json` with `cp -p` (keeps its
+   0600 mode: the file can hold env tokens) to `~/.claude/settings.json.bak-kk-update-<YYYYMMDDHHMM>`, and only after the user's yes run
    `bantamkit-mcp --install-hooks --yes`. The Bash tool has no terminal, so without `--yes` it can never
    write; never add `--yes` before that yes. If the hooks are not installed, do not offer them here
    (that is `/kk-onboard`).
@@ -112,7 +112,7 @@ minutes: every step is network-bound.
 
 ## If an update breaks something
 
-Ask before each step below and show the exact command first. Back up `~/.claude.json` to
+Ask before each step below and show the exact command first. Back up `~/.claude.json` with `cp -p` to
 `~/.claude.json.bak-kk-update-<YYYYMMDDHHMM>` before removing or re-adding a server.
 
 Pin temporarily (incident only), then tell the team:
