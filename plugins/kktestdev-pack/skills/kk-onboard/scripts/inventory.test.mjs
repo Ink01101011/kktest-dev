@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  run, redactText, redactUrl, redactArgs, commandName, secretKey, inlineSecretKeys, isEnvRef, packageSpecOf, splitSpec,
+  run, redactText, redactUrl, redactArgs, commandWords, splitShell, secretKey, inlineSecretKeys, isEnvRef, packageSpecOf, splitSpec,
   normalizeEndpoint, nameMatches, unwrapCommand, isUnderHome, shortPath, isLocalPath, tokenizeCommand,
   projectEntry, parseJsonOutput, parseMcpListLine, findBinDefault, validatePack, FINDING_CATEGORIES, LIMITS,
 } from './inventory.mjs';
@@ -451,8 +451,8 @@ test('G7-3: the MySQL -p rule applies per shell segment', () => {
   assert.equal(redactText('ssh -p2222 host && mysql -uroot -pCANAG9 db').text, 'ssh -p2222 host && mysql -uroot -p*** db');
   assert.equal(redactText('mysql -pCANAG10; ssh -p22 h').text, 'mysql -p***; ssh -p22 h');
   assert.equal(redactText('FOO=1 mysql -pCANAG11').text, 'FOO=1 mysql -p***');
-  assert.equal(commandName(['-y', 'mysql-mcp']), 'mysql-mcp');
-  assert.equal(commandName(['C:\\Program Files\\MySQL\\bin\\mysql.exe']), 'mysql');
+  assert.ok(commandWords(['-y', 'mysql-mcp']).has('mysql-mcp'));
+  assert.ok(commandWords(['C:\\Tools\\MySQL\\bin\\mysql.exe']).has('mysql'));
 });
 
 test('G7-4: redactText stays linear on long adversarial input (below the cut)', () => {
@@ -477,4 +477,39 @@ test('G7-5: marketplace source is redacted too', async (t) => {
   const fx = fakeHome(t);
   const out = await inv(fx, ['--full'], { runClaude: stubClaude({ marketplaces: [{ name: 's', source: 'https://bob:CANAG13@git.example/r.git' }] }) });
   assert.ok(!JSON.stringify(out).includes('CANAG13'));
+});
+
+// ---------------------------------------------------------------- G8 regressions (F4)
+test('G8-M1: credential commands behind wrappers are still masked', () => {
+  for (const s of ['docker exec db mysql -uroot -pCANAH1', 'kubectl exec p -- mysql -pCANAH1', 'ssh host mysql -pCANAH1', 'sudo mysql -pCANAH1',
+    'time mysql -pCANAH1', 'timeout 5 mysql -pCANAH1', 'nohup mysql -pCANAH1', "bash -c 'mysql -pCANAH1'", '$(mysql -pCANAH1)', '`mysql -pCANAH1`',
+    '(mysql -pCANAH1)', '{ mysql -pCANAH1; }', '! mysql -pCANAH1', 'sudo curl -ubob:CANAH1 h', 'docker exec c curl -u bob:CANAH1 h', 'ssh h curl -vu bob:CANAH1 h']) {
+    assert.ok(!redactText(s).text.includes('CANAH1'), s + ' => ' + redactText(s).text);
+  }
+  for (const [args, cmd] of [[['exec', 'db', 'mysql', '-pCANAH2'], 'docker'], [['host', 'mysql', '-pCANAH2'], 'ssh'], [['x', 'mysql', '-pCANAH2'], 'npx'], [['/c', 'mysql', '-pCANAH2'], 'cmd'], [['run', 'img', 'curl', '-u', 'bob:CANAH2'], 'docker']]) {
+    assert.ok(!redactArgs(args, cmd).args.join(' ').includes('CANAH2'), `${cmd} ${args.join(' ')}`);
+  }
+});
+
+test('G8-M2: shell separators inside quotes do not split a password', () => {
+  assert.deepEqual(splitShell('a "b;c" && d'), ['a "b;c" ', '&&', ' d']);
+  for (const s of ['curl -u "bob:pa;CANAH3" h', "curl -u 'bob:pa|CANAH3' h", 'mysql -p"ab;CANAH3"', 'mysql -p"ab&&CANAH3" db']) {
+    assert.ok(!redactText(s).text.includes('CANAH3'), s + ' => ' + redactText(s).text);
+  }
+});
+
+test('G8-M3: keys and URLs after digits, dots and dashes are still matched', () => {
+  for (const s of ['1api_key=CANAH4', '.password=CANAH4', '9DB_PASSWORD=CANAH4', '---token=CANAH4', '-https://u:CANAH4@h/x', '.https://h/x?key=CANAH4', 'x--token=CANAH4']) {
+    assert.ok(!redactText(s).text.includes('CANAH4'), s + ' => ' + redactText(s).text);
+  }
+});
+
+test('G8-m1/m2: separators and whitespace stay linear; node/python/ssh do not veto -u masking', () => {
+  for (const s of [' '.repeat(19999), ' ; '.repeat(6666), '&'.repeat(19999), 'a1'.repeat(9999), 'a.'.repeat(9999)]) {
+    const t0 = process.hrtime.bigint(); redactText(s); redactArgs(Array(50).fill(s.slice(0, 2000)));
+    assert.ok(Number(process.hrtime.bigint() - t0) / 1e6 < 200);
+  }
+  for (const s of ['node cli.js -u u:CANAH5', 'python3 x.py --user u:CANAH5', 'ssh -u u:CANAH5 h']) assert.ok(!redactText(s).text.includes('CANAH5'), s);
+  assert.equal(redactText('docker run -u 1000:1000 img').text, 'docker run -u 1000:1000 img');
+  assert.equal(redactText('uvicorn -u app:main').text, 'uvicorn -u app:main');
 });

@@ -46,32 +46,68 @@ const QUERY_SECRET = /^(key|sig|code|access_token|apikey)$/i;
 const ENV_REF = /\$\{[A-Za-z_][A-Za-z0-9_]*(?::-[^}]*)?\}|\$[A-Za-z_][A-Za-z0-9_]*|%[A-Za-z_][A-Za-z0-9_]*%/g;
 // Well-known credential prefixes (OpenAI/Anthropic sk-, Stripe, GitHub, GitLab, Slack, AWS, Google, JWT).
 const TOKEN_PREFIX = /\b(?:sk-[A-Za-z0-9_-]{8,}|sk_(?:live|test)_[A-Za-z0-9]{8,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{16,}|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]+)/g;
-// The lookbehinds pin each match to the start of a token, so a long run of word characters is scanned
-// once, not once per position (G7-4: the unanchored forms were quadratic, ~4 s on a 100k-char token).
-const URL_IN_TEXT = /(?<![a-z0-9+.-])[a-z][a-z0-9+.-]*:\/\/[^\s'"<>`]+/gi;
+// Scheme and key lengths are bounded ({0,31}, {0,63}) so each start position scans a bounded window:
+// linear on long runs (G7-4: unbounded forms were quadratic, ~4 s on a 100k-char token). Bounding instead of
+// anchoring keeps every match the old forms found (G8-M3: `1api_key=`, `.password=`, `-https://u:p@h`).
+const URL_IN_TEXT = /\b[a-z][a-z0-9+.-]{0,31}:\/\/[^\s'"<>`]+/gi;
 const AUTH_SCHEME = /\b(Bearer|Basic|Token)(\s+)([^\s'"]+)/gi;
-const KEY_VALUE = /(?<![\w.-])(-{0,2}[A-Za-z_][\w.-]*)(=|:[ \t]*)("[^"]*"|'[^']*'|[^\s'"&]+)/g;
+const KEY_VALUE = /(-{0,2}[A-Za-z_][\w.-]{0,63})(=|:[ \t]*)("[^"]*"|'[^']*'|[^\s'"&]+)/g;
 const FLAG = /^--?[A-Za-z][\w.-]*$/;
 // `-u user:password` / `--user user:password`: the part after the first colon is a password.
 const USER_FLAG = /^(-u|--user|--proxy-user)$/;
 // Commands whose -u takes user:password and whose short flags combine/glue (`-vu bob:pw`, `-ubob:pw`).
 const CRED_U_CMDS = new Set(['curl', 'wget', 'lftp', 'aria2c', 'ftp', 'sftp', 'mongo', 'mongosh', 'mongodump', 'mongorestore', 'mongoexport', 'mongoimport', 'redis-cli', 'influx', 'rabbitmqadmin']);
-// Commands whose -u/--user means something else (uid:gid, module:app): never masked.
-const NON_CRED_U_CMDS = new Set(['docker', 'podman', 'nerdctl', 'uvicorn', 'gunicorn', 'hypercorn', 'daphne', 'sudo', 'su', 'runuser', 'chown', 'setpriv', 'python', 'python3', 'node', 'ssh']);
+// Commands whose -u/--user means something else (uid:gid, user:group, module:app). They only veto masking
+// when no credential command appears in the same segment (`docker exec db curl -u bob:pw` is still masked).
+const NON_CRED_U_CMDS = new Set(['docker', 'podman', 'nerdctl', 'uvicorn', 'gunicorn', 'hypercorn', 'daphne', 'runuser', 'chown', 'setpriv']);
 // MySQL-family clients take the password glued to -p (`mysql -pSECRET`); a separate `-p X` is a prompt + db name.
 const MYSQL_CMDS = new Set(['mysql', 'mariadb', 'mysqldump', 'mysqladmin', 'mysqlimport', 'mysqlshow']);
-const SHELL_SEPARATOR = /(\s*(?:&&|\|\||[;|&\n])\s*)/;
 
-/** the command name of one shell segment / argv: basename of the first word that is not a flag, VAR=x, env, exec or command */
-export function commandName(words) {
-  for (const w of words) {
-    const word = String(w ?? '').replace(/^["']|["']$/g, '');
-    if (!word || word.startsWith('-') || /^[A-Za-z_][A-Za-z0-9_]*=/.test(word) || word === 'env' || word === 'exec' || word === 'command') continue;
-    return word.split(/[\\/]/).pop().replace(/\.(exe|cmd|bat)$/i, '').toLowerCase();
-  }
-  return '';
-}
 const uidPair = (user, pw) => /^\d+$/.test(user) && /^\d+$/.test(pw);
+
+/** split a command line on ; & | && || and newlines that are OUTSIDE quotes; linear. Returns [seg, sep, seg, ...] */
+export function splitShell(t) {
+  const out = []; let cur = ''; let q = '';
+  for (let i = 0; i < t.length; i++) {
+    const c = t[i];
+    if (q) { cur += c; if (c === q) q = ''; else if (c === '\\' && q === '"' && i + 1 < t.length) cur += t[++i]; continue; }
+    if (c === '"' || c === "'") { q = c; cur += c; continue; }
+    if (c === '\\' && i + 1 < t.length) { cur += c + t[++i]; continue; }
+    if (c === ';' || c === '&' || c === '|' || c === '\n') {
+      let sep = c; while (i + 1 < t.length && (t[i + 1] === '&' || t[i + 1] === '|') && sep.length < 2) sep += t[++i];
+      out.push(cur, sep); cur = ''; continue;
+    }
+    cur += c;
+  }
+  out.push(cur);
+  return out;
+}
+
+/** every command-looking word of a segment or argv: basenames, with wrappers like $( ( { ! ` and quotes stripped */
+export function commandWords(words) {
+  const out = new Set();
+  for (const w of words) {
+    for (const part of String(w ?? '').split(/\s+/)) {
+      const word = part.replace(/^(?:\$\(|[({!`"'])+/, '').replace(/[)}`"';]+$/, '');
+      if (!word || word.startsWith('-') || word.includes('=')) continue;
+      out.add(word.split(/[\\/]/).pop().replace(/\.(exe|cmd|bat)$/i, '').toLowerCase());
+    }
+  }
+  return out;
+}
+
+/** what a segment's commands imply for -u and -p: credential client present, MySQL client present, a -u veto */
+// Word-boundary tests over the whole text: fail-safe (any mention counts, as the pre-gate code did), linear.
+const CRED_U_WORD = new RegExp(`\\b(${[...CRED_U_CMDS].map((c) => c.replace(/-/g, '\\-')).join('|')})(\\.exe)?\\b`, 'i');
+const MYSQL_WORD = new RegExp(`\\b(${[...MYSQL_CMDS].join('|')})(\\.exe)?\\b`, 'i');
+function credContext(words) {
+  const ws = commandWords(words);
+  const text = words.map((w) => String(w ?? '')).join(' ');
+  const credU = CRED_U_WORD.test(text);
+  const mysql = MYSQL_WORD.test(text);
+  const veto = !credU && !mysql && [...ws].some((w) => NON_CRED_U_CMDS.has(w));
+  return { credU: credU || mysql, mysql, veto };
+}
 // Directories under HOME that belong to a package manager or version manager (not "a local checkout").
 const TOOLCHAIN_DIRS = /\/(node_modules|\.nvm|nvm|\.volta|\.asdf|\.fnm|\.bun\/bin|\.cargo\/bin|\.npm-global|\.npm\/_npx|\.local\/bin|\.local\/share\/(mise|pnpm|uv)|mise|homebrew|linuxbrew|\.claude\/plugins|appdata\/roaming\/npm|appdata\/local\/(mise|pnpm|volta)|scoop\/(shims|apps)|go\/bin|library\/pnpm)(\/|$)/;
 const BROAD_PERMISSION = /^Bash(\(\*\))?$|^Bash\(\*|bypassPermissions|^mcp__[^_]+$|^\*$/;
@@ -135,34 +171,34 @@ export function redactUrl(u) {
 }
 
 /** mask the password half of user:password; returns null when it is not one (or must not be masked) */
-function maskUserPass(value, cmd) {
+function maskUserPass(value, ctx) {
   const q = /^["']/.test(value) ? value[0] : '';
   const inner = q ? value.slice(1, value.endsWith(q) ? -1 : undefined) : value;
   const i = inner.indexOf(':');
   if (i <= 0 || i === inner.length - 1) return null;
   const user = inner.slice(0, i); const pw = inner.slice(i + 1);
-  if (pw === '***' || isEnvRef(pw) || NON_CRED_U_CMDS.has(cmd) || uidPair(user, pw)) return null;
+  if (pw === '***' || isEnvRef(pw) || ctx.veto || uidPair(user, pw)) return null;
   return `${q}${user}:***${q}`;
 }
 
 /** -u/--user/--proxy-user user:password and mysql -pX inside ONE shell segment */
 function redactSegment(seg, hits) {
-  const cmd = commandName(seg.trim().split(/\s+/));
+  const ctx = credContext([seg]);
   const VALUE = `("[^"]*"|'[^']*'|[^\\s'"]+)`;
-  // exact flags, spaced or with =: any command except the NON_CRED ones
+  // exact flags, spaced or with =: masked unless the segment's only commands give -u another meaning
   seg = seg.replace(new RegExp(`(^|\\s)(-u|--user|--proxy-user)(\\s+|=)${VALUE}`, 'g'), (m, pre, flag, sp, val) => {
-    const masked = maskUserPass(val, cmd); if (!masked) return m;
+    const masked = maskUserPass(val, ctx); if (!masked) return m;
     hits.push(`"${flag}" password`); return `${pre}${flag}${sp}${masked}`;
   });
-  // combined (-vu bob:pw) and glued (-ubob:pw, -vubob:pw): only for commands known to take user:password there
-  if (CRED_U_CMDS.has(cmd)) {
+  // combined (-vu bob:pw) and glued (-ubob:pw, -vubob:pw): only when a credential client is in the segment
+  if (ctx.credU) {
     seg = seg.replace(new RegExp(`(^|\\s)(-[A-Za-z]*u)(\\s+|)${VALUE}`, 'g'), (m, pre, flag, sp, val) => {
       if (flag === '-u' && sp) return m; // already handled above
-      const masked = maskUserPass(val, cmd); if (!masked) return m;
+      const masked = maskUserPass(val, ctx); if (!masked) return m;
       hits.push(`"${flag}" password`); return `${pre}${flag}${sp}${masked}`;
     });
   }
-  if (MYSQL_CMDS.has(cmd)) {
+  if (ctx.mysql) {
     seg = seg.replace(/(^|\s)-p(?!\s)("[^"]*"|'[^']*'|[^\s'"]+)/g, (m, pre, val) => {
       if (val === '***' || isEnvRef(val.replace(/^["']|["']$/g, ''))) return m;
       hits.push('"-p" password'); return `${pre}-p***`;
@@ -186,12 +222,12 @@ export function redactText(s) {
     hits.push(`"${key}"`); return `${key}${sep}***`;
   });
   // --token VALUE (space separated) inside a command line
-  t = t.replace(/(^|\s)(--?[A-Za-z][\w.-]*)(\s+)("[^"]*"|'[^']*'|[^\s'"-][^\s'"]*)/g, (m, pre, flag, sp, val) => {
+  t = t.replace(/(^|\s)(--?[A-Za-z][\w.-]{0,63})(\s+)("[^"]*"|'[^']*'|[^\s'"-][^\s'"]*)/g, (m, pre, flag, sp, val) => {
     if (!secretKey(flag) || val === '***' || isEnvRef(val.replace(/^["']|["']$/g, ''))) return m;
     hits.push(`"${flag}"`); return `${pre}${flag}${sp}***`;
   });
-  // -u user:password and mysql -pSECRET, judged per shell segment by that segment's command
-  t = t.split(SHELL_SEPARATOR).map((seg, i) => (i % 2 ? seg : redactSegment(seg, hits))).join('');
+  // -u user:password and mysql -pSECRET, judged per shell segment (split outside quotes) by its commands
+  t = splitShell(t).map((seg, i) => (i % 2 ? seg : redactSegment(seg, hits))).join('');
   t = t.replace(TOKEN_PREFIX, () => { hits.push('token-like value'); return '***'; });
   return { text: t, hits };
 }
@@ -201,15 +237,14 @@ export function redactArgs(args, command = '') {
   const hits = [];
   const out = [];
   const list = strArray(args);
-  // the command is `command` itself, or the first argv word when command is a runner/shell (npx x, cmd /c x)
-  const cmd = [commandName([command]), commandName(list)].find((c) => c && !['npx', 'cmd', 'sh', 'bash', 'uvx', 'bunx', 'pnpm', 'dlx'].includes(c)) ?? '';
-  const mysql = MYSQL_CMDS.has(cmd);
-  const credU = CRED_U_CMDS.has(cmd);
+  // commands anywhere in the command + argv count (npx x mysql, cmd /c mysql, docker exec db mysql, ssh h curl)
+  const ctx = credContext([command, ...list]);
+  const { mysql, credU } = ctx;
   for (let i = 0; i < list.length; i++) {
     const a = list[i];
     const prev = list[i - 1];
     const userPass = (flag, val, rebuild) => {
-      const masked = maskUserPass(val, cmd); if (!masked) return false;
+      const masked = maskUserPass(val, ctx); if (!masked) return false;
       hits.push(`"${flag}" password`); out.push(rebuild(masked)); return true;
     };
     if (prev !== undefined && (USER_FLAG.test(prev) || (credU && /^-[A-Za-z]*u$/.test(prev))) && userPass(prev, a, (m) => m)) continue;
