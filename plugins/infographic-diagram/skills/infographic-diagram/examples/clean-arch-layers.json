@@ -1,0 +1,33 @@
+{
+  "type": "layers",
+  "rail_width": 150,
+  "kicker": "NESTJS BACKEND",
+  "title": "Clean Architecture Layers",
+  "subtitle": "Domain + Use Cases + Adapters + Infrastructure",
+  "layers": [
+    {"theme": "olive", "name": "DOMAIN", "tagline": "The Rules Layer", "icon": "shield", "icon_label": "Entities",
+     "rows": [{"items": [{"label": "Entities", "icon": "box"}, {"label": "Value Objects", "icon": "tag"}]},
+              {"items": [{"label": "Domain Events", "icon": "bell"}, {"label": "Invariants", "icon": "check"}]}],
+     "aside": {"icon": "lock", "text": "Zero framework imports. Pure TypeScript."}},
+    {"theme": "teal", "name": "USE CASES", "tagline": "The Application Layer", "icon": "gear", "icon_label": "Interactors",
+     "rows": [{"arrows": true, "items": [{"label": "Input DTO"}, {"label": "Orchestrate\ndomain"}, {"label": "Output DTO"}]}],
+     "note": "Depends on ports (interfaces), never on adapters",
+     "aside": {"icon": "plug", "w": 150, "text": "Ports defined here, implemented outside."}},
+    {"theme": "orange", "h": 200, "name": "ADAPTERS", "tagline": "The Translation Layer", "icon": "refresh",
+     "rows": [{"items": [{"label": "Controllers", "icon": "plug"}, {"label": "Presenters", "icon": "monitor"}, {"label": "Repositories", "icon": "database"}, {"label": "Mappers", "icon": "refresh"}]}],
+     "aside": {"icon": "shield", "text": "Convert between HTTP/DB shapes and domain."}},
+    {"theme": "purple", "h": 200, "name": "INFRASTRUCTURE", "tagline": "The Delivery Layer", "icon": "server",
+     "rows": [{"items": [{"label": "NestJS Modules", "icon": "package"}, {"label": "TypeORM", "icon": "database"}, {"label": "Redis", "icon": "layers"}, {"label": "Kafka", "icon": "stream"}]}],
+     "aside": {"icon": "box", "text": "Swappable. The outermost ring."}}
+  ],
+  "rails": {
+    "left":  {"title": "Tests", "icon": "check", "theme": "green", "bullets": ["unit on domain", "use-case specs", "e2e via HTTP"]},
+    "right": {"title": "DI Container", "icon": "network", "theme": "blue", "bullets": ["binds ports", "per-module scope", "mock in tests"]}
+  },
+  "summary": [
+    {"icon": "shield", "text": "Domain owns rules"},
+    {"icon": "gear", "text": "Use cases orchestrate"},
+    {"icon": "refresh", "text": "Adapters translate"},
+    {"icon": "server", "text": "Infra delivers"}
+  ]
+}

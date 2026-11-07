@@ -10,6 +10,8 @@ description: "Use this skill whenever an output needs to clear a quality bar bef
   designs to pick from (see exploration-loops)."
 version: "0.1.1"
 updated: "2026-07-02"
+metadata:
+  short-description: "Use when output must clear a quality bar before it ships: critique and rewrite, score-and-retry, multi-critic, adversarial critique, judge ensemble. Not for plain count-bounded retries."
 ---
 
 # Quality Loops
@@ -153,6 +155,10 @@ security still fails at 5 → rewrite targets security specifically → round 3 
 → Adversarial Critique, `target_value: 0` unrebutted objections, `direction: decrease`. Round 3: same
 objection ("no rate limiting") recurs verbatim after a cosmetic patch → `stalled` → escalate: actually
 add rate limiting, don't reword the paragraph again.
+
+## Other agents
+
+If the `loop-ledger` tools (`loop_start`, `loop_tick`, `loop_status`) are not available in your host, track the iteration count, the best progress so far and the stop condition in a plain scratch list, and stop when the budget or the exit predicate is met. Without a Stop hook, enforcement is advisory: re-check the score before you declare the task done.
 
 ## Changelog
 

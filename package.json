@@ -1,0 +1,69 @@
+{
+  "name": "kktest-dev",
+  "version": "1.0.0",
+  "description": "Use the kktest-dev Claude Code skills and MCP servers from other AI tools: Codex, Gemini CLI, GitHub Copilot, Cursor, Claude Desktop, claude.ai, ChatGPT.",
+  "type": "module",
+  "bin": {
+    "kktest-dev": "tools/cli.mjs"
+  },
+  "files": [
+    "tools/cli.mjs",
+    "tools/lib/*.mjs",
+    ".claude-plugin/marketplace.json",
+    "plugins/*/.claude-plugin/plugin.json",
+    "plugins/loop-ledger/.mcp.json",
+    "plugins/memory-keeper/.mcp.json",
+    "plugins/reflexion/.mcp.json",
+    "plugins/*/skills/*/SKILL.md",
+    "plugins/*/skills/*/references/*.md",
+    "plugins/infographic-diagram/skills/infographic-diagram/examples/*.json",
+    "plugins/infographic-diagram/skills/infographic-diagram/scripts/build.py",
+    "plugins/infographic-diagram/skills/infographic-diagram/scripts/common.py",
+    "plugins/infographic-diagram/skills/infographic-diagram/scripts/icons.py",
+    "plugins/infographic-diagram/skills/infographic-diagram/scripts/layers.py",
+    "plugins/infographic-diagram/skills/infographic-diagram/scripts/tree.py",
+    "plugins/loop-ledger/server/index.js",
+    "plugins/loop-ledger/server/ledger.js",
+    "plugins/loop-ledger/server/store.js",
+    "plugins/loop-ledger/server/gate.mjs",
+    "plugins/loop-ledger/server/package.json",
+    "plugins/memory-keeper/server/memory_keeper_server.py",
+    "plugins/memory-keeper/scripts/memctl.py",
+    "plugins/memory-keeper/automation/pre-commit",
+    "plugins/memory-keeper/automation/scheduled-task.md",
+    "plugins/reflexion/server/reflexion_server.py",
+    "plugins/reflexion/scripts/reflexionctl.py",
+    "plugins/prompt-evolve/scripts/pevolve.py",
+    "docs/providers.md",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "test": "node tools/run-tests.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "keywords": [
+    "agent-skills",
+    "mcp",
+    "claude-code",
+    "codex",
+    "gemini-cli",
+    "copilot",
+    "cursor",
+    "skills"
+  ],
+  "license": "MIT",
+  "author": "Ink <supakit.kitj@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Ink01101011/kktest-dev.git"
+  },
+  "homepage": "https://github.com/Ink01101011/kktest-dev#readme",
+  "bugs": {
+    "url": "https://github.com/Ink01101011/kktest-dev/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

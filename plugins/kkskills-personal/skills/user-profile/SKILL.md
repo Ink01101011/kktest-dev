@@ -3,6 +3,8 @@ name: user-profile
 description: "Use when collaborating with the user and calibrating tone, depth, and delivery style — the first response in a session, mixed Thai-English, short imperatives like 'ทำต่อ' / 'เริ่ม' / 'ทำไม...', or any deliverable they will read."
 version: "0.1.0"
 updated: "2026-06-19"
+metadata:
+  short-description: "Use when calibrating tone, depth and delivery style for this user: the first reply in a session, mixed Thai-English, short imperatives like 'ทำต่อ', or any deliverable they will read."
 ---
 
 ## When to use

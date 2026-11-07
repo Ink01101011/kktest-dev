@@ -9,6 +9,8 @@ description: "Use this skill whenever a task needs a plan that adapts as executi
   multiple candidate plans (see exploration-loops)."
 version: "0.1.1"
 updated: "2026-07-02"
+metadata:
+  short-description: "Use when a plan must adapt as execution reveals new information: plan-execute-replan, goal decomposition, progress checks, constraint satisfaction. Not for a fixed linear to-do list."
 ---
 
 # Planning Loops
@@ -148,6 +150,10 @@ Plan→Execute→Replan.
 → Constraint Satisfaction, `target_value: 5` (all five constraints/jobs placed validly), `progress`
 oscillates as reassignments trade off memory vs. deadline; `stalled` on the same infeasible-conflict pair
 recurring ⇒ escalate ("no valid schedule exists under current constraints"), don't keep reshuffling.
+
+## Other agents
+
+If the `loop-ledger` tools (`loop_start`, `loop_tick`, `loop_status`) are not available in your host, track the iteration count, the best progress so far and the stop condition in a plain scratch list, and stop when the budget or the exit predicate is met. Without a Stop hook, enforcement is advisory: re-check the score before you declare the task done.
 
 ## Changelog
 

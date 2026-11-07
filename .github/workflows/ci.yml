@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.os }} / node ${{ matrix.node }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node: ['22', 'latest']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      # Node 22 does not accept a directory for --test, so pass a glob (expanded by Node, not the shell).
+      - name: Node tests
+        run: node --test "tools/test/*.test.mjs"
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+      - name: Node tests (kktestdev-pack kk-onboard)
+        run: node --test "plugins/kktestdev-pack/skills/kk-onboard/scripts/*.test.mjs"
+      - name: Python tests (infographic-diagram)
+        run: python -m unittest discover -s plugins/infographic-diagram/skills/infographic-diagram/scripts -p "test_*.py"
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+      - name: Package contents
+        run: npm pack --dry-run

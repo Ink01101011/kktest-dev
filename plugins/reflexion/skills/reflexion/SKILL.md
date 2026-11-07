@@ -10,6 +10,7 @@ description: >
 metadata:
   version: "0.1.0"
   author: "Ink"
+  short-description: "Use to recall past lessons before a task like earlier work, reflect a lesson after a fix or success, or review and compress the error/success library in a file-based memory store."
 ---
 
 # Reflexion
@@ -79,3 +80,7 @@ skills itself.
   logic.
 - The store is plain files — every lesson written or archived is a normal file write/move, diffable
   under git.
+
+## Other agents
+
+Outside Claude Code the plugin-root variable is not set. Exported copies of this skill bundle `scripts/reflexionctl.py` together with memory-keeper's `scripts/memctl.py`, so run `python3 scripts/reflexionctl.py <recall|reflect|library|compress>` from this skill's folder in any shell, passing the memory folder explicitly. The `/reflexion-*` slash commands are Claude Code only.

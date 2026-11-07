@@ -1,0 +1,228 @@
+{
+ "title": "LangGraph + MCP Architecture",
+ "subtitle": "Build Intelligent, Tool-Using AI Agents",
+ "width": 1200,
+ "panels": [
+  {
+   "id": "client",
+   "x": 20,
+   "y": 170,
+   "w": 360,
+   "h": 130,
+   "theme": "blue",
+   "title": "Client",
+   "style": "columns",
+   "items": [
+    {
+     "id": "web",
+     "label": "Web UI",
+     "icon": "web"
+    },
+    {
+     "id": "mob",
+     "label": "Mobile App",
+     "icon": "mobile"
+    },
+    {
+     "id": "api",
+     "label": "API Request",
+     "icon": "code"
+    }
+   ]
+  },
+  {
+   "id": "gw",
+   "x": 420,
+   "y": 190,
+   "w": 280,
+   "h": 86,
+   "theme": "blue",
+   "style": "solid",
+   "title": "API Gateway",
+   "subtitle": "(FastAPI)",
+   "icon": "bolt"
+  },
+  {
+   "id": "agent",
+   "x": 210,
+   "y": 340,
+   "w": 560,
+   "h": 200,
+   "theme": "purple",
+   "icon": "network",
+   "title": "LangGraph Agent System",
+   "flow": true,
+   "footer": "Agent State Machine",
+   "items": [
+    {
+     "id": "plan",
+     "label": "Planner\nNode",
+     "icon": "clipboard",
+     "style": "solid",
+     "theme": "indigo"
+    },
+    {
+     "id": "exec",
+     "label": "Executor\nNode",
+     "icon": "gear",
+     "style": "solid",
+     "theme": "blue"
+    },
+    {
+     "id": "val",
+     "label": "Validator\nNode",
+     "icon": "shield",
+     "style": "solid",
+     "theme": "green"
+    }
+   ]
+  },
+  {
+   "id": "mcp",
+   "x": 830,
+   "y": 300,
+   "w": 350,
+   "h": 185,
+   "theme": "orange",
+   "icon": "share",
+   "title": "MCP Server",
+   "subtitle": "(Model Context Protocol)",
+   "items": [
+    {
+     "id": "tools",
+     "label": "Tool\nRegistry",
+     "icon": "wrench"
+    },
+    {
+     "id": "mem",
+     "label": "Memory\nAccess",
+     "icon": "database"
+    },
+    {
+     "id": "pol",
+     "label": "Policy\nEngine",
+     "icon": "shield"
+    }
+   ]
+  },
+  {
+   "id": "data",
+   "x": 810,
+   "y": 525,
+   "w": 370,
+   "h": 160,
+   "theme": "green",
+   "title": "Data & Memory Layer",
+   "style": "columns",
+   "items": [
+    {
+     "id": "redis",
+     "label": "Redis",
+     "sublabel": "(Cache)",
+     "icon": "layers",
+     "theme": "red"
+    },
+    {
+     "id": "pg",
+     "label": "PostgreSQL",
+     "sublabel": "(Database)",
+     "icon": "database",
+     "theme": "blue"
+    },
+    {
+     "id": "vec",
+     "label": "Vector Store",
+     "sublabel": "(Embeddings)",
+     "icon": "vector",
+     "theme": "green"
+    }
+   ]
+  },
+  {
+   "id": "deploy",
+   "x": 200,
+   "y": 725,
+   "w": 680,
+   "h": 160,
+   "theme": "teal",
+   "icon": "rocket",
+   "title": "Deployment & LLM Infrastructure",
+   "style": "columns",
+   "items": [
+    {
+     "id": "dc",
+     "label": "Docker Compose",
+     "sublabel": "(Containerization)",
+     "icon": "box",
+     "theme": "blue"
+    },
+    {
+     "id": "k8s",
+     "label": "Kubernetes",
+     "sublabel": "(Orchestration)",
+     "icon": "wheel",
+     "theme": "blue"
+    },
+    {
+     "id": "vllm",
+     "label": "vLLM",
+     "sublabel": "(LLM Inference)",
+     "icon": "cpu",
+     "theme": "orange"
+    }
+   ]
+  }
+ ],
+ "edges": [
+  {
+   "from": "client",
+   "to": "gw",
+   "fromSide": "right",
+   "toSide": "left"
+  },
+  {
+   "from": "gw",
+   "to": "agent"
+  },
+  {
+   "from": "mcp",
+   "to": "agent",
+   "fromSide": "left",
+   "toSide": "right"
+  },
+  {
+   "from": "mcp.tools",
+   "to": "data",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "toOffset": 0.16
+  },
+  {
+   "from": "mcp.mem",
+   "to": "data",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "toOffset": 0.52
+  },
+  {
+   "from": "mcp.pol",
+   "to": "data",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "toOffset": 0.87
+  },
+  {
+   "from": "agent",
+   "to": "data",
+   "fromSide": "bottom",
+   "toSide": "left",
+   "fromOffset": 0.5
+  },
+  {
+   "from": "agent",
+   "to": "deploy",
+   "fromOffset": 0.5,
+   "toOffset": 0.426
+  }
+ ]
+}

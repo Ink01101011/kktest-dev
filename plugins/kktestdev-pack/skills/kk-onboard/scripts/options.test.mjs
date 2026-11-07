@@ -14,6 +14,8 @@ import { runCommand, validatePack } from './inventory.mjs';
 import { canonical } from './common.mjs';
 
 const posix = process.platform !== 'win32';
+// the fixtures are host-native paths, so run() gets host path semantics (a C:\ npm root on 'linux' reads as WSL)
+const OS = posix ? 'linux' : 'win32';
 
 function fixture(t) {
   const root = mkdtempSync(nodePath.join(tmpdir(), 'kkopt-'));
@@ -64,7 +66,7 @@ function realHelp(fx, calls = []) {
   return { ...s, run: (cmd, args, ms, o) => (cmd === process.execPath ? (calls.push({ line: [cmd, ...args].join(' '), opts: o }), runCommand(cmd, args, ms, o)) : s.run(cmd, args, ms, o)) };
 }
 
-const opt = (fx, extra = {}) => ({ home: fx.home, cwd: fx.cwd, env: { CLAUDE_CONFIG_DIR: nodePath.join(fx.home, '.claude') }, platform: 'linux', pack: PACK, findBin: () => ({ found: false }), ...stubs(fx), ...extra });
+const opt = (fx, extra = {}) => ({ home: fx.home, cwd: fx.cwd, env: { CLAUDE_CONFIG_DIR: nodePath.join(fx.home, '.claude') }, platform: OS, pack: PACK, findBin: () => ({ found: false }), ...stubs(fx), ...extra });
 const execs = (calls) => calls.filter((c) => c.line.startsWith(process.execPath));
 
 // ------------------------------------------------------------------ pure helpers
@@ -304,7 +306,7 @@ test('O1-1: the copy the host runs wins over newer copies; every candidate is li
   const fx = fixture(t);
   installDemo(fx, { version: '0.38.2' });
   const running = installPkg(nodePath.join(fx.root, 'running', 'node_modules', 'demo-mcp'), { version: '0.35.0' });
-  const npxDir = nodePath.join(fx.home, '.npm', '_npx', 'abc', 'node_modules', 'demo-mcp');
+  const npxDir = nodePath.join(fx.home, ...(posix ? ['.npm'] : ['AppData', 'Local', 'npm-cache']), '_npx', 'abc', 'node_modules', 'demo-mcp');
   installPkg(npxDir, { version: '0.40.1' });
   fx.write(nodePath.join(fx.home, '.claude', '.claude.json'), { mcpServers: { demo: { command: 'node', args: [nodePath.join(running, 'cli.js')] } } });
   const out = await run(['--item', 'demo'], opt(fx));

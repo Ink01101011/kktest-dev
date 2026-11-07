@@ -9,6 +9,7 @@ description: >
 metadata:
   version: "0.2.0"
   author: "Ink"
+  short-description: "Use when asked to optimize, tune or harden a prompt against a test set: run it, score every output, rewrite from the failures, repeat, and report the best version so far."
 ---
 
 # prompt-evolve
@@ -114,3 +115,7 @@ lessons once a case fails repeatedly across evolve rounds.
 - See `../../../../docs/proposals/PROMPT-EVOLVE_SPEC.md` for the formal spec (this implementation
   narrows a few points — the CLI never calls a model, and the offline `run` mode and `schema` scorer's
   rubric encoding are both intentionally narrow; see the plugin README for exactly what changed).
+
+## Other agents
+
+Outside Claude Code the plugin-root variable is not set. Exported copies of this skill bundle the CLI, so run `python3 scripts/pevolve.py` from this skill's folder in any shell. Where this text says Claude runs the prompt, the current model does. The `/prompt-evolve-*` slash commands are Claude Code only; call the CLI directly.

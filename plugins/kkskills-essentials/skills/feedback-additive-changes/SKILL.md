@@ -115,6 +115,10 @@ and leave all existing flows untouched.
 **Right:** Boy-scout rule — migrate `services/foo.py` only when feature work actually touches it. Until
 then, it stays.
 
+## Other agents
+
+If the project has no `CLAUDE.md`, use its equivalent instruction file instead (`AGENTS.md`, a rules file, or the README).
+
 ## Changelog
 
 - 0.2.0 (2026-06-19) — genericized examples (removed project-specific identifiers); collapsed the duplicated migrations step into a cross-link to [[feedback-migrations-additive-first]]. Source: superpowers-curation review.

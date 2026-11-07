@@ -13,6 +13,7 @@ memory hygiene.
 | [kkskills-situational](./plugins/kkskills-situational) | 10 generic working skills that are correct but not everyday — additive-first migrations, verify-with-real-data, clean architecture, secret hygiene, concurrency, MCP authoring, timezone & local-LLM selection, plan decomposition & orchestration, plus the meta-skill that folds new learnings back in. Split out of essentials so they can be toggled as a unit. Skills-only. |
 | [kkskills-personal](./plugins/kkskills-personal) | Personal / project-specific skills split out from essentials — a user-profile calibration skill and a dated-filename reference convention. Fork and replace the specifics with your own. Skills-only. |
 | [kktestdev-pack](./plugins/kktestdev-pack) | Team onboarding: `/kk-onboard` inventories what you already have, skips it, installs the missing pack items you pick, and audits existing skills/MCP/plugins/hooks for redundancy and risk with neutral, ask-first choices. `/kk-update` pulls the latest of everything. Installs nothing by itself. |
+| [infographic-diagram](./plugins/infographic-diagram) | Presentation-ready architecture, layer-stack and tech-stack diagrams (SVG + 2x PNG) from a JSON spec, in three looks, with a layout lint pass. Thai text supported. Skill + stdlib Python script. |
 | [loop-ledger](./plugins/loop-ledger) | A guardrail for agent loops — a deterministic state machine (budget + stall-hash + exit predicate) that decides should-continue per iteration, plus an opt-in Stop hook that enforces it so the agent can neither quit early nor spin forever. Zero-dependency MCP server. |
 | [reflexion](./plugins/reflexion) | Self-improving agent memory built on memory-keeper — recall matching lessons before a task, reflect a new lesson after it, browse the error/success library, and compress recurring lessons into higher-level patterns. |
 | [critique-gate](./plugins/critique-gate) | A quality brake for agent output — generate, critic scores against a rubric, rewrite, re-score, wired to loop-ledger's retry-count backstop. Four modes: score-retry, multi-critic, adversarial, judge-ensemble. Skills-only, no new server. |
@@ -41,6 +42,32 @@ claude plugin install memory-keeper@kktest-dev
 ```
 
 Update later with `/plugin marketplace update kktest-dev`.
+
+## Use with other AI tools
+
+Most skills follow the open [Agent Skills](https://agentskills.io/specification) format and the three
+MCP servers are plain stdio servers, so they also work outside Claude Code. Hooks and slash commands
+are Claude Code only. The `kktest-dev` npm package (Node 22+, no dependencies) exports or installs them:
+
+```bash
+npx kktest-dev list                                  # what is portable, and to which tools
+npx kktest-dev install --target cursor               # dry run: shows every file it would change
+npx kktest-dev install --target cursor --apply       # backs up, merges, asks before writing
+npx kktest-dev export --target claude-ai             # one zip per skill for upload
+```
+
+| Tool | Skills | MCP servers | Command |
+|---|---|---|---|
+| Codex CLI / ChatGPT desktop | `.agents/skills` | `config.toml` | `install --target codex` |
+| Gemini CLI | `.agents/skills` or an extension | `settings.json` / extension | `install --target gemini`, `export --target gemini-extension` |
+| GitHub Copilot (VS Code, CLI) | `.agents/skills` | VS Code only: `.vscode/mcp.json` / `code --add-mcp` | `install --target vscode` |
+| Cursor | `.agents/skills` | `mcp.json` | `install --target cursor` |
+| Claude Desktop | upload the claude.ai zips | `claude_desktop_config.json` | `install --target claude-desktop` |
+| claude.ai | zip upload | remote only | `export --target claude-ai` |
+| ChatGPT (web) | zip upload | remote only | `export --target chatgpt` |
+| Windsurf / Devin | unverified | unverified | `export --target windsurf` (paste by hand) |
+
+Details, manual steps and the list of unverified facts: [docs/providers.md](./docs/providers.md).
 
 ## Local development / testing
 

@@ -8,6 +8,8 @@ description: "Use this skill only when a task clearly needs an iterate-until-don
   request matches a category skill's triggers, use that category skill directly instead."
 version: "0.1.3"
 updated: "2026-11-05"
+metadata:
+  short-description: "Router for iterate-until-done loops when the request fits no single category: picks the matching loop category skill and pattern, then writes the concrete loop_start config."
 ---
 
 # Loop Selector
@@ -155,6 +157,10 @@ loop only for a one-time backfill sweep.
 → `system-optimization-loops` → Prompt Optimization. `loop_start { exit_mode: "target", target_value:
 0.95, direction: "increase", max_iterations: 6 }` if 0.95 is an achievable, known bar; `exit_mode: "dry",
 dry_rounds: 2` if you're just trying to find the ceiling.
+
+## Other agents
+
+If the `loop-ledger` tools (`loop_start`, `loop_tick`, `loop_status`) are not available in your host, track the iteration count, the best progress so far and the stop condition in a plain scratch list, and stop when the budget or the exit predicate is met. Without a Stop hook, enforcement is advisory: re-check the score before you declare the task done.
 
 ## Changelog
 

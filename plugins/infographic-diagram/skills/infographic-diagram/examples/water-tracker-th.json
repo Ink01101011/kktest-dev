@@ -1,0 +1,113 @@
+{
+ "title": "Water Tracker Monorepo",
+ "subtitle": "ภาพรวมสถาปัตยกรรม iOS / watchOS + NestJS",
+ "width": 1100,
+ "panels": [
+  {
+   "id": "apps",
+   "x": 30,
+   "y": 170,
+   "w": 380,
+   "h": 150,
+   "theme": "blue",
+   "icon": "cloud",
+   "title": "Apple Clients",
+   "style": "columns",
+   "items": [
+    {
+     "id": "ios",
+     "label": "iOS App",
+     "sublabel": "SwiftUI",
+     "icon": "mobile"
+    },
+    {
+     "id": "watch",
+     "label": "watchOS",
+     "sublabel": "SwiftUI",
+     "icon": "watch"
+    }
+   ]
+  },
+  {
+   "id": "api",
+   "x": 500,
+   "y": 190,
+   "w": 300,
+   "h": 110,
+   "theme": "red",
+   "style": "solid",
+   "title": "NestJS API",
+   "subtitle": "REST + Auth",
+   "icon": "server"
+  },
+  {
+   "id": "core",
+   "x": 350,
+   "y": 370,
+   "w": 620,
+   "h": 210,
+   "theme": "purple",
+   "icon": "layers",
+   "title": "Clean Architecture",
+   "flow": true,
+   "footer": "Domain ไม่รู้จัก framework",
+   "items": [
+    {
+     "id": "ctl",
+     "label": "Controller",
+     "icon": "plug",
+     "style": "solid",
+     "theme": "indigo"
+    },
+    {
+     "id": "uc",
+     "label": "Use Case",
+     "icon": "gear",
+     "style": "solid",
+     "theme": "blue"
+    },
+    {
+     "id": "repo",
+     "label": "Repository",
+     "icon": "database",
+     "style": "solid",
+     "theme": "green"
+    }
+   ]
+  },
+  {
+   "id": "db",
+   "x": 30,
+   "y": 400,
+   "w": 260,
+   "h": 150,
+   "theme": "green",
+   "icon": "droplet",
+   "title": "บันทึกการดื่มน้ำ",
+   "items": [
+    {
+     "id": "pg",
+     "label": "PostgreSQL",
+     "icon": "database"
+    }
+   ]
+  }
+ ],
+ "edges": [
+  {
+   "from": "apps",
+   "to": "api",
+   "label": "HTTPS"
+  },
+  {
+   "from": "api",
+   "to": "core"
+  },
+  {
+   "from": "core",
+   "to": "db",
+   "label": "SQL",
+   "dashed": true
+  }
+ ]
+}

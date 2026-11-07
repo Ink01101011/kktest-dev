@@ -11,6 +11,8 @@ description: "Use this skill whenever an agent should learn across tasks instead
   store, or for reviewing and compressing lessons already stored there, use the reflexion skill instead."
 version: "0.2.1"
 updated: "2026-11-05"
+metadata:
+  short-description: "Use when an agent should learn across tasks: recall before acting, reflect after, keep an error/success library, compress recurring lessons. Covers Reflexion and related memory patterns."
 ---
 
 # Memory Loops
