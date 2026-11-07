@@ -160,6 +160,17 @@ test('G3-5: CRLF `claude mcp list` output is parsed', async (t) => {
   assert.deepEqual(parseMcpListLine('x: C:\\Users\\a\\npx.cmd y - ✓ Connected'), { name: 'x', target: 'C:\\Users\\a\\npx.cmd y', status: 'Connected' });
 });
 
+test('I7 (#21): a fresh account (`No MCP servers configured`) is a parsed, empty health list, not an unknown format', async (t) => {
+  const fx = fakeHome(t);
+  const out = await inv(fx, [], { execClaude: stubClaude({ mcpList: 'No MCP servers configured. Use `claude mcp add` to add a server.\n' }) });
+  assert.equal(out.healthChecked, true);
+  assert.equal(out.counts.mcpHealth, 0);
+  assert.deepEqual(out.notes, [], 'no "unknown format" note on a fresh account');
+  // a really unknown format is still reported
+  const odd = await inv(fx, [], { execClaude: stubClaude({ mcpList: 'something new and unparsed\n' }) });
+  assert.ok(odd.notes.some((n) => /unknown format/.test(n)));
+});
+
 test('G3-13/G4-1: claude missing or mcp list timing out still yields JSON; plugin items read unknown', async (t) => {
   const fx = fakeHome(t);
   const enoent = { ok: false, code: 'ENOENT', error: 'spawn claude ENOENT' };

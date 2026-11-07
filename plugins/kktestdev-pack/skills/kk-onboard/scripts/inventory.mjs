@@ -630,7 +630,8 @@ export async function collect(opts) {
   // MCP health (+ claude.ai connectors, which only the CLI sees)
   if (hl) {
     if (hl.ok || hl.stdout) {
-      const lines = String(hl.stdout ?? '').split(/\r?\n/).filter((l) => l.trim());
+      // a fresh account prints "No MCP servers configured. Use `claude mcp add` ...": an empty list, not an unknown format
+      const lines = String(hl.stdout ?? '').split(/\r?\n/).filter((l) => l.trim() && !/^\s*No MCP servers configured\b/i.test(l));
       for (const l of lines) { const h = parseMcpListLine(l); if (h) data.health.push({ ...h, target: redactText(h.target).text }); }
       if (lines.length && !data.health.length) ctx.note('claude mcp list printed output in an unknown format; health not parsed');
     }

@@ -182,6 +182,10 @@ const optList = (x) => asArray(x).map((o) => (typeof o === 'string' ? { name: o,
 /** what changed between a recorded snapshot entry and a fresh snapshot of the same item */
 export function diffItem(before, now) {
   const out = { versionBefore: before ? cap(String(before.version ?? ''), OPT_LIMITS.versionChars) || null : null, versionNow: now?.version ?? null, firstSeen: !before };
+  if (before?.pluginVersion || now?.pluginVersion) {
+    out.pluginVersionBefore = before?.pluginVersion ? cap(String(before.pluginVersion), OPT_LIMITS.versionChars) : null;
+    out.pluginVersionNow = now?.pluginVersion ?? null;
+  }
   const pending = asArray(before?.pending).map((n) => cap(String(n), OPT_LIMITS.nameChars));
   if (pending.length) out.pending = pending;
   // a snapshot taken when nothing could be read is not a baseline (every option would read "added")
@@ -454,6 +458,7 @@ async function discoverPluginConfig(it, ctx, out) {
         : 'plugin not installed: nothing to configure yet');
     return;
   }
+  if (ctx.pluginVersions?.get(it.plugin)) out.pluginVersion = ctx.pluginVersions.get(it.plugin);
   const r = await ctx.execClaude(['plugin', 'configure', it.plugin, '--json'], OPT_LIMITS.pluginConfigTimeoutMs);
   const parsed = r.ok ? parseJsonOutput(r.stdout) : { ok: false };
   if (parsed.ok) {
@@ -618,6 +623,7 @@ export function readState(file) {
 export function snapshotOf(item) {
   return {
     version: item.version ?? null,
+    ...(item.pluginVersion ? { pluginVersion: item.pluginVersion } : {}),
     optionsKnown: item.sources.length > 0,
     ...(item.docsOnly ? { docsOnly: true } : {}),
     options: item.options.map((o) => ({ name: o.name, hash: o.hash, ...(o.docs === false ? { docs: false } : {}) })),
@@ -742,11 +748,13 @@ export async function run(argv = [], opts = {}) {
     const pluginRows = plParsed.ok ? asArray(plParsed.value).filter(isObject) : [];
     const installedPlugins = new Set(pluginRows.filter((p) => p.enabled !== false).map((p) => String(p.id)));
     const disabledPlugins = new Set(pluginRows.filter((p) => p.enabled === false).map((p) => String(p.id)));
+    // the plugin's own version (claude plugin list), kept apart from `version` (the npm package an item may also have)
+    const pluginVersions = new Map(pluginRows.filter((p) => p.enabled !== false && p.version != null).map((p) => [String(p.id), cleanVersion(p.version)]));
     if (!plParsed.ok) notes.push(`claude plugin list --json: ${cap(redactText(pl.error ?? 'no JSON').text, 160)}`);
     let npmP = null;
     let globalDirs = null;
     const ctx = {
-      installedPlugins, disabledPlugins, pluginListOk: plParsed.ok,
+      installedPlugins, disabledPlugins, pluginVersions, pluginListOk: plParsed.ok,
       home, cwd, env, platform, hostsInfo, network: has('--network'), runHelp: has('--run-help'),
       exec, execClaude, short,
       // pnpm / yarn / bun / Volta / mise global folders: listed once per run, shared by every item
@@ -780,7 +788,7 @@ export async function run(argv = [], opts = {}) {
         const mine = h.servers.filter((s) => items.some((it) => serverIsItem(s, it)));
         return {
           id: h.id, label: h.label, present: h.present,
-          files: h.files.map((f) => ({ file: short(f.file), scope: f.scope, exists: f.exists, ...(f.exists ? { ok: f.ok } : {}), ...(f.error ? { error: f.error } : {}) })),
+          files: h.files.map((f) => ({ file: short(f.file), scope: f.scope, exists: f.exists, ...(f.exists ? { ok: f.ok } : {}), ...(f.error ? { error: f.error } : {}), ...(f.variant ? { variant: f.variant } : {}), ...(f.side ? { side: f.side } : {}), ...(f.plugin ? { plugin: name(f.plugin) } : {}), ...(f.readOnly ? { readOnly: true } : {}) })),
           serverCount: h.servers.length,
           // only the servers that run a pack item in this view; the rest are counted
           servers: mine.map((s) => ({ name: name(s.name), scope: s.scope, env: s.env.map((e) => ({ name: name(e.name), state: e.state })), headers: s.headers.map((e) => ({ name: name(e.name), state: e.state })) })),
@@ -797,7 +805,7 @@ export async function run(argv = [], opts = {}) {
     if (st?.corrupt) { out.stateCorrupt = true; notes.push(`state file ${short(file)} could not be read (${st.error}); the recorded history is unknown`); }
     if (has('--diff')) {
       out.stateFile = short(file);
-      out.diff = discovered.map((d) => ({ id: d.id, against: d.docsOnly ? 'registry @latest README' : d.version ? `installed ${d.version}` : 'nothing installed', ...diffItem(st.state.items[d.id], snapshotOf(d)) }));
+      out.diff = discovered.map((d) => ({ id: d.id, against: d.docsOnly ? 'registry @latest README' : d.version ? `installed ${d.version}` : d.pluginVersion ? `plugin ${d.pluginVersion}` : 'nothing installed', ...diffItem(st.state.items[d.id], snapshotOf(d)) }));
       if (ctx.network) {
         // compare the recorded snapshot against @latest too, even when an (older) local copy exists
         for (const e of out.diff) {

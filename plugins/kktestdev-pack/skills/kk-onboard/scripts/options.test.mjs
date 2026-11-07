@@ -411,6 +411,35 @@ test('run: --record then --diff after an upgrade reports only what changed; --pe
   assert.deepEqual(out.diff.find((x) => x.id === 'plug').pending, ['REGION']);
 });
 
+test('I7 (#21): --diff names an installed plugin\'s version change (from claude plugin list), never "nothing installed"', async (t) => {
+  const fx = fixture(t);
+  let ver = '1.0.0';
+  const base = stubs(fx);
+  const execClaude = async (args) => (args[0] === 'plugin' && args[1] === 'list'
+    ? { ok: true, stdout: JSON.stringify([{ id: 'plug@m', enabled: true, version: ver }]) } : base.execClaude(args));
+  await run(['--item', 'plug', '--record'], opt(fx, { execClaude }));
+  ver = '1.1.0';
+  const out = await run(['--item', 'plug', '--diff'], opt(fx, { execClaude }));
+  const d = out.diff.find((x) => x.id === 'plug');
+  assert.equal(d.against, 'plugin 1.1.0');
+  assert.deepEqual([d.pluginVersionBefore, d.pluginVersionNow], ['1.0.0', '1.1.0']);
+  assert.equal(out.items.find((i) => i.id === 'plug').pluginVersion, '1.1.0');
+});
+
+test('I7 (#21): hosts[].files says which files are read-only (another build, managed, a plugin\'s), so step 5 never writes them', async (t) => {
+  const fx = fixture(t);
+  const { appDataDir } = await import('./hosts.mjs');
+  fx.write(nodePath.join(appDataDir({ home: fx.home, env: {}, platform: OS }), 'Code - Insiders', 'User', 'mcp.json'), { servers: {} });
+  const out = await run([], opt(fx));
+  const files = out.hosts.find((h) => h.id === 'vscode').files;
+  const insiders = files.find((f) => f.variant === 'VS Code Insiders');
+  assert.ok(insiders, 'the Insiders file is listed with its variant');
+  assert.equal(insiders.readOnly, true);
+  const main = files.find((f) => f.scope === 'user' && !f.variant);
+  assert.equal(main.exists, false);
+  assert.equal(main.readOnly, undefined, 'the main user file stays a write target');
+});
+
 test('O1-4: --diff --network compares the recording with @latest even when a local copy exists', async (t) => {
   const fx = fixture(t);
   installDemo(fx);

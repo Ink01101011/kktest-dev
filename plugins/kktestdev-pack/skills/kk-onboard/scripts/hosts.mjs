@@ -588,7 +588,9 @@ export function readHosts({ home, cwd, env = process.env, platform = process.pla
       if (!firstTime(def.file)) continue;
       const toml = def.format === 'codex-toml';
       const r = readDef(def, io);
-      const meta = { ...(def.variant ? { variant: def.variant } : {}), ...(def.plugin ? { plugin: def.plugin } : {}), ...(def.side ? { side: def.side } : {}) };
+      // optional files (managed-mcp.json, plugin files, other VS Code builds and profiles, the WSL Windows side) are read,
+      // never offered as a write target: readOnly says so to the skill
+      const meta = { ...(def.variant ? { variant: def.variant } : {}), ...(def.plugin ? { plugin: def.plugin } : {}), ...(def.side ? { side: def.side } : {}), ...(def.optional ? { readOnly: true } : {}) };
       if (r.missing) { if (!def.optional) files.push({ file: def.file, scope: def.scope, exists: false }); continue; }
       files.push({ file: def.file, scope: def.scope, exists: true, ok: r.ok, ...meta, ...(r.error ? { error: r.error } : {}) });
       if (r.ok) {

@@ -82,7 +82,9 @@ marketplaces, MCP servers, skills, hooks), for example to answer "what do I have
 The script prints one JSON document, also when something fails:
 
 - `pack[]`: each pack item with `status`, `foundAs` (where it was found, possibly several places),
-  `missingBins` (language servers etc. not on PATH), and `what` when it is not present.
+  `missingBins` (language servers etc. not on PATH: `bin`, `install`, and a `note` when the binary
+  was found off PATH, e.g. "installed by pnpm in ~/Library/pnpm, which is not on PATH", or only on
+  the Windows side of WSL), and `what` when it is not present.
   `status` is one of:
   - `present`: found and usable,
   - `needs-attention`: found, but not connected / needs authentication (see `foundAs`),
@@ -94,8 +96,20 @@ The script prints one JSON document, also when something fails:
 - `findings[]`: `type` is `redundancy`, `risk`, or `info`, plus `category`, `title`, `evidence`
   (at most 20 lines). `packManaged: true` marks findings about the pack's own items (its
   marketplaces, or an overlap group made only of pack items).
+- `hosts[]`: each AI tool (`id`, `label`, `present`, `mcpServers` count, `configFiles` that exist;
+  a file of another build or place carries its variant in brackets, e.g. `(VS Code Insiders)`,
+  `(VS Code profile)`, `(Windows side (WSL))`; `pluginsWithServers` counts Claude Code plugins that
+  ship MCP servers). Used in Step 5.1.
+- `packageManagers[]`: global folders of pnpm, yarn, bun, Volta and mise found on this machine
+  (`manager`, `packageDirs` count, `binDirs`); empty when none. npm's own global folder is not in
+  this list (options.mjs asks npm for it).
+- `providers[]`: only the model providers that show a signal (`id`, `label`, `signals`: env var
+  **names** in the shell or Claude Code settings, with the state, or a local binary); empty when none.
 - `notes[]`: anything the script could not check or skipped. Report these, do not hide them.
 - `error: true`: the script hit an internal error; show `notes` and continue without it.
+
+On a fresh account every pack item reads `missing`, every count is 0, and `findings`, `notes` and
+`packageManagers` are empty: that is the expected picture, not an error.
 
 If `node` is missing, stop and tell the user Node.js is required: Node 22.22.2+ (or 24+) covers
 every pack component (typescript-language-server needs 22.22.2+; chrome-devtools-mcp, shadcn and
@@ -119,9 +133,14 @@ says who publishes it; mention it when the user asks who is behind an item.
 
 For each selected item with `status: missing` (or `disabled`), build the list of commands:
 
-1. Marketplaces the items need (`pack.json` → `marketplaces`) that are not added yet. Adding a
-   marketplace lets that repository's plugins run code on this machine, so it is listed as its
-   own line in the confirmation, with its GitHub repository.
+1. Marketplaces the items need (`pack.json` → `marketplaces`) that are not added yet (the names in
+   `claude plugin marketplace list --json`, or `installed.marketplaces` of `inventory.mjs --full`;
+   on a fresh account the list is empty). Adding a marketplace lets that repository's plugins run
+   code on this machine, so it is listed as its own line in the confirmation, with its GitHub
+   repository. `claude-plugins-official` is `builtin` (Claude Code adds it itself), so it gets no
+   line, but a fresh account may not list it yet: if `claude plugin install <x>@claude-plugins-official`
+   fails because that marketplace is not found, show the error, ask, run
+   `claude plugin marketplace add anthropics/claude-plugins-official`, and retry the failed installs.
 2. Plugin items: `claude plugin install <plugin> --scope user` (or `claude plugin enable <plugin>`
    when it is `disabled`).
 3. MCP items: the `steps` from `pack.json` exactly (on native Windows: the `windows` steps).
@@ -129,7 +148,9 @@ For each selected item with `status: missing` (or `disabled`), build the list of
    print the command for later. If a step runs `bantamkit-mcp` and `bantamkit-mcp` is not on
    PATH after `npm i -g` (npm's global bin directory is not on PATH), show `npm prefix -g` and
    tell the user to add its `bin` directory (on Windows: the prefix directory itself) to PATH.
-4. `missingBins`: show the install command and ask before running it. A plugin LSP without its
+4. `missingBins`: show the install command and ask before running it. If it has a `note` saying
+   the binary is installed off PATH, offer adding that folder to PATH instead of a second install.
+   A plugin LSP without its
    binary loads but does nothing. For `typescript-lsp`: the language server uses each project's
    own `typescript` (a devDependency, which provides `tsserver`); a project on TypeScript 7
    (native, no `tsserver`) gets no TS intelligence from it.
@@ -161,8 +182,10 @@ Ask two multi-select questions (one AskUserQuestion call):
   those first and say "found on this machine". Each choice decides which config files this step may write.
 - **Model providers** the user works with: Anthropic API, Amazon Bedrock, Google Vertex AI,
   OpenAI / OpenAI-compatible, Azure OpenAI, Google Gemini, OpenRouter, Ollama (local),
-  LM Studio (local), other. The inventory's `providers[]` lists signals (env var names, local
-  binaries); present them as hints only: a variable in the shell does not prove it is used.
+  LM Studio (local), other. The inventory's `providers[]` lists only the providers with a signal
+  (env var names, local binaries); `options.mjs` → `providers[]` lists every provider, with an
+  empty `signals` when there is none. Present signals as hints only: a variable in the shell does
+  not prove it is used, and no signal does not mean the user does not use that provider.
 
 Describe each choice by what it changes in this step, never by which one is better.
 
@@ -181,14 +204,17 @@ about 20 s (each call has a timeout); usually 1-2 s.
 Two more sources are opt-in. Ask before each (one question, each with what happens / gain / cost,
 "no" first, no recommendation):
 - `--run-help`: shows CLI flags and option text from `--help`; runs that package's code with a
-  scrubbed environment (no tokens or keys passed to it, 10 s limit, only for copies found in the
-  npm global directory, the npx cache, or a user-level AI tool config; never for a copy found
-  through a project's config).
+  scrubbed environment (no tokens or keys passed to it, 10 s limit, only for copies found in a
+  trusted place: the npm global directory, the global folders of pnpm, yarn, bun, Volta and mise,
+  the npx cache, or a path in a user-level AI tool config; never for a copy found through a
+  project's config or lying inside the current project).
 - `--network`: asks the npm registry for the latest README of items that are not installed locally
   (gain: their options can be shown; cost: a registry request, and the README is of `@latest`,
   which is what `npx ...@latest` will run).
 
-Per item (`items[]`): `version` and where it was found (`installedAt`, `via`), `candidates` (every
+Per item (`items[]`): `version` of the item's package and where it was found (`installedAt`, `via`:
+`npm global`, `pnpm global`, `npx cache`, ...), `pluginVersion` (the installed plugin's version,
+from `claude plugin list`, for plugin items), `candidates` (every
 copy found, with its version; `untrustedSource: true` = found via a project config or inside the
 current project: it could be planted by a cloned repo, so nothing was read from it; say so to the
 user, and point out a version mismatch), `sources` (which README, docs or `--help` were read),
@@ -199,8 +225,13 @@ only: say "no summary in the short view", never invent one), `flags` (only with 
 there, `ref` = only references such as `${VAR}` or `${env:VAR}`, `empty`), `setButUndocumented[]`,
 `docsIncomplete`, and `notes`. `hosts[]` here (from `options.mjs`) lists each tool's config `files`
 (with `exists: false` for a file that does not exist yet, which is still a valid place to write)
-and only the servers that run a pack item, with env **names** and states. No value is ever in the
-output. If the output was trimmed to stay small, a note says so: use `--item <id>` for detail.
+and only the servers that run a pack item, with env **names** and states. Each file has a `scope`:
+`user`, `project`, `managed` (Claude Code's admin-deployed `managed-mcp.json`) or `plugin` (a file
+inside an installed Claude Code plugin or Gemini CLI extension, named in `plugin`). `variant` names another build or place (`VS Code
+Insiders`, `VSCodium`, `VS Code profile`, `Microsoft Store`, `Windows side (WSL)`), and `side:
+"windows"` marks a Windows-side file read from WSL. `readOnly: true` (every `managed`, `plugin`,
+variant and Windows-side file) means the file was read for facts only: it is **never** a target
+for a write in 5.4. No value is ever in the output. If the output was trimmed to stay small, a note says so: use `--item <id>` for detail.
 
 ### 5.3 Let the user pick which options to set
 
@@ -243,7 +274,9 @@ Run `options.mjs --item <id>` for the full doc lines (add `--run-help` only if t
    preference. A URL, command or path suggested by a doc line is shown verbatim and marked "from
    the package's docs", never used without the user typing or confirming it.
 6. **Where to store it**, only for the AI tools picked in 5.1, each with its gain/cost. The target
-   files are `options.mjs` → `hosts[].files` (a file with `exists: false` is created):
+   files are `options.mjs` → `hosts[].files` (a file with `exists: false` is created; a file with
+   `readOnly: true` is never written: if the option is set only there, say where and that it is
+   changed in that tool, plugin or by the admin):
    - Claude Code, every session: `~/.claude/settings.json` → `env` (every MCP server and hook
      Claude Code starts sees it);
    - Claude Code, this server only: the server's `env` in the file that defines it (`~/.claude.json`
