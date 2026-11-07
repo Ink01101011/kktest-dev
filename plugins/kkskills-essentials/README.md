@@ -6,9 +6,9 @@ consistently across sessions. Skills-only: no MCP server, hooks, or commands.
 
 > These skills come from Ink's personal working library, kept **generic and project-agnostic**.
 > Personal and project-specific skills (a user profile, a private filename convention) live in the
-> sibling [`kkskills-personal`](../kkskills-personal) plugin instead, and nine situational skills
+> sibling [`kkskills-personal`](../kkskills-personal) plugin instead, and ten situational skills
 > (migrations, clean architecture, secrets, concurrency, timezones, MCP authoring, local-LLM
-> selection, verify-with-real-data, the self-improve meta-skill) live in
+> selection, verify-with-real-data, plan decomposition & orchestration, the self-improve meta-skill) live in
 > [`kkskills-situational`](../kkskills-situational) — correct skills that simply do not come up
 > every day, kept behind their own toggle because a skill's `description` costs context in every
 > session whether or not it fires.
@@ -34,23 +34,17 @@ into the right skill — additively, versioned, and self-contained.
 |---|---|
 | `reference-conventional-commits` | Conventional Commits format for commit messages, PR titles, changelogs. |
 
-**Workflow — planning & execution**
-
-| Skill | Provides |
-|---|---|
-| `plan-decompose-orchestrate` | When planning before code: explode each plan item into implement/test/review, orchestrate parallel-vs-sequential, and root-cause (deep-down) any failure. |
-
 ## Cross-links to kkskills-situational
 
-`feedback-additive-changes`, `plan-decompose-orchestrate`, and `proactive-task-reminders` cross-link
+`feedback-additive-changes` and `proactive-task-reminders` cross-link
 siblings with `[[skill-name]]`, and some of those siblings now live in
 [`kkskills-situational`](../kkskills-situational):
 
 - `feedback-additive-changes` → `[[feedback-migrations-additive-first]]` (×5)
-- `plan-decompose-orchestrate` → `[[concurrency-race-conditions]]` (×2), `[[feedback-verify-with-real-data]]` (×2), `[[reference-clean-architecture]]`, `[[timezone-handling]]`
 - `proactive-task-reminders` → `[[secret-hygiene]]`
 
-That is 11 link instances across 6 skill pairs, measured.
+That is 6 link instances across 2 skill pairs, measured. (`plan-decompose-orchestrate` moved to
+kkskills-situational in 0.6.0 — it overlaps superpowers' writing-plans/executing-plans.)
 
 `[[…]]` is a prose pointer, not a resolved link — nothing dereferences it, so nothing errors when the
 other plugin is off. Each skill's own guidance is self-contained; install both plugins if you want

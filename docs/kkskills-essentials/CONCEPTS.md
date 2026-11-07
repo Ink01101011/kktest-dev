@@ -88,7 +88,7 @@ The **Plugin** column below says which one ships each skill.
 
 | Skill | Plugin | Provides |
 |---|---|---|
-| `plan-decompose-orchestrate` | essentials | Explode each plan item into implement/test/review, orchestrate parallel-vs-sequential, and root-cause (deep-down) any failure |
+| `plan-decompose-orchestrate` | situational | Explode each plan item into implement/test/review, orchestrate parallel-vs-sequential, and root-cause (deep-down) any failure |
 
 ### meta
 
@@ -101,8 +101,9 @@ The **Plugin** column below says which one ships each skill.
 > profile, a dated-filename convention) live in `kkskills-personal`, not here.
 
 > Cross-links: skills point at each other with `[[skill-name]]`. Of the 31 resolvable `[[…]]`
-> instances across these fourteen skills, 20 now cross the plugin boundary — 11 essentials →
-> situational (6 skill pairs) and 9 situational → essentials (5 skill pairs). `[[…]]` is prose, not
+> instances across these fourteen skills, 16 now cross the plugin boundary — 6 essentials →
+> situational (2 skill pairs) and 10 situational → essentials (7 skill pairs), measured after
+> `plan-decompose-orchestrate` moved to situational (essentials 0.6.0 / situational 0.2.0). `[[…]]` is prose, not
 > a resolved link: nothing dereferences it, so nothing errors when only one plugin is installed.
 > Each skill's guidance stands on its own; install both if you want every pointer to name a loadable
 > skill. Each plugin's README lists its own outbound pairs.

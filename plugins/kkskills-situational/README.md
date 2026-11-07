@@ -34,6 +34,7 @@ Turn it on when the work calls for it:
 | `mcp-server-authoring` | Build MCP servers — stdio vs HTTP, tool-schema design, per-host config. |
 | `timezone-handling` | Store UTC, convert at edges, IANA/DST, container TZ, market-hours. |
 | `local-llm-selection` | Local vs hosted LLM, VRAM/quant sizing, prompt-before-finetune (QLoRA). |
+| `plan-decompose-orchestrate` | When planning before code: explode each plan item into implement/test/review, orchestrate parallel-vs-sequential, and root-cause (deep-down) any failure. Moved from kkskills-essentials in 0.2.0. |
 
 **Meta**
 
