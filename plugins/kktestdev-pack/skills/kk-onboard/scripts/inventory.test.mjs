@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   run, redactText, redactUrl, redactArgs, splitShell, secretKey, inlineSecretKeys, isEnvRef, packageSpecOf, splitSpec,
   normalizeEndpoint, nameMatches, unwrapCommand, isUnderHome, shortPath, isLocalPath, tokenizeCommand,
@@ -354,11 +354,15 @@ test('G3-14/G4-6: binaries are found in-process, never in the current directory,
   write(join(bin, 'tool'), '#!/bin/sh\n');
   chmodSync(join(bin, 'tool'), 0o755);
   write(join(bin, 'noexec'), '');
-  assert.equal(findBinDefault('tool', { env: { PATH: `.:${bin}` }, platform: 'darwin' }).found, true);
-  assert.equal(findBinDefault('noexec', { env: { PATH: bin }, platform: 'darwin' }).found, false);
-  assert.equal(findBinDefault('nothere', { env: { PATH: '.' }, platform: 'darwin' }).found, false);
+  if (posix) { // POSIX PATH (':'-separated, a C:\ fixture path would split) and exec bits (chmod is a no-op on Windows)
+    assert.equal(findBinDefault('tool', { env: { PATH: `.:${bin}` }, platform: 'darwin' }).found, true);
+    assert.equal(findBinDefault('noexec', { env: { PATH: bin }, platform: 'darwin' }).found, false);
+    assert.equal(findBinDefault('nothere', { env: { PATH: '.' }, platform: 'darwin' }).found, false);
+  }
   write(join(bin, 'w.CMD'), '');
   assert.equal(findBinDefault('w', { env: { PATH: bin, PATHEXT: '.EXE;.CMD' }, platform: 'win32' }).found, true);
+  assert.equal(findBinDefault('w', { env: { PATH: `.;${bin}`, PATHEXT: '.EXE' }, platform: 'win32' }).found, false); // PATHEXT honoured
+  assert.equal(findBinDefault('nothere', { env: { PATH: '.' }, platform: 'win32' }).found, false);
 });
 
 // ------------------------------------------------------------------ helpers + parity
@@ -389,7 +393,7 @@ test('G2-3: SKILL.md treats inventory strings as untrusted data and quotes names
 });
 
 test('G6-1: importing the module prints nothing and runs no CLI', () => {
-  const r = spawnSync(process.execPath, ['--input-type=module', '-e', `import(${JSON.stringify(SCRIPT)}).then(m => console.log(typeof m.run))`], { encoding: 'utf8', env: { PATH: '' } });
+  const r = spawnSync(process.execPath, ['--input-type=module', '-e', `import(${JSON.stringify(pathToFileURL(SCRIPT).href)}).then(m => console.log(typeof m.run))`], { encoding: 'utf8', env: { PATH: '' } });
   assert.equal(r.stdout.trim(), 'function');
 });
 

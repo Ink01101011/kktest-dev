@@ -18,6 +18,8 @@ function fixture(t) {
   return { root, home, cwd, write };
 }
 const host = (r, id) => r.hosts.find((h) => h.id === id);
+// fixtures are host-native paths: tests that compare or classify those paths use the host's path semantics
+const OS = process.platform === 'win32' ? 'win32' : 'linux';
 
 test('valueState never needs the value: literal / ref / empty', () => {
   assert.equal(valueState('abc'), 'literal');
@@ -221,12 +223,12 @@ test('I2: CODEX_HOME is honoured when set and absolute; a relative one is not gu
   const ch = nodePath.join(fx.root, 'codexhome');
   fx.write(nodePath.join(ch, 'config.toml'), '[mcp_servers.fromCodexHome]\ncommand = "x"\n');
   fx.write(nodePath.join(fx.home, '.codex', 'config.toml'), '[mcp_servers.fromDotCodex]\ncommand = "x"\n');
-  const set = readHosts({ home: fx.home, cwd: fx.cwd, env: { CODEX_HOME: ch }, platform: 'linux' });
+  const set = readHosts({ home: fx.home, cwd: fx.cwd, env: { CODEX_HOME: ch }, platform: OS });
   assert.deepEqual(host(set, 'codex').servers.map((s) => s.name), ['fromCodexHome']);
   assert.ok(set.notes.some((n) => /CODEX_HOME is set/.test(n)));
-  const unset = readHosts({ home: fx.home, cwd: fx.cwd, env: {}, platform: 'linux' });
+  const unset = readHosts({ home: fx.home, cwd: fx.cwd, env: {}, platform: OS });
   assert.deepEqual(host(unset, 'codex').servers.map((s) => s.name), ['fromDotCodex']);
-  const rel = readHosts({ home: fx.home, cwd: fx.cwd, env: { CODEX_HOME: 'rel/codex' }, platform: 'linux' });
+  const rel = readHosts({ home: fx.home, cwd: fx.cwd, env: { CODEX_HOME: 'rel/codex' }, platform: OS });
   assert.deepEqual(host(rel, 'codex').servers, []);
   assert.deepEqual(host(rel, 'codex').files.map((f) => f.scope), ['project']);
   assert.ok(rel.notes.some((n) => /CODEX_HOME is not an absolute path/.test(n)));
@@ -236,7 +238,7 @@ test('I2: a config.toml the reader does not understand is reported (file ok: fal
   const fx = fixture(t);
   fx.write(nodePath.join(fx.home, '.codex', 'config.toml'), '[mcp_servers.a]\ncommand = "x"\nwhen = 1979-05-27T07:32:00Z\n');
   fx.write(nodePath.join(fx.cwd, '.codex', 'config.toml'), '[mcp_servers.ok]\ncommand = "y"\n');
-  const r = readHosts({ home: fx.home, cwd: fx.cwd, env: {}, platform: 'linux' });
+  const r = readHosts({ home: fx.home, cwd: fx.cwd, env: {}, platform: OS });
   const cx = host(r, 'codex');
   assert.deepEqual(cx.files[0], { file: nodePath.join(fx.home, '.codex', 'config.toml'), scope: 'user', exists: true, ok: false, error: 'TOML not understood (line 3)' });
   assert.deepEqual(cx.servers.map((s) => s.name), ['ok']); // nothing from the refused file, not even server "a"
