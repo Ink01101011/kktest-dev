@@ -10,6 +10,8 @@
 // secret-like key, Bearer/Basic credentials and well-known token prefixes become "***".
 //
 // usage: node inventory.mjs [--fast] [--full] [--pretty]
+// Processes it may start besides `claude`: for a pack.json requires[] entry with `java` whose bin is on PATH, one
+// `<java> -version` (and on macOS, when java is the /usr/bin/java stub, /usr/libexec/java_home), 10 s timeout each.
 //   --fast    skip `claude mcp list` (the slow health check; claude.ai connectors are then not seen)
 //   --full    also print the installed lists (plugins, marketplaces, mcp, skills, hooks)
 //   --pretty  indent the JSON
@@ -272,7 +274,7 @@ export function runCommand(cmd, args, timeoutMs, { shell = false, cwd, env, maxS
     });
     child.stderr.on('data', (d) => { if (stderr.length < 1e5) stderr += d; });
     child.on('error', (e) => finish({ ok: false, code: e.code, error: e.message }));
-    child.on('close', (code) => finish(code === 0 ? { ok: true, stdout } : { ok: false, code, error: stderr.trim() || `exit ${code}`, stdout }));
+    child.on('close', (code) => finish(code === 0 ? { ok: true, stdout, stderr } : { ok: false, code, error: stderr.trim() || `exit ${code}`, stdout }));
   });
 }
 // claude is a .cmd shim on Windows, so it needs the shell there; args are always fixed literals.
@@ -290,7 +292,7 @@ export function findBinDefault(bin, { env = process.env, platform = process.plat
         if (!st.isFile()) continue;
         if (platform !== 'win32' && !(st.mode & 0o111)) continue;
         if (platform === 'linux' && /^\/mnt\/[a-z]\//.test(dir)) { windowsOnly = true; continue; } // WSL: Windows install
-        return { found: true };
+        return { found: true, path: f };
       } catch {}
     }
   }
@@ -410,6 +412,138 @@ export function findBinOffPath(bin, dirs, { env = process.env, platform = proces
   return null;
 }
 
+// ---------------------------------------------------------------- the Java a required bin will run on (#21)
+// pack.json `requires[].java: N` means the bin needs Java N+ to start (jdtls 1.63+ needs 25: on 17/21 it fails with
+// "Unresolved requirement ... osgi.ee ... version=25"). The bin itself is never run. The Java it will use, in order:
+//   1. $JAVA_HOME (mise, sdkman and asdf set it; the brew jdtls wrapper and the jdtls launcher both honour it),
+//   2. the default a wrapper script writes as JAVA_HOME="${JAVA_HOME:-<dir>}" (Homebrew's jdtls wrapper: its openjdk),
+//   3. `java` on PATH; on macOS /usr/bin/java is a stub, so the JDK it would pick is asked from /usr/libexec/java_home.
+// Then `<java> -version` runs with a timeout (fixed args, no shell). The version is read from its stderr + stdout.
+export const JAVA_TIMEOUT_MS = 10000;
+const WRAPPER_MAX_BYTES = 4096;
+
+/** feature version from `java -version` text: 'openjdk version "21.0.2"' -> 21, 'java version "1.8.0_391"' -> 8, else null */
+export function parseJavaVersion(text) {
+  const m = String(text ?? '').match(/\bversion\s+"(\d+)(?:\.(\d+))?[^"]*"/i) ?? String(text ?? '').match(/^(?:openjdk|java)\s+(\d+)(?:\.(\d+))?/im);
+  if (!m) return null;
+  const major = Number(m[1]);
+  return major === 1 && m[2] != null ? Number(m[2]) : major;
+}
+
+/** JAVA_HOME default written into a small wrapper script (brew's `JAVA_HOME="${JAVA_HOME:-/opt/.../Home}" exec ...`), else null */
+export function wrapperJavaHome(text) {
+  const m = String(text ?? '').match(/JAVA_HOME="?\$\{JAVA_HOME:-([^}"]+)\}/);
+  return m ? m[1].trim() : null;
+}
+
+function readHead(file) {
+  try {
+    const st = statSync(file);
+    if (!st.isFile() || st.size > 64 * 1024) return '';
+    return readFileSync(file).subarray(0, WRAPPER_MAX_BYTES).toString('utf8');
+  } catch { return ''; }
+}
+
+/**
+ * which Java `bin` (found at binPath) will start on, and its feature version. Resolves
+ * { java: <path or null>, from: <where that choice came from>, version: <int or null>, error?: <why unknown> }.
+ * io: exec (runCommand-shaped), findBin (returns { found, path }), readHead (first bytes of a file), exists.
+ */
+export async function javaForBin(binPath, { env = process.env, platform = process.platform, exec = runCommand, findBin, readHead: head = readHead, exists = existsSync } = {}) {
+  const p = platform === 'win32' ? nodePath.win32 : nodePath.posix;
+  const javaIn = (home) => p.join(home, 'bin', platform === 'win32' ? 'java.exe' : 'java');
+  let java = null; let from = null;
+  const jh = typeof env.JAVA_HOME === 'string' ? env.JAVA_HOME.trim() : '';
+  if (jh) { java = javaIn(jh); from = `$JAVA_HOME (${jh})`; }
+  if (!java && binPath) {
+    const d = wrapperJavaHome(head(binPath));
+    if (d) { java = javaIn(d); from = `the default JAVA_HOME in its wrapper script (${d})`; }
+  }
+  if (!java) {
+    const f = (findBin ?? ((b) => findBinDefault(b, { env, platform })))('java');
+    if (f?.found && f.path) {
+      if (platform === 'darwin' && f.path === '/usr/bin/java') {
+        const r = await exec('/usr/libexec/java_home', [], JAVA_TIMEOUT_MS, { env });
+        const home = r.ok ? String(r.stdout ?? '').trim().split(/\r?\n/)[0] : '';
+        if (!home) return { java: null, from: '/usr/bin/java (the macOS stub)', version: null, error: 'no JDK is installed (/usr/libexec/java_home found none)' };
+        java = javaIn(home); from = `java on PATH (/usr/bin/java, the macOS stub; /usr/libexec/java_home picks ${home})`;
+      } else { java = f.path; from = `java on PATH (${f.path})`; }
+    }
+  }
+  if (!java) return { java: null, from: 'nothing', version: null, error: 'no Java found: $JAVA_HOME is not set and java is not on PATH' };
+  if (!exists(java)) return { java, from, version: null, error: `${java} does not exist` };
+  const r = await exec(java, ['-version'], JAVA_TIMEOUT_MS, { env });
+  const text = `${r.stderr ?? ''}\n${r.stdout ?? ''}\n${r.ok ? '' : r.error ?? ''}`;
+  const version = parseJavaVersion(text);
+  if (version == null) return { java, from, version: null, error: r.ok ? 'could not read a version from `java -version`' : `\`java -version\` failed: ${cap(r.error, 120)}` };
+  return { java, from, version };
+}
+
+/**
+ * runtime checks for pack.json requires[] entries that carry `java`: { [itemId]: [{ bin, note, java?, needs }] }.
+ * Only for a bin that is on PATH (a missing bin is already in missingBins). One Java probe per distinct bin.
+ */
+export async function requiresRuntimeNotes(pack, { findBin, env = process.env, platform = process.platform, exec = runCommand, readHead: head, exists, short = (x) => x } = {}) {
+  const out = {};
+  const cache = new Map();
+  for (const it of asArray(pack?.items)) {
+    for (const r of asArray(it?.requires)) {
+      if (!isObject(r) || typeof r.bin !== 'string' || !Number.isInteger(r.java)) continue;
+      const f = findBin(r.bin);
+      if (!f?.found) continue;
+      if (!cache.has(r.bin)) cache.set(r.bin, await javaForBin(f.path ?? null, { env, platform, exec, findBin, readHead: head, exists }));
+      const j = cache.get(r.bin);
+      let note = null;
+      if (j.version == null) note = `could not tell which Java ${r.bin} will use (${j.error}; looked at ${short(j.from)}). ${r.bin} needs Java ${r.java}+.`;
+      else if (j.version < r.java) note = `${r.bin} will start on Java ${j.version} from ${short(j.from)}, but needs Java ${r.java}+ (it fails at start). Make that a JDK ${r.java}+ (JAVA_HOME is usually set by mise, sdkman or asdf: switch it there), then restart Claude Code.`;
+      if (note) (out[it.id] ??= []).push({ bin: r.bin, needs: r.java, ...(j.version != null ? { java: j.version } : {}), note });
+    }
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------- absolute paths into a version manager's node (#21)
+// An MCP command or a hook command written as an absolute path into one node version's install dir (an npm -g bin,
+// or the command `bantamkit-mcp --install-hooks` writes) breaks when that version is removed by an upgrade, and runs
+// an old copy while it is still there. Layouts (the version is the segment after the prefix):
+//   mise  <data>/installs/node/<v>/      nvm   $NVM_DIR/versions/node/v<v>/      fnm  <fnm dir>/node-versions/v<v>/
+//   asdf  ~/.asdf/installs/nodejs/<v>/   volta $VOLTA_HOME/tools/image/node/<v>/
+const NODE_VM_LAYOUTS = [
+  { manager: 'mise', re: /^(.*\/mise\/installs\/node)\/([^/]+)(?:\/|$)/i },
+  { manager: 'nvm', re: /^(.*\/(?:\.nvm|nvm)\/versions\/node)\/([^/]+)(?:\/|$)/i },
+  { manager: 'fnm', re: /^(.*\/(?:\.fnm|fnm)\/node-versions)\/([^/]+)(?:\/|$)/i },
+  { manager: 'asdf', re: /^(.*\/(?:\.asdf|asdf)\/installs\/nodejs)\/([^/]+)(?:\/|$)/i },
+  { manager: 'volta', re: /^(.*\/(?:\.volta|volta)\/tools\/image\/node)\/([^/]+)(?:\/|$)/i },
+];
+const SEMVER_DIR = /^v?\d+\.\d+\.\d+$/;
+
+/**
+ * if `p` is an absolute path into a version manager's node install: { manager, versionDir, version } (versionDir in
+ * the path's own spelling, separators as given), else null.
+ */
+export function nodeVersionPathOf(p) {
+  const s = String(p ?? '');
+  if (!/^(\/|[a-zA-Z]:[\\/]|~[\\/])/.test(s)) return null;
+  const fwd = s.replace(/\\/g, '/');
+  for (const { manager, re } of NODE_VM_LAYOUTS) {
+    const m = fwd.match(re);
+    if (m) return { manager, versionDir: s.slice(0, m[1].length + 1 + m[2].length), version: m[2] };
+  }
+  return null;
+}
+
+/**
+ * what is wrong with a version-manager node path: 'gone' (the version dir does not exist), 'not-active' (a concrete
+ * version that is not the node running now), or null (fine, or an alias dir such as mise's `latest` / `26`).
+ */
+export function nodeVersionPathState(hit, { activeVersion = process.versions.node, home, lstat = lstatSync } = {}) {
+  const dir = hit.versionDir.replace(/^~(?=[\\/])/, home ?? '~');
+  let st;
+  try { st = lstat(dir); } catch { return 'gone'; }
+  if (!st || !SEMVER_DIR.test(hit.version)) return null; // an alias dir (mise `latest`, `26`): the manager moves it on upgrade
+  return hit.version.replace(/^v/, '') === String(activeVersion).replace(/^v/, '') ? null : 'not-active';
+}
+
 // ---------------------------------------------------------------- collect (all I/O)
 function makeCtx(opts) {
   const notes = [];
@@ -417,6 +551,7 @@ function makeCtx(opts) {
   const platform = opts.platform ?? process.platform;
   return {
     home, cwd: opts.cwd, platform, notes,
+    nodeVersion: opts.nodeVersion ?? process.versions.node, // the node running now: "the active version" for node-version-path
     note: (n) => { const t = redactText(n).text; if (!notes.includes(t)) notes.push(cap(t, 400)); },
     short: (p) => shortPath(p, home, platform),
     /** replace HOME inside free text (hook commands) with ~ */
@@ -884,11 +1019,36 @@ const DETECTORS = {
     return [...scripted].map(([source, list]) => ['risk', 'skill-with-scripts', `${list.length} skill(s) from ${source} ship executable scripts`,
       list.map((s) => `${s.name} (${s.scripts.length}${s.scripts.length >= LIMITS.scriptHits ? '+' : ''} scripts, ${s.path})`)]);
   },
+  /** MCP or hook commands that point into one node version of mise/nvm/fnm/asdf/volta that is gone or not active (#21) */
+  nodeVersionPath(data) {
+    const { home, short, nodeVersion, platform } = data.ctx;
+    const firstHit = (words) => {
+      for (const w of words) {
+        const hit = nodeVersionPathOf(w);
+        if (hit) return { hit, state: nodeVersionPathState(hit, { activeVersion: nodeVersion, home }) };
+      }
+      return null;
+    };
+    const why = (r) => (r.state === 'gone' ? 'which is no longer installed' : `which is not the node running now (${nodeVersion})`);
+    const where = (r) => `path: ${redactText(short(r.hit.versionDir)).text}${platform === 'win32' ? '\\' : '/'}...`;
+    const out = [];
+    for (const s of data.mcp) {
+      const { command, args } = unwrapCommand(s[RAW].command, s[RAW].args);
+      const r = firstHit([command, ...args]);
+      if (r?.state) out.push(['risk', 'node-version-path', `MCP "${s.name}" runs from ${r.hit.manager} node ${r.hit.version}, ${why(r)}`, [`source: ${s.source}`, where(r)]]);
+    }
+    const hooks = data.hooks.map((h) => ({ h, r: firstHit(tokenizeCommand(h[RAW])) })).filter((x) => x.r?.state);
+    for (const [, list] of groupBy(hooks, (x) => `${x.r.hit.versionDir}\u0000${x.h.source}`)) {
+      const { r, h } = list[0];
+      out.push(['risk', 'node-version-path', `hooks run from ${r.hit.manager} node ${r.hit.version}, ${why(r)}`, [`source: ${h.source}`, where(r), `events: ${[...new Set(list.map((x) => x.h.event))].join(', ')}`]]);
+    }
+    return out;
+  },
   broadPermission(data) {
     return data.permissions.filter((p) => BROAD_PERMISSION.test(p.rule)).map((p) => ['risk', 'broad-permission', `broad permission rule: ${cap(p.rule, 120)}`, [`source: ${p.source}`]]);
   },
 };
-export const FINDING_CATEGORIES = ['same-endpoint', 'same-package', 'same-skill-name', 'overlap:<group>', 'disabled-installed', 'inline-secret', 'local-path-mcp', 'local-path-hook', 'hook-every-tool', 'runs-latest-from-registry', 'mcp-unhealthy', 'third-party-marketplace', 'skill-with-scripts', 'broad-permission'];
+export const FINDING_CATEGORIES = ['same-endpoint', 'same-package', 'same-skill-name', 'overlap:<group>', 'disabled-installed', 'inline-secret', 'local-path-mcp', 'local-path-hook', 'hook-every-tool', 'runs-latest-from-registry', 'mcp-unhealthy', 'third-party-marketplace', 'skill-with-scripts', 'broad-permission', 'node-version-path'];
 
 export function audit(data, pack) {
   const findings = [];
@@ -937,7 +1097,7 @@ export async function run(argv = [], opts = {}) {
   const notes = [];
   try {
     const pack = opts.pack ?? JSON.parse(readFileSync(nodePath.join(here, '..', 'pack.json'), 'utf8'));
-    const data = await collect({ home: opts.home ?? homedir(), cwd: opts.cwd ?? process.cwd(), platform: opts.platform, env: opts.env, execClaude: opts.execClaude, fast });
+    const data = await collect({ home: opts.home ?? homedir(), cwd: opts.cwd ?? process.cwd(), platform: opts.platform, env: opts.env, execClaude: opts.execClaude, fast, nodeVersion: opts.nodeVersion });
     for (const p of validatePack(pack)) data.ctx.note(p);
     const major = Number(process.versions.node.split('.')[0]);
     if (major < 22) data.ctx.note(`Node ${process.versions.node}: some pack servers need Node 22.22+ (typescript-language-server) or 20.19+ (chrome-devtools-mcp, shadcn, bantamkit-mcp)`);
@@ -945,6 +1105,9 @@ export async function run(argv = [], opts = {}) {
     const env = opts.env ?? process.env;
     const pmDirs = opts.globalDirs ?? globalPackageDirs({ home: data.ctx.home, env, platform: data.ctx.platform });
     const pk = packStatus(data, pack, findBin, (bin) => findBinOffPath(bin, pmDirs, { env, platform: data.ctx.platform }));
+    // requires[].java: the Java a found bin will start on (runs only `java -version` / java_home, with a timeout)
+    const runtime = await requiresRuntimeNotes(pack, { findBin, env, platform: data.ctx.platform, exec: opts.exec ?? runCommand, short: data.ctx.shortText });
+    for (const item of pk) if (runtime[item.id]) item.requiresNotes = runtime[item.id];
     const out = buildOutput(data, pk, audit(data, pack), { full });
     // AI hosts and model-provider signals (names only) for the options step; options.mjs has the per-item detail
     // (options.mjs reads the same files again for its per-item detail: two parses per skill run, by design, so each

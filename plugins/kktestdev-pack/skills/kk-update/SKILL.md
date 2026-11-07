@@ -45,6 +45,11 @@ minutes: every step is network-bound.
      `pack.json` (`steps` and `requires[].install`): today `bantamkit-mcp`,
      `typescript-language-server`, `pyright`. Do not add `typescript`: typescript-language-server
      uses each project's own `typescript` devDependency.
+     After a node upgrade under a version manager (mise, nvm, fnm, asdf, Volta) the new node starts with
+     no global packages. If a pack package is missing from `npm ls -g` but an MCP server or hook
+     command still runs it from another node version's folder (`node-version-path` in `/kk-onboard`'s
+     inventory, or the path in `~/.claude/settings.json` / `claude mcp list`), add it to this command
+     as a re-install and say why in the list.
    - Other language servers, only if present: `gopls` → `go install golang.org/x/tools/gopls@latest`;
      `jdtls` → `brew upgrade jdtls` where it was installed with Homebrew. Otherwise print the
      project's download URL from `pack.json` and skip.
@@ -54,6 +59,20 @@ minutes: every step is network-bound.
 4. **bantamkit not on PATH**: if bantamkit is registered (`claude mcp list` shows it) but
    `bantamkit-mcp` is not found on PATH, it was installed some other way (a checkout, another
    prefix). Say so and skip it; do not install a second copy without asking.
+
+4b. **bantamkit hooks and a node upgrade**: only if `~/.claude/settings.json` has hooks whose command
+   runs `bantamkit-mcp` (read the `hooks` key names and commands only), run
+   `bantamkit-mcp --install-hooks` **without** `--yes` after step 3. Exit 0 with "already installed and
+   match": nothing to do. Exit 2: the hook command no longer matches this install, typically because a
+   node upgrade (mise, nvm, fnm, asdf, Volta) moved `bantamkit-mcp` to another version's folder and the
+   old absolute path is gone or stale. Then show the plan as in `../../docs/bantamkit-hooks.md`
+   ("Turning them on from Claude Code"), ask, back up `~/.claude/settings.json` to
+   `~/.claude/settings.json.bak-kk-update-<YYYYMMDDHHMM>`, and only after the user's yes run
+   `bantamkit-mcp --install-hooks --yes`. The Bash tool has no terminal, so without `--yes` it can never
+   write; never add `--yes` before that yes. If the hooks are not installed, do not offer them here
+   (that is `/kk-onboard`).
+   Other MCP servers registered with an absolute path into an old node version show up in
+   `/kk-onboard`'s inventory as `node-version-path`; mention that and leave them alone here.
 
 5. **npx-based MCP servers** (playwright; chrome-devtools and next-devtools from the frontend
    profile) are configured with `@latest`, so they resolve the newest release when they start.
@@ -88,7 +107,8 @@ minutes: every step is network-bound.
 
 7. **Snapshot "after"** and print one table: component → before → after (or "already latest", or
    "failed: <reason>"). Then say what needs a reload: plugins → restart Claude Code; MCP servers
-   → `/mcp` reconnect; bantamkit hooks pick up the new global install on the next hook call.
+   → `/mcp` reconnect; bantamkit hooks pick up the new global install on the next hook call when step
+   4b found them matching (after a rewrite in 4b: restart Claude Code or run `/hooks`).
 
 ## If an update breaks something
 

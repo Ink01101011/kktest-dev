@@ -84,7 +84,10 @@ The script prints one JSON document, also when something fails:
 - `pack[]`: each pack item with `status`, `foundAs` (where it was found, possibly several places),
   `missingBins` (language servers etc. not on PATH: `bin`, `install`, and a `note` when the binary
   was found off PATH, e.g. "installed by pnpm in ~/Library/pnpm, which is not on PATH", or only on
-  the Windows side of WSL), and `what` when it is not present.
+  the Windows side of WSL), `requiresNotes` (only when a required binary is on PATH but its runtime is
+  wrong: today jdtls, which needs Java 25+; `java` is the version it will start on, `note` says where
+  that Java comes from (`$JAVA_HOME`, the wrapper's default, or `java` on PATH) and what to change),
+  and `what` when it is not present.
   `status` is one of:
   - `present`: found and usable,
   - `needs-attention`: found, but not connected / needs authentication (see `foundAs`),
@@ -154,6 +157,10 @@ For each selected item with `status: missing` (or `disabled`), build the list of
    binary loads but does nothing. For `typescript-lsp`: the language server uses each project's
    own `typescript` (a devDependency, which provides `tsserver`); a project on TypeScript 7
    (native, no `tsserver`) gets no TS intelligence from it.
+5. `requiresNotes`: show each `note` as it is. The binary is installed but will not start (jdtls on Java
+   17/21 fails with `Unresolved requirement ... osgi.ee`). Offer the change the note names (a JDK 25+
+   for `JAVA_HOME`, e.g. through the user's version manager) as a command to show and ask about; never
+   change `JAVA_HOME` or install a JDK without the user's yes.
 
 Ask once for the whole batch ("run these N commands?") with the full list, marketplaces first,
 not item by item. Report each command's result. If a step fails, show the error and continue
@@ -166,6 +173,14 @@ Docs-only items are never installed. Point to the file instead:
   credentials)
 - Figma → `docs/figma.md`
 - bantamkit hooks (opt-in) → `docs/bantamkit-hooks.md`
+
+**If the user asks to turn the bantamkit hooks on** (or off), follow `docs/bantamkit-hooks.md`
+section "Turning them on from Claude Code". The Bash tool has no terminal, so `bantamkit-mcp
+--install-hooks` cannot ask there: it writes nothing and exits 2. In short: run
+`bantamkit-mcp --install-hooks` once without `--yes` (exit 0 with "already installed and match" means
+nothing to do), show the plan in chat, back up `~/.claude/settings.json` (rules above), and only after
+the user's explicit yes run `bantamkit-mcp --install-hooks --yes`. Removal is the same with
+`--remove-hooks` / `bantamkit-mcp --remove-hooks --yes`.
 
 ## Step 5: Configure options (per AI tool and model provider)
 
@@ -361,6 +376,7 @@ For every question, give the facts from `evidence` and options shaped like these
 | `inline-secret` | Leave as is · Move the value into an environment variable · Remove the server |
 | `local-path-mcp` / `local-path-hook` | Leave as is · Replace with the published package (when one exists) · Remove |
 | `hook-every-tool` | Leave as is · Add a matcher so it only runs for some tools · Remove the hook |
+| `node-version-path` | Leave as is · Re-point it at the node in use now (bantamkit hooks: the `--install-hooks` flow in Step 4, which rewrites the path; an MCP server: re-register it with the command name instead of the absolute path, or with the current path) · Remove |
 | `mcp-unhealthy` | Leave as is · Authenticate now (`/mcp`) · Disable here (`/mcp` → disable) · Remove |
 | `third-party-marketplace` / `skill-with-scripts` | Leave as is · Review the source first · Remove |
 | `broad-permission` | Leave as is · Narrow the rule (e.g. `Bash(npm test:*)`) · Remove the rule |
@@ -386,6 +402,10 @@ Neutral facts to state when they apply:
   at claude.ai. Removing them locally does not stick, because the next sync brings them back.
   Say this and offer `/mcp` → disable (per project), or changing it at claude.ai.
 - Local-path hooks or servers work only on the machine where that path exists.
+- `node-version-path`: an absolute path into one node version of mise, nvm, fnm, asdf or Volta
+  stops working when an upgrade removes that version (`gone`), and keeps running the old copy of
+  the package while it is still installed (`not the node running now`). A path through an alias
+  folder such as mise's `latest` is not reported, because the manager moves the alias.
 - Code from a third-party marketplace, a skill's scripts, or an `npx`/`uvx` server runs with your
   user's permissions; `npx`/`uvx` servers without a pinned version fetch the newest release on
   each start.

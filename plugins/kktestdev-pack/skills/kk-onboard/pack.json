@@ -1,7 +1,7 @@
 {
   "name": "kktestdev-pack",
   "policy": "Never pin versions: plugins follow their marketplace, npm packages use @latest. /kk-update refreshes everything.",
-  "keys": "Read by inventory.mjs: items[].id/profile/kind/detect/requires/what, overlapGroups. Read by the skills only: marketplaces, items[].plugin/steps/windows/scope/doc/publisher. detect keys: plugins (id prefix), mcpName (whole-token match at start or end of the server name), mcpNameExact, mcpUrl (substring), mcpCommand (binary name), mcpArgs (package or path segment), skills (exact name).",
+  "keys": "Read by inventory.mjs: items[].id/profile/kind/detect/requires/what, overlapGroups. requires[].java: N = the bin needs Java N+ to start; inventory reports (requiresNotes) when the Java it will use ($JAVA_HOME, a wrapper's default, or java on PATH) is older. Read by the skills only: marketplaces, items[].plugin/steps/windows/scope/doc/publisher. detect keys: plugins (id prefix), mcpName (whole-token match at start or end of the server name), mcpNameExact, mcpUrl (substring), mcpCommand (binary name), mcpArgs (package or path segment), skills (exact name).",
   "windowsNote": "On native Windows, npx and npm-installed bins are .cmd shims: stdio MCP servers must be registered through cmd /c. Each mcp item has a `windows` variant of its steps.",
   "optionsNote": "items[].options holds identity hints only (npm package, binary, env-var prefix) so options.mjs can find the INSTALLED version's own --help and docs; the option list itself is never stored here.",
   "marketplaces": {
@@ -56,7 +56,7 @@
       "id": "jdtls-lsp", "profile": "core", "kind": "plugin",
       "plugin": "jdtls-lsp@claude-plugins-official",
       "detect": { "plugins": ["jdtls-lsp@"] },
-      "requires": [{ "bin": "jdtls", "install": "macOS/Linuxbrew: brew install jdtls. Otherwise download a milestone build from https://github.com/eclipse-jdtls/eclipse.jdt.ls, unpack it, and put its bin/ (jdtls, jdtls.bat; needs Java 25+ and Python 3) on PATH" }],
+      "requires": [{ "bin": "jdtls", "install": "macOS/Linuxbrew: brew install jdtls. Otherwise download a milestone build from https://github.com/eclipse-jdtls/eclipse.jdt.ls, unpack it, and put its bin/ (jdtls, jdtls.bat; needs Java 25+ and Python 3) on PATH", "java": 25 }],
       "what": "Java / Spring Boot code intelligence. jdtls 1.63+ needs Java 25+ to run (its bundles require JavaSE 25; on 17 or 21 it fails with 'Unresolved requirement ... osgi.ee'). The brew wrapper uses $JAVA_HOME when it is set (mise, sdkman, asdf set it), so that JDK must be 25+, not only the openjdk brew installs as a dependency."
     },
     {

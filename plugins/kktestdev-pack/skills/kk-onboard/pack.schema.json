@@ -76,7 +76,8 @@
             "additionalProperties": false,
             "properties": {
               "bin": { "$ref": "#/$defs/nonEmptyString" },
-              "install": { "$ref": "#/$defs/nonEmptyString" }
+              "install": { "$ref": "#/$defs/nonEmptyString" },
+              "java": { "type": "integer", "description": "The bin needs Java N+ to start. inventory.mjs runs only `java -version` of the Java the bin will use ($JAVA_HOME, else a wrapper script's default JAVA_HOME, else java on PATH) and adds a requiresNotes entry when it is older or unknown." }
             }
           }
         },
