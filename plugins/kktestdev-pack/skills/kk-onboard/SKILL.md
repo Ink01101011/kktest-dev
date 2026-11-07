@@ -1,6 +1,8 @@
 ---
 name: kk-onboard
 description: Use when someone joins the team or sets up Claude Code on a new machine, asks to "onboard", "ติดตั้ง pack", "setup kktestdev-pack", wants to set the options/env of pack items ("ตั้งค่า env", "set options") for their AI tools and model providers, or wants to audit their skills/MCP servers/plugins/hooks for duplicates and risks. Asks before every change.
+metadata:
+  short-description: "Use when someone joins the team or sets up Claude Code: install the kktestdev-pack items they pick, set item options, and audit skills/MCP/plugins/hooks for duplicates and risks. Asks first."
 ---
 
 # kk-onboard: install the team pack and audit what is already there

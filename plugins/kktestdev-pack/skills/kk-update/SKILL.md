@@ -1,6 +1,8 @@
 ---
 name: kk-update
 description: Use when the user asks to update the team pack, "kk-update", "อัปเดต pack", "update plugins/MCP to latest", or when bantamkit's session header says the install is behind. Pulls the latest of everything kktestdev-pack manages and reports versions before and after.
+metadata:
+  short-description: "Use when the user asks to update the team pack (kk-update): pull the latest of every kktestdev-pack item, re-ask only about options that changed, and keep a rollback. Asks first."
 ---
 
 # kk-update: pull the latest of everything in the pack
