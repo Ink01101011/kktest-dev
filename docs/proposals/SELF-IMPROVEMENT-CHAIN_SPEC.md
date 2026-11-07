@@ -17,7 +17,7 @@ a component for each stage; nobody had wired them into one circuit:
 |---|---|---|
 | **Brake** (bounds the whole thing) | `loop-ledger` | budget + stall-hash + exit predicate; Stop-hook enforcement |
 | **Prime** (recall) | `reflexion` → `memory-keeper` | inject past lessons before acting |
-| **Act** | user skill / `kkskills-essentials` plan-decompose-orchestrate | do one iteration of work |
+| **Act** | user skill / `kkskills-situational` plan-decompose-orchestrate | do one iteration of work |
 | **Evaluate** | `critique-gate` | score the output against a rubric |
 | **Learn** | `reflexion` → `memory-keeper` | write the lesson as a durable, budgeted memory |
 | **Fold in** (evolve behavior) | `kkskills-essentials` meta-skill | promote recurring lessons into versioned skill edits |

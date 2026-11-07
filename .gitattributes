@@ -1,0 +1,2 @@
+# Keep LF line endings on every OS: SKILL.md frontmatter and the #!/usr/bin/env node shebang break with CRLF.
+* text=auto eol=lf

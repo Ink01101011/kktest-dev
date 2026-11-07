@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "kktestdev-pack",
+  "version": "0.1.0",
+  "description": "Team onboarding pack: /kk-onboard inventories what you already have installed or connected, skips what is already there, audits existing skills/MCP/plugins/hooks for redundancy and risk, and asks you item by item (neutral pros and cons) what to install, keep, or remove. /kk-update pulls the latest of everything the pack manages. Installs nothing by itself.",
+  "author": {
+    "name": "Ink",
+    "email": "supakit.kitj@gmail.com"
+  },
+  "homepage": "https://github.com/Ink01101011/kktest-dev/tree/master/plugins/kktestdev-pack",
+  "repository": "https://github.com/Ink01101011/kktest-dev",
+  "license": "MIT",
+  "keywords": ["onboarding", "team", "pack", "audit", "mcp", "skills", "plugins", "update"]
+}
