@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  run, redactText, redactUrl, redactArgs, commandWords, splitShell, secretKey, inlineSecretKeys, isEnvRef, packageSpecOf, splitSpec,
+  run, redactText, redactUrl, redactArgs, splitShell, secretKey, inlineSecretKeys, isEnvRef, packageSpecOf, splitSpec,
   normalizeEndpoint, nameMatches, unwrapCommand, isUnderHome, shortPath, isLocalPath, tokenizeCommand,
   projectEntry, parseJsonOutput, parseMcpListLine, findBinDefault, validatePack, FINDING_CATEGORIES, LIMITS,
 } from './inventory.mjs';
@@ -439,11 +439,13 @@ test('G7-1: glued, combined and quoted -u user:password forms are masked for cre
   assert.deepEqual(redactArgs(['--user=bob:CANAG8'], 'tool').args, ['--user=bob:***']);
 });
 
-test('G7-2: -u meaning uid:gid or module:app is left alone', () => {
+test('G7-2 / G9-M-A: only a numeric uid:gid after -u is left alone; anything else is masked (fail-safe)', () => {
   assert.equal(redactText('docker run -u 1000:1000 img').text, 'docker run -u 1000:1000 img');
-  assert.equal(redactText('uvicorn -u app:main').text, 'uvicorn -u app:main');
   assert.equal(redactText('tool -u 1000:1000').text, 'tool -u 1000:1000');
   assert.deepEqual(redactArgs(['-u', '1000:1000'], 'docker').args, ['-u', '1000:1000']);
+  assert.equal(redactText('docker run -u bob:staff img').text, 'docker run -u bob:*** img'); // over-masked, display only
+  assert.ok(!redactText('docker run img mytool -u bob:CANAI1').text.includes('CANAI1'));
+  assert.ok(!redactArgs(['run', 'img', 'mytool', '-u', 'bob:CANAI1'], 'docker').args.join(' ').includes('CANAI1'));
   assert.equal(redactText('tool -ubob:keep').text, 'tool -ubob:keep'); // glued form only for known credential commands
 });
 
@@ -451,8 +453,7 @@ test('G7-3: the MySQL -p rule applies per shell segment', () => {
   assert.equal(redactText('ssh -p2222 host && mysql -uroot -pCANAG9 db').text, 'ssh -p2222 host && mysql -uroot -p*** db');
   assert.equal(redactText('mysql -pCANAG10; ssh -p22 h').text, 'mysql -p***; ssh -p22 h');
   assert.equal(redactText('FOO=1 mysql -pCANAG11').text, 'FOO=1 mysql -p***');
-  assert.ok(commandWords(['-y', 'mysql-mcp']).has('mysql-mcp'));
-  assert.ok(commandWords(['C:\\Tools\\MySQL\\bin\\mysql.exe']).has('mysql'));
+  assert.equal(redactArgs(['-pCANAI2'], 'C:\\Tools\\MySQL\\bin\\mysql.exe').args[0], '-p***');
 });
 
 test('G7-4: redactText stays linear on long adversarial input (below the cut)', () => {
@@ -511,5 +512,21 @@ test('G8-m1/m2: separators and whitespace stay linear; node/python/ssh do not ve
   }
   for (const s of ['node cli.js -u u:CANAH5', 'python3 x.py --user u:CANAH5', 'ssh -u u:CANAH5 h']) assert.ok(!redactText(s).text.includes('CANAH5'), s);
   assert.equal(redactText('docker run -u 1000:1000 img').text, 'docker run -u 1000:1000 img');
-  assert.equal(redactText('uvicorn -u app:main').text, 'uvicorn -u app:main');
+});
+
+test('G9-M-B/M-C: long keys and long URL schemes are matched with no length cap, still linear', () => {
+  for (const s of [`SECRET_${'x'.repeat(70)}=CANAI3`, `token${'_x'.repeat(40)}=CANAI3`, `--token-${'x'.repeat(70)} CANAI3`,
+    `${'s'.repeat(40)}://bob:CANAI3@h`, `9https://bob:CANAI3@h`, `1api_key=CANAI3`, `-https://bob:CANAI3@h`]) {
+    assert.ok(!redactText(s).text.includes('CANAI3'), s.slice(0, 30) + ' => ' + redactText(s).text.slice(0, 60));
+  }
+  for (const s of ['a'.repeat(19999), 'a1'.repeat(9999), 'a.'.repeat(9999), '-'.repeat(19999), 'a://'.repeat(4999), '--a '.repeat(4999)]) {
+    const t0 = process.hrtime.bigint(); redactText(s);
+    assert.ok(Number(process.hrtime.bigint() - t0) / 1e6 < 60, s.slice(0, 4));
+  }
+});
+
+test('G9 minor: the 20k cut happens at whitespace, so no token fragment is left', () => {
+  const s = 'x '.repeat(9997) + 'sk-' + 'Z'.repeat(40);
+  const out = redactText(s).text;
+  assert.ok(!/sk-Z/.test(out), out.slice(-40));
 });

@@ -46,20 +46,18 @@ const QUERY_SECRET = /^(key|sig|code|access_token|apikey)$/i;
 const ENV_REF = /\$\{[A-Za-z_][A-Za-z0-9_]*(?::-[^}]*)?\}|\$[A-Za-z_][A-Za-z0-9_]*|%[A-Za-z_][A-Za-z0-9_]*%/g;
 // Well-known credential prefixes (OpenAI/Anthropic sk-, Stripe, GitHub, GitLab, Slack, AWS, Google, JWT).
 const TOKEN_PREFIX = /\b(?:sk-[A-Za-z0-9_-]{8,}|sk_(?:live|test)_[A-Za-z0-9]{8,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{16,}|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]+)/g;
-// Scheme and key lengths are bounded ({0,31}, {0,63}) so each start position scans a bounded window:
-// linear on long runs (G7-4: unbounded forms were quadratic, ~4 s on a 100k-char token). Bounding instead of
-// anchoring keeps every match the old forms found (G8-M3: `1api_key=`, `.password=`, `-https://u:p@h`).
-const URL_IN_TEXT = /\b[a-z][a-z0-9+.-]{0,31}:\/\/[^\s'"<>`]+/gi;
+// URL_IN_TEXT and KEY_VALUE match a WHOLE run of key/scheme characters (the lookbehind allows one start per
+// run, so a long run is scanned once: linear, G7-4), then the callback drops leading digits, dots and dashes
+// to find the key or scheme the old unanchored forms found (G8-M3: `1api_key=`, `-https://`) with no length
+// cap (G9-M-B/M-C: keys over 64 and schemes over 32 chars).
+const URL_IN_TEXT = /(?<![a-z0-9+.-])([a-z0-9+.-]+)(:\/\/[^\s'"<>`]+)/gi;
 const AUTH_SCHEME = /\b(Bearer|Basic|Token)(\s+)([^\s'"]+)/gi;
-const KEY_VALUE = /(-{0,2}[A-Za-z_][\w.-]{0,63})(=|:[ \t]*)("[^"]*"|'[^']*'|[^\s'"&]+)/g;
+const KEY_VALUE = /(?<![\w.-])([\w.-]+)(=|:[ \t]*)("[^"]*"|'[^']*'|[^\s'"&]+)/g;
 const FLAG = /^--?[A-Za-z][\w.-]*$/;
 // `-u user:password` / `--user user:password`: the part after the first colon is a password.
 const USER_FLAG = /^(-u|--user|--proxy-user)$/;
 // Commands whose -u takes user:password and whose short flags combine/glue (`-vu bob:pw`, `-ubob:pw`).
 const CRED_U_CMDS = new Set(['curl', 'wget', 'lftp', 'aria2c', 'ftp', 'sftp', 'mongo', 'mongosh', 'mongodump', 'mongorestore', 'mongoexport', 'mongoimport', 'redis-cli', 'influx', 'rabbitmqadmin']);
-// Commands whose -u/--user means something else (uid:gid, user:group, module:app). They only veto masking
-// when no credential command appears in the same segment (`docker exec db curl -u bob:pw` is still masked).
-const NON_CRED_U_CMDS = new Set(['docker', 'podman', 'nerdctl', 'uvicorn', 'gunicorn', 'hypercorn', 'daphne', 'runuser', 'chown', 'setpriv']);
 // MySQL-family clients take the password glued to -p (`mysql -pSECRET`); a separate `-p X` is a prompt + db name.
 const MYSQL_CMDS = new Set(['mysql', 'mariadb', 'mysqldump', 'mysqladmin', 'mysqlimport', 'mysqlshow']);
 
@@ -83,30 +81,15 @@ export function splitShell(t) {
   return out;
 }
 
-/** every command-looking word of a segment or argv: basenames, with wrappers like $( ( { ! ` and quotes stripped */
-export function commandWords(words) {
-  const out = new Set();
-  for (const w of words) {
-    for (const part of String(w ?? '').split(/\s+/)) {
-      const word = part.replace(/^(?:\$\(|[({!`"'])+/, '').replace(/[)}`"';]+$/, '');
-      if (!word || word.startsWith('-') || word.includes('=')) continue;
-      out.add(word.split(/[\\/]/).pop().replace(/\.(exe|cmd|bat)$/i, '').toLowerCase());
-    }
-  }
-  return out;
-}
-
-/** what a segment's commands imply for -u and -p: credential client present, MySQL client present, a -u veto */
+/** what a segment's commands imply for -u and -p: a credential client present, a MySQL client present */
 // Word-boundary tests over the whole text: fail-safe (any mention counts, as the pre-gate code did), linear.
 const CRED_U_WORD = new RegExp(`\\b(${[...CRED_U_CMDS].map((c) => c.replace(/-/g, '\\-')).join('|')})(\\.exe)?\\b`, 'i');
 const MYSQL_WORD = new RegExp(`\\b(${[...MYSQL_CMDS].join('|')})(\\.exe)?\\b`, 'i');
 function credContext(words) {
-  const ws = commandWords(words);
   const text = words.map((w) => String(w ?? '')).join(' ');
   const credU = CRED_U_WORD.test(text);
   const mysql = MYSQL_WORD.test(text);
-  const veto = !credU && !mysql && [...ws].some((w) => NON_CRED_U_CMDS.has(w));
-  return { credU: credU || mysql, mysql, veto };
+  return { credU: credU || mysql, mysql };
 }
 // Directories under HOME that belong to a package manager or version manager (not "a local checkout").
 const TOOLCHAIN_DIRS = /\/(node_modules|\.nvm|nvm|\.volta|\.asdf|\.fnm|\.bun\/bin|\.cargo\/bin|\.npm-global|\.npm\/_npx|\.local\/bin|\.local\/share\/(mise|pnpm|uv)|mise|homebrew|linuxbrew|\.claude\/plugins|appdata\/roaming\/npm|appdata\/local\/(mise|pnpm|volta)|scoop\/(shims|apps)|go\/bin|library\/pnpm)(\/|$)/;
@@ -177,7 +160,9 @@ function maskUserPass(value, ctx) {
   const i = inner.indexOf(':');
   if (i <= 0 || i === inner.length - 1) return null;
   const user = inner.slice(0, i); const pw = inner.slice(i + 1);
-  if (pw === '***' || isEnvRef(pw) || ctx.veto || uidPair(user, pw)) return null;
+  // Fail-safe (G9-M-A): every -u x:y is masked except a numeric uid:gid. `docker run -u bob:staff` is
+  // over-masked to bob:*** (display only) rather than letting `docker run img tool -u bob:pw` leak.
+  if (pw === '***' || isEnvRef(pw) || uidPair(user, pw)) return null;
   return `${q}${user}:***${q}`;
 }
 
@@ -211,18 +196,24 @@ function redactSegment(seg, hits) {
 export function redactText(s) {
   const hits = [];
   let t = String(s ?? '');
-  if (t.length > LIMITS.redactChars) t = `${t.slice(0, LIMITS.redactChars)}…[truncated]`;
-  t = t.replace(URL_IN_TEXT, (m) => { const r = redactUrl(m); hits.push(...r.hits); return r.text; });
+  // cut at the last whitespace before the limit so no secret straddles the cut as a fragment (G9 minor)
+  if (t.length > LIMITS.redactChars) t = `${t.slice(0, LIMITS.redactChars).replace(/\S*$/, '')}…[truncated]`;
+  t = t.replace(URL_IN_TEXT, (m, run, rest) => {
+    const lead = run.match(/^[^a-z]*/i)[0];
+    if (lead === run) return m;
+    const r = redactUrl(run.slice(lead.length) + rest); hits.push(...r.hits); return lead + r.text;
+  });
   t = t.replace(AUTH_SCHEME, (m, scheme, sp, val) => {
     if (val === '***' || isEnvRef(val)) return m;
     hits.push(`${scheme} credential`); return `${scheme}${sp}***`;
   });
-  t = t.replace(KEY_VALUE, (m, key, sep, val) => {
-    if (!secretKey(key) || val === '***' || isEnvRef(val.replace(/^["']|["']$/g, ''))) return m;
-    hits.push(`"${key}"`); return `${key}${sep}***`;
+  t = t.replace(KEY_VALUE, (m, run, sep, val) => {
+    const key = run.replace(/^[^A-Za-z_]+/, '');
+    if (!key || !secretKey(key) || val === '***' || isEnvRef(val.replace(/^["']|["']$/g, ''))) return m;
+    hits.push(`"${run}"`); return `${run}${sep}***`;
   });
   // --token VALUE (space separated) inside a command line
-  t = t.replace(/(^|\s)(--?[A-Za-z][\w.-]{0,63})(\s+)("[^"]*"|'[^']*'|[^\s'"-][^\s'"]*)/g, (m, pre, flag, sp, val) => {
+  t = t.replace(/(^|\s)(--?[A-Za-z][\w.-]*)(\s+)("[^"]*"|'[^']*'|[^\s'"-][^\s'"]*)/g, (m, pre, flag, sp, val) => {
     if (!secretKey(flag) || val === '***' || isEnvRef(val.replace(/^["']|["']$/g, ''))) return m;
     hits.push(`"${flag}"`); return `${pre}${flag}${sp}***`;
   });
