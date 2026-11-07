@@ -31,7 +31,7 @@ Then start `claude` and run `/kk-onboard`.
 
 Requirements: Node.js 22.22.2+ or 24+ (`node`, `npx`): typescript-language-server needs
 22.22.2+, and chrome-devtools-mcp, shadcn and bantamkit-mcp need 20.19+ (the inventory script
-alone runs on 18+). Optional per stack: Go (gopls), Java 21+ (jdtls), `uv` (Jira/Confluence on
+alone runs on 18+). Optional per stack: Go (gopls), Java 25+ (jdtls; the JDK in `$JAVA_HOME` if set), `uv` (Jira/Confluence on
 Server/DC). TypeScript projects need `typescript` as a devDependency: the language server uses
 the project's own `tsserver` (TypeScript 7, the native compiler, ships no `tsserver`).
 
