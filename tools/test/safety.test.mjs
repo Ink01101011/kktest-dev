@@ -4,6 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { loadCatalog } from '../lib/catalog.mjs';
 import { applyPlan, planInstall } from '../lib/install.mjs';
 import { ApplyError, atomicWrite, backupFile, checkTarget, renameRetry } from '../lib/safefs.mjs';
@@ -270,7 +271,8 @@ function forcedReplace(scopeOpts = {}) {
   const skill = path.join(base, '.agents', 'skills', 'secret-hygiene');
   fs.mkdirSync(skill, { recursive: true });
   fs.writeFileSync(path.join(skill, 'SKILL.md'), 'my own skill');
-  const plan = planInstall(cat, 'agents', { skill: 'secret-hygiene', force: true, env: { HOME: home }, platform: 'darwin', cwd: base, timestamp: 'T', ...scopeOpts });
+  // the host's own platform: these tests inject fs errors, so path semantics must match the real fs
+  const plan = planInstall(cat, 'agents', { skill: 'secret-hygiene', force: true, env: { HOME: home, USERPROFILE: home, APPDATA: path.join(home, 'AppData', 'Roaming') }, cwd: base, timestamp: 'T', ...scopeOpts });
   return { home, skill, skillsDir: path.dirname(skill), plan, backup: path.join(home, '.kktest-dev', 'backups', 'T', 'skills', 'secret-hygiene') };
 }
 
@@ -337,7 +339,7 @@ test('G3-X2: the CLI turns an apply failure into one ERROR: line and exit 2 (no 
     inject,
     "import fs from 'node:fs';\nconst real = fs.renameSync;\nfs.renameSync = (a, b) => { if (String(a).includes('.kktest-dev.tmp-')) throw Object.assign(new Error('EPERM: operation not permitted'), { code: 'EPERM' }); return real(a, b); };\n",
   );
-  const r = runCli(['install', '--target', 'agents', '--skill', 'secret-hygiene', '--force', '--apply', '--yes'], { home, node: ['--import', inject] });
+  const r = runCli(['install', '--target', 'agents', '--skill', 'secret-hygiene', '--force', '--apply', '--yes'], { home, node: ['--import', pathToFileURL(inject).href] });
   assert.equal(r.code, 2, r.stdout + r.stderr);
   assert.match(r.stderr, /^ERROR: could not move the new skill secret-hygiene into .*EPERM.*put back in place/);
   assert.ok(!/\n\s+at /.test(r.stderr), r.stderr);

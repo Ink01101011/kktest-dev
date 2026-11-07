@@ -192,7 +192,11 @@ test('claude-desktop: config path under the fake HOME/APPDATA, no skills', () =>
 test('vscode user scope prints code --add-mcp instead of guessing a path', () => {
   const r = runCli(['install', '--target', 'vscode', '--only', 'mcp', '--plugin', 'loop-ledger']);
   assert.equal(r.code, 0);
-  assert.match(r.stdout, /manual step: code --add-mcp .*name\\?":\\?"loop-ledger/);
+  // win32 prints one form per shell: (cmd.exe) and (PowerShell, with --% so the JSON quoting survives)
+  if (process.platform === 'win32') {
+    assert.match(r.stdout, /manual step: \(cmd\.exe\) code --add-mcp .*name\\?":\\?"loop-ledger/);
+    assert.match(r.stdout, /manual step: \(PowerShell\) code --% --add-mcp .*name\\?":\\?"loop-ledger/);
+  } else assert.match(r.stdout, /manual step: code --add-mcp .*name\\?":\\?"loop-ledger/);
 });
 
 test('--apply without --yes on a non-terminal is refused and writes nothing', () => {
