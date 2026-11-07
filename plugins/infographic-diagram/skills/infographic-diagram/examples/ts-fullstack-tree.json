@@ -1,0 +1,15 @@
+{
+  "type": "tree",
+  "icon": "brain",
+  "title": "TS FULLSTACK\nARCHITECTURE",
+  "root": {"label": "User Request", "icon": "user", "color": "blue"},
+  "rows": [
+    [{"title": "FRONTEND", "icon": "globe", "color": "green", "items": [{"label": "React", "icon": "code", "color": "cyan"}, {"label": "Next.js", "icon": "web"}, {"label": "SwiftUI", "icon": "mobile", "color": "orange"}]},
+     {"title": "BACKEND", "icon": "server", "color": "purple", "items": [{"label": "NestJS", "icon": "box", "color": "red"}, {"label": "Spring Boot", "icon": "box", "color": "green"}, {"label": "Gin (Go)", "icon": "bolt", "color": "cyan"}]}],
+    [{"title": "AI (LOCAL)", "icon": "brain", "color": "blue", "items": [{"label": "Ollama", "icon": "cpu"}, {"label": "Qwen-Coder", "icon": "sparkle", "color": "violet"}, {"label": "QLoRA", "icon": "gear"}], "box": "MCP Host", "box_icon": "plug"},
+     {"title": "PACKAGES", "icon": "package", "color": "yellow", "items": [{"label": "keact-ui", "icon": "layers"}, {"label": "ex-search", "icon": "search"}, {"label": "ex-flow", "icon": "stream"}]}],
+    {"dashed": true, "groups": [{"title": "DATA LAYER", "icon": "database", "color": "purple", "items": [{"label": "PostgreSQL", "icon": "database", "color": "blue"}, {"label": "Redis", "icon": "layers", "color": "red"}, {"label": "S3", "icon": "box", "color": "green"}]}]},
+    [{"title": "DEPLOYMENT", "icon": "rocket", "color": "green", "items": [{"label": "Docker", "icon": "box", "color": "blue"}, {"label": "Kubernetes", "icon": "wheel", "color": "blue"}, {"label": "Vercel", "icon": "cloud"}]}]
+  ],
+  "footer": "Example tree — swap in your own stack"
+}

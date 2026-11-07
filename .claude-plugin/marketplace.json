@@ -369,6 +369,34 @@
         "audit",
         "dx"
       ]
+    },
+    {
+      "name": "infographic-diagram",
+      "source": "./plugins/infographic-diagram",
+      "description": "Presentation-ready architecture, layer-stack and tech-stack diagrams as SVG (+ 2x PNG) from a JSON spec, in three looks: light system map, editorial numbered layer stack, dark neon category tree. A Python script owns layout, icons and arrow routing, with a lint pass for overlaps and overflow. Thai text supported.",
+      "version": "0.1.0",
+      "author": {
+        "name": "Ink",
+        "email": "supakit.kitj@gmail.com"
+      },
+      "homepage": "https://github.com/Ink01101011/kktest-dev/tree/master/plugins/infographic-diagram",
+      "repository": "https://github.com/Ink01101011/kktest-dev",
+      "license": "MIT",
+      "category": "productivity",
+      "keywords": [
+        "diagram",
+        "infographic",
+        "architecture",
+        "svg",
+        "png",
+        "tech-stack",
+        "thai"
+      ],
+      "tags": [
+        "diagrams",
+        "visualization",
+        "skills"
+      ]
     }
   ]
 }
