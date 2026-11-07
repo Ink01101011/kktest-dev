@@ -64,6 +64,11 @@ def _resolve_memctl_path() -> Path:
         if hits:
             return hits[0]
 
+    # exported layout (kktest-dev export/install for other agents): memctl.py bundled next to this file.
+    bundled = here.parent / "memctl.py"
+    if bundled.exists():
+        return bundled
+
     raise FileNotFoundError(
         "cannot locate memory-keeper's memctl.py — install the memory-keeper plugin alongside "
         "reflexion, or set MEMCTL_PATH explicitly"

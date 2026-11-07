@@ -43,6 +43,32 @@ claude plugin install memory-keeper@kktest-dev
 
 Update later with `/plugin marketplace update kktest-dev`.
 
+## Use with other AI tools
+
+Most skills follow the open [Agent Skills](https://agentskills.io/specification) format and the three
+MCP servers are plain stdio servers, so they also work outside Claude Code. Hooks and slash commands
+are Claude Code only. The `kktest-dev` npm package (Node 22+, no dependencies) exports or installs them:
+
+```bash
+npx kktest-dev list                                  # what is portable, and to which tools
+npx kktest-dev install --target cursor               # dry run: shows every file it would change
+npx kktest-dev install --target cursor --apply       # backs up, merges, asks before writing
+npx kktest-dev export --target claude-ai             # one zip per skill for upload
+```
+
+| Tool | Skills | MCP servers | Command |
+|---|---|---|---|
+| Codex CLI / ChatGPT desktop | `.agents/skills` | `config.toml` | `install --target codex` |
+| Gemini CLI | `.agents/skills` or an extension | `settings.json` / extension | `install --target gemini`, `export --target gemini-extension` |
+| GitHub Copilot (VS Code, CLI) | `.agents/skills` | `.vscode/mcp.json` / `code --add-mcp` | `install --target vscode` |
+| Cursor | `.agents/skills` | `mcp.json` | `install --target cursor` |
+| Claude Desktop | not researched (see claude.ai) | `claude_desktop_config.json` | `install --target claude-desktop` |
+| claude.ai | zip upload | remote only | `export --target claude-ai` |
+| ChatGPT (web) | zip upload | remote only | `export --target chatgpt` |
+| Windsurf / Devin | unverified | unverified | `export --target windsurf` (paste by hand) |
+
+Details, manual steps and the list of unverified facts: [docs/providers.md](./docs/providers.md).
+
 ## Local development / testing
 
 ```bash

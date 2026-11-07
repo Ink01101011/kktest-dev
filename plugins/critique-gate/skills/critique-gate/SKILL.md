@@ -12,6 +12,8 @@ description: "Use this skill whenever output should not ship until a distinct cr
   named, enforceable command per mode."
 version: "0.1.1"
 updated: "2026-07-02"
+metadata:
+  short-description: "Use when output must not ship until a distinct critic clears it against a rubric: score-retry, multi-critic, adversarial or judge-ensemble, with retries enforced rather than advisory."
 ---
 
 # Critique Gate
@@ -217,6 +219,10 @@ limiting, don't reword the paragraph again.
 → judge-ensemble, K=3, `progress = mean(3 scores)`, `target_value: 0.8`. Round 2: mean 0.83 clears the
 bar, but scores were 0.5/0.9/1.0 (spread 0.5) → report `target_reached` but flag to the user that the
 judges disagreed sharply and consensus is weak, rather than presenting it as a clean pass.
+
+## Other agents
+
+Slash commands, the `mcp__plugin_loop-ledger_loop-ledger__*` tool names and the Stop hook exist only in Claude Code. Elsewhere, ask in plain words ("score this against a rubric and retry up to N times"); the modes above define what to do. If `loop-ledger` is registered as an MCP server, call `loop_start`/`loop_tick`/`loop_status` by their bare names (the host may add a prefix). Without hooks, enforcement is advisory: do not report done until the critic score meets the threshold. Where this skill says `CLAUDE.md`, use the project's equivalent instruction file.
 
 ## Changelog
 

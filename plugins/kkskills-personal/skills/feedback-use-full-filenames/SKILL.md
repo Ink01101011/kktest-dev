@@ -81,6 +81,10 @@ This anchors the short form for the rest of the response.
 **Wrong (commit message):** `docs(tasks): update AUDIT.md`
 **Right (commit message):** `docs(tasks): update 27052026_ARCHITECTURE_AUDIT.md §8`
 
+## Other agents
+
+If `present_files` (or `Glob`/`Grep`) is unavailable, use your host's file search and print the full absolute path in the reply instead.
+
 ## Changelog
 
 - 0.1.0 (2026-06-19) — initial version, vendored into kktest-dev/kkskills-essentials.

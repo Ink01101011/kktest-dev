@@ -100,6 +100,10 @@ deeper answer.
 **Scenario:** User says "วางแผนก่อนนะ อย่าเพิ่งแก้".
 → Don't jump to code. Produce the decomposed, orchestrated plan (triads + parallel/sequential map) and present it via ExitPlanMode for approval. ✅
 
+## Other agents
+
+If your host has no plan mode or subagents, write the plan as a numbered list in the chat, ask for approval there, and run the steps one after another. The `superpowers` references are optional reading.
+
 ## Changelog
 
 - 0.1.0 (2026-06-21) — initial version; plan→triad decomposition (implement/test/review), parallel-vs-sequential orchestration map, and a 7-step deep-down (root-cause) debugging checklist. Core is self-contained; superpowers skills are referenced only as optional deeper reading (graceful degradation if that plugin isn't installed), matching this plugin's self-contained convention. Sibling essentials skills cross-linked via [[…]]. Pressure-tested with subagents (A/B, RED vs GREEN): baseline planned flat with no review/orchestration; with the skill, agents produced full triads + a parallel-worktree orchestration map. Added a pre-flight "read the real code first" note from a gap the test surfaced (agents planned against assumed signatures).

@@ -8,6 +8,8 @@ description: "Use this skill whenever the task is to consider multiple genuinely
   single plan as you execute it (see planning-loops)."
 version: "0.1.0"
 updated: "2026-07-02"
+metadata:
+  short-description: "Use when the task is to weigh several genuinely different candidates and pick the best one: explore N designs, compare approaches, debate tradeoffs. Covers Branch-and-Explore, Tree Search, Debate."
 ---
 
 # Exploration Loops
@@ -119,6 +121,10 @@ the expected exit — report the best leaf found, not a failure.
 → Debate, two positions, each round's new arguments as `state`. Round 4: both sides just restate round
 2's points → `stalled` → conclude "genuinely contested; recommend a time-boxed pilot instead of a binary
 decision" rather than forcing a fake consensus.
+
+## Other agents
+
+If the `loop-ledger` tools (`loop_start`, `loop_tick`, `loop_status`) are not available in your host, track the iteration count, the best progress so far and the stop condition in a plain scratch list, and stop when the budget or the exit predicate is met. Without a Stop hook, enforcement is advisory: re-check the score before you declare the task done.
 
 ## Changelog
 

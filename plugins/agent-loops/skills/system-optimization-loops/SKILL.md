@@ -9,6 +9,8 @@ description: "Use this skill whenever you're tuning a reusable system artifact �
   the metric must be measured on held-out cases, not the same cases used to tune it."
 version: "0.1.1"
 updated: "2026-07-02"
+metadata:
+  short-description: "Use when tuning a reusable prompt, workflow or pipeline against a held-out metric (success rate, latency, cost), not when improving a single piece of content."
 ---
 
 # System Optimization Loops
@@ -128,6 +130,10 @@ that saved time but dropped a check gets reverted, not counted as progress.
 → Prompt Optimization with `exit_mode: dry`, `dry_rounds: 2` — stop once two consecutive revisions fail
 to move the held-out metric, and report the best-performing version found, rather than chasing an
 arbitrary target.
+
+## Other agents
+
+If the `loop-ledger` tools (`loop_start`, `loop_tick`, `loop_status`) are not available in your host, track the iteration count, the best progress so far and the stop condition in a plain scratch list, and stop when the budget or the exit predicate is met. Without a Stop hook, enforcement is advisory: re-check the score before you declare the task done.
 
 ## Changelog
 

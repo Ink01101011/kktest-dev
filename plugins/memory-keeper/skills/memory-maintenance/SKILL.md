@@ -9,6 +9,7 @@ description: >
 metadata:
   version: "0.1.0"
   author: "Ink"
+  short-description: "Use when asked to clean up, compact, archive or lint a file-based agent memory store (a MEMORY.md index plus per-fact topic files) with the memory-keeper CLI or MCP tools."
 ---
 
 # Memory Maintenance
@@ -90,3 +91,7 @@ archive index and open the specific archived topic file. Only move a file back t
 - Never hardcode paths; use `${CLAUDE_PLUGIN_ROOT}` for plugin files.
 - Set the target store once via the `MEMCTL_DIR` env var, or pass `dir` per call.
 - The store is plain files — every change is a normal file move/write and is git-diffable.
+
+## Other agents
+
+Outside Claude Code the plugin-root variable is not set. Exported copies of this skill bundle the CLI, so run `python3 scripts/memctl.py <analyze|compact|archive|lint> --dir <memory-dir>` from this skill's folder in any shell (`MEMCTL_DIR` may replace `--dir`). Hooks and slash commands do not exist there: run `compact` yourself, or use the bundled `automation/` templates.

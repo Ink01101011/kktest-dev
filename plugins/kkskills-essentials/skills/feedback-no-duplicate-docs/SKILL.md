@@ -82,6 +82,10 @@ If you've already written a duplicate (it happens):
 **Recovery scenario:** You wrote `TESTING.md` at repo root. The user asks "why didn't you update `CHECKLIST.md`?"
 **Output:** Own it briefly ("you're right — this belonged in CHECKLIST.md"), migrate the content there, delete the redundant `TESTING.md`, and confirm CHECKLIST.md is now the single source.
 
+## Other agents
+
+If the tool names used here (`Glob`, `Edit`, `Write`) do not exist in your host, use its equivalents: search for files, edit an existing file, create a file.
+
 ## Changelog
 
 - 0.2.0 (2026-06-19) — removed hardcoded Thai recovery lines and a cowork-specific delete reference; genericized recovery example. Source: superpowers-curation review.

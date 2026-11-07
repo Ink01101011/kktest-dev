@@ -109,6 +109,10 @@ failing test first (borrowed from `obra/superpowers`' skill-testing method).
 | **minor** (0.1.0 → 0.2.0) | New step, new section, new rule, broadened trigger — the skill now covers more. |
 | **major** (0.1.0 → 1.0.0) | Reworked the skill's premise, or a rule reversed (old guidance now wrong). Note the break in the Changelog. |
 
+## Other agents
+
+If subagents are unavailable, run the pressure test in a fresh session or a separate conversation.
+
 ## Changelog format
 
 ```markdown
