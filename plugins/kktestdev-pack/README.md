@@ -43,16 +43,18 @@ Windows (native): stdio MCP servers are registered through `cmd /c` (each MCP it
 `/kk-onboard` asks which AI tools you use (Claude Code, Claude Desktop, Cursor, VS Code / GitHub
 Copilot, Windsurf) and which model providers (Anthropic, Bedrock, Vertex, OpenAI-compatible, Azure
 OpenAI, Gemini, OpenRouter, Ollama, LM Studio, ...). It then reads each pack item's options **from
-the version installed on your machine** (`--help`, README/docs, `claude plugin configure`), with
-nothing hard-coded in the pack. You pick which ones to set. Each picked option is explained step
-by step, with neutral pros and cons per choice, and stored where your AI tool reads it. Secrets
-stay in your credential store, and configs only get `${VAR}` references.
+the version installed on your machine** (README/docs, `claude plugin configure`, and `--help` if
+you agree), with nothing hard-coded in the pack. You pick which ones to set. Each picked option is
+explained step by step, with neutral pros and cons per choice, and stored where your AI tool reads
+it. Secrets stay in your credential store, and configs only get references in the form each AI tool
+documents (`${VAR}` for Claude Code, `${env:VAR}` for Cursor and VS Code).
 
-`scripts/options.mjs` does the reading: compact by default; `--item <id>` for full doc lines;
-`--network` to read the latest README from npm for items that are not installed locally;
-`--record` / `--diff` to save what was seen (names and versions only) so `/kk-update` asks only
-about options a new version added, removed or changed. It never prints a value, only a state:
-`literal` / `ref` / `empty`.
+`scripts/options.mjs` does the reading (flags and flow: see the kk-onboard SKILL). By default it
+reads docs and configs only and runs no package code; `--help` (which runs the package) and the npm
+registry are opt-in, and each is asked first. It never prints a value, only a state:
+`literal` / `ref` / `empty`. `--record` / `--diff` save names, versions and hashes (no values) so
+`/kk-update` asks only about options a new version added, removed or changed, and the ones you
+deferred.
 
 ## What's in the pack
 

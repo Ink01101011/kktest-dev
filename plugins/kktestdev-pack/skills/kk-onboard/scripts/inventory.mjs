@@ -16,11 +16,14 @@
 //
 // Single file, Node stdlib only. The pure helpers are exported for inventory.test.mjs.
 import { spawn } from 'node:child_process';
-import { lstatSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import nodePath from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
+import { CONFIG_MAX_BYTES, OPTION_HINT_KEYS, asArray, canonical, caseInsensitive, isEnvRef, isMain, isObject, readJsonText, samePath } from './common.mjs';
 import { detectProviders, readHosts } from './hosts.mjs';
+
+export { isEnvRef, isObject, samePath }; // moved to common.mjs; re-exported for existing importers and tests
 
 export const LIMITS = {
   skillDepth: 3,          // nesting below a skills root
@@ -30,7 +33,7 @@ export const LIMITS = {
   evidence: 20,           // evidence lines per finding
   list: 200,              // entries per installed list in --full
   str: 300,               // characters per string in the output
-  claudeJsonBytes: 50 * 1024 * 1024,
+  claudeJsonBytes: CONFIG_MAX_BYTES,
   redactChars: 20000,     // longer text is cut before redaction (keeps every regex pass bounded)
   cliTimeoutMs: 60000,
   mcpListTimeoutMs: 45000,
@@ -41,19 +44,18 @@ export const LIMITS = {
 // snake_cased name, so AUTHOR_NAME does not match "auth" but OAUTH_TOKEN matches "token".
 const SECRET_SEGMENTS = 'token|secret|password|passwd|pwd|pw|pass|api_?key|apikey|access_?key|private_?key|client_?secret|auth|authorization|bearer|cookie|credentials?|pat|signature|sig';
 const SECRET_KEY = new RegExp(`(^|_)(${SECRET_SEGMENTS})(_|$)`);
-// ${VAR}, ${VAR:-default}, $VAR, %VAR%: a reference to a variable, not a literal secret.
 // Query parameter names that carry a credential even though the word alone is generic (?key=, ?sig=).
 const QUERY_SECRET = /^(key|sig|code|access_token|apikey)$/i;
-const ENV_REF = /\$\{[A-Za-z_][A-Za-z0-9_]*(?::-[^}]*)?\}|\$[A-Za-z_][A-Za-z0-9_]*|%[A-Za-z_][A-Za-z0-9_]*%/g;
 // Well-known credential prefixes (OpenAI/Anthropic sk-, Stripe, GitHub, GitLab, Slack, AWS, Google, JWT).
 const TOKEN_PREFIX = /\b(?:sk-[A-Za-z0-9_-]{8,}|sk_(?:live|test)_[A-Za-z0-9]{8,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{16,}|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]+)/g;
-// URL_IN_TEXT and KEY_VALUE match a WHOLE run of key/scheme characters (the lookbehind allows one start per
+// URL_IN_TEXT and KEY_RUN match a WHOLE run of key/scheme characters (the lookbehind allows one start per
 // run, so a long run is scanned once: linear, G7-4), then the callback drops leading digits, dots and dashes
 // to find the key or scheme the old unanchored forms found (G8-M3: `1api_key=`, `-https://`) with no length
 // cap (G9-M-B/M-C: keys over 64 and schemes over 32 chars).
 const URL_IN_TEXT = /(?<![a-z0-9+.-])([a-z0-9+.-]+)(:\/\/[^\s'"<>`]+)/gi;
 const AUTH_SCHEME = /\b(Bearer|Basic|Token)(\s+)([^\s'"]+)/gi;
-const KEY_VALUE = /(?<![\w.-])([\w.-]+)(=|:[ \t]*)("[^"]*"|'[^']*'|[^\s'"&]+)/g;
+const KEY_RUN = /(?<![\w.-])([\w.-]+)(=|:[ \t]*)/g;
+const PAIR_VALUE = /"[^"]*"|'[^']*'|[^\s'"&]+/y;
 const FLAG = /^--?[A-Za-z][\w.-]*$/;
 // `-u user:password` / `--user user:password`: the part after the first colon is a password.
 const USER_FLAG = /^(-u|--user|--proxy-user)$/;
@@ -109,8 +111,6 @@ const RAW = Symbol('raw'); // raw config on server objects; Symbol keys never re
 
 // ---------------------------------------------------------------- small pure helpers
 const lower = (s) => String(s ?? '').toLowerCase();
-export const isObject = (x) => x !== null && typeof x === 'object' && !Array.isArray(x);
-const asArray = (x) => (Array.isArray(x) ? x : []);
 const asObject = (x) => (isObject(x) ? x : {});
 const strArray = (x) => asArray(x).filter((a) => typeof a === 'string' || typeof a === 'number').map(String);
 export const cap = (s, n = LIMITS.str) => { const t = String(s ?? ''); return t.length > n ? t.slice(0, n) + '…' : t; };
@@ -126,11 +126,6 @@ export function capList(list, n = LIMITS.evidence) {
 // ---------------------------------------------------------------- secrets: detection + redaction
 const snake = (k) => String(k).replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
 export const secretKey = (k) => SECRET_KEY.test(snake(String(k).replace(/^-+/, '')));
-/** true when the value is empty or only variable references (+ an auth scheme word): not a literal secret */
-export function isEnvRef(v) {
-  const rest = String(v ?? '').replace(ENV_REF, '').replace(/\b(bearer|basic|token)\b/gi, '').trim();
-  return rest === '';
-}
 
 /** redact one URL; returns { text, hits } where hits name what looked like a credential */
 export function redactUrl(u) {
@@ -195,24 +190,38 @@ function redactSegment(seg, hits) {
 
 /**
  * KEY=value / key: value with a secret-like key. A match whose key is NOT secret must not swallow its value:
- * in `Example: TOKEN=abc` the value of `Example:` is `TOKEN=abc`, which is itself a pair to check. So the scan
- * resumes at the value's start after a non-secret key (each step still advances, so it stays linear).
+ * in `Example: TOKEN=abc` the value of `Example:` is `TOKEN=abc`, which is itself a pair to check.
+ * Linear: KEY_RUN finds each maximal key run once (the lookbehind allows one start per run, and runs do not
+ * overlap), so the key scan is O(n) in total. The value is matched (sticky, at the separator's end) only for a
+ * secret key; a masked value is consumed and never scanned again, and after a non-secret key the scan simply
+ * continues at the value's start without reading the value. Each character is therefore read a bounded number
+ * of times. A quoted value with no closing quote reads to the end once per quote character at most (any later
+ * opening quote would have closed it).
  */
-function replaceKeyValues(t, hits) {
-  const re = new RegExp(KEY_VALUE.source, 'g');
+export function replaceKeyValues(t, hits = []) {
+  const re = new RegExp(KEY_RUN.source, 'g');
+  const val = new RegExp(PAIR_VALUE.source, 'y');
   let out = ''; let last = 0; let m;
   while ((m = re.exec(t)) !== null) {
-    const [whole, run, sep, val] = m;
+    const [whole, run, sep] = m;
     const key = run.replace(/^[^A-Za-z_]+/, '');
-    if (key && secretKey(key) && val !== '***' && !isEnvRef(val.replace(/^["']|["']$/g, ''))) {
-      hits.push(`"${run}"`);
-      out += t.slice(last, m.index) + `${run}${sep}***`;
-      last = m.index + whole.length;
-    } else {
-      re.lastIndex = m.index + run.length + sep.length; // rescan the value
-    }
+    if (!key || !secretKey(key)) continue; // lastIndex is already at the value's start
+    val.lastIndex = m.index + whole.length;
+    const v = val.exec(t);
+    if (!v || v[0] === '***' || isEnvRef(v[0].replace(/^["']|["']$/g, ''))) continue;
+    hits.push(`"${run}"`);
+    out += t.slice(last, m.index) + `${run}${sep}***`;
+    last = val.lastIndex;
+    re.lastIndex = last;
   }
   return out + t.slice(last);
+}
+
+/** drop the trailing non-whitespace run (same as .replace(/\S*$/, '') but one backwards pass: linear) */
+export function cutAtWhitespace(s) {
+  let i = s.length;
+  while (i > 0 && !/\s/.test(s[i - 1])) i--;
+  return s.slice(0, i);
 }
 
 /** redact free text (hook commands, args, CLI output); returns { text, hits } */
@@ -220,7 +229,7 @@ export function redactText(s) {
   const hits = [];
   let t = String(s ?? '');
   // cut at the last whitespace before the limit so no secret straddles the cut as a fragment (G9 minor)
-  if (t.length > LIMITS.redactChars) t = `${t.slice(0, LIMITS.redactChars).replace(/\S*$/, '')}…[truncated]`;
+  if (t.length > LIMITS.redactChars) t = `${cutAtWhitespace(t.slice(0, LIMITS.redactChars))}…[truncated]`;
   t = t.replace(URL_IN_TEXT, (m, run, rest) => {
     const lead = run.match(/^[^a-z]*/i)[0];
     if (lead === run) return m;
@@ -295,7 +304,6 @@ export function inlineSecretKeys(map) {
 }
 
 // ---------------------------------------------------------------- paths (OS-aware, testable with platform/home)
-const caseInsensitive = (platform) => platform === 'win32' || platform === 'darwin';
 function normPath(p, home, platform) {
   let s = String(p ?? '').trim();
   if (!s) return '';
@@ -322,10 +330,6 @@ export function isLocalPath(str, home, platform = process.platform) {
   if (!str || /^[a-z][a-z0-9+.-]*:\/\//i.test(String(str))) return false;
   if (!isUnderHome(str, home, platform)) return false;
   return !TOOLCHAIN_DIRS.test(normPath(str, home, platform).toLowerCase());
-}
-export function samePath(a, b, platform = process.platform) {
-  const n = (p) => { const s = String(p ?? '').replace(/\\/g, '/').replace(/\/+$/, ''); return caseInsensitive(platform) ? s.toLowerCase() : s; };
-  return n(a) === n(b);
 }
 /** split a shell command into words, keeping "quoted parts" together */
 export function tokenizeCommand(cmd) {
@@ -455,22 +459,46 @@ function readJsonFile(file, ctx, { maxBytes = LIMITS.claudeJsonBytes } = {}) {
   if (!st.isFile()) { ctx.note(`${ctx.short(file)} is not a file; skipped`); return null; }
   if (st.size > maxBytes) { ctx.note(`${ctx.short(file)} is ${Math.round(st.size / 1048576)} MB; skipped (limit ${Math.round(maxBytes / 1048576)} MB)`); return null; }
   let text;
-  try { text = readFileSync(file, 'utf8'); } catch (e) { ctx.note(`cannot read ${ctx.short(file)}: ${e.code ?? e.message}`); return null; }
-  try { return JSON.parse(text.replace(/^﻿/, '')); } catch (e) { ctx.note(`${ctx.short(file)} is not valid JSON (${cap(e.message, 80)}); treated as empty`); return null; }
+  try { text = readFileSync(file); } catch (e) { ctx.note(`cannot read ${ctx.short(file)}: ${e.code ?? e.message}`); return null; }
+  try { return readJsonText(text); } catch (e) { ctx.note(`${ctx.short(file)} is not valid JSON (${cap(e.message, 80)}); treated as empty`); return null; }
 }
 
 // ---------------------------------------------------------------- I/O defaults (replaceable in tests)
-/** run a command with fixed args (never user text through a shell); resolves { ok, stdout } or { ok:false, code, error } */
-export function runCommand(cmd, args, timeoutMs, { shell = false, cwd } = {}) {
+/** end a child and everything it started: posix process group (spawned detached), win32 taskkill /T */
+function killTree(child, platform = process.platform) {
+  if (!child?.pid) return;
+  if (platform === 'win32') {
+    try { spawn('taskkill', ['/T', '/F', '/PID', String(child.pid)], { windowsHide: true, stdio: 'ignore' }).on('error', () => {}); } catch {}
+    return;
+  }
+  try { process.kill(-child.pid, 'SIGKILL'); } catch { try { child.kill('SIGKILL'); } catch {} }
+}
+
+/**
+ * run a command with fixed args (never user text through a shell); resolves { ok, stdout } or { ok:false, code, error }.
+ * opts: shell (Windows .cmd shims), cwd, env (replaces the environment), maxStdout (stop reading and end the child
+ * past it; the result then has truncated: true), killTree (own process group, so a timeout ends grandchildren too).
+ */
+export function runCommand(cmd, args, timeoutMs, { shell = false, cwd, env, maxStdout = 20e6, killTree: tree = false } = {}) {
   return new Promise((resolve) => {
-    let stdout = ''; let stderr = ''; let done = false;
+    let stdout = ''; let stderr = ''; let done = false; let truncated = false;
     let child;
     const finish = (r) => { if (!done) { done = true; clearTimeout(timer); resolve(r); } };
+    const end = () => { if (tree) killTree(child); else { try { child.kill(); } catch {} } };
+    let spawnEnv = env;
+    // cmd.exe looks in the current directory first; a cloned repo's npm.cmd must not win (O2-13)
+    if (shell && process.platform === 'win32') spawnEnv = { ...(env ?? process.env), NoDefaultCurrentDirectoryInExePath: '1' };
     try {
-      child = spawn(cmd, args, { shell, cwd, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+      // with a shell, pass one command string (fixed literals only): Node 24+ warns about args + shell (DEP0190)
+      child = shell ? spawn([cmd, ...args].join(' '), [], { shell, cwd, env: spawnEnv, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
+        : spawn(cmd, args, { shell: false, cwd, env: spawnEnv, windowsHide: true, detached: tree && process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'] });
     } catch (e) { resolve({ ok: false, code: e.code, error: e.message }); return; }
-    const timer = setTimeout(() => { try { child.kill(); } catch {} finish({ ok: false, code: 'ETIMEDOUT', error: `timed out after ${timeoutMs / 1000} s` }); }, timeoutMs);
-    child.stdout.on('data', (d) => { if (stdout.length < 20e6) stdout += d; });
+    const timer = setTimeout(() => { end(); finish({ ok: false, code: 'ETIMEDOUT', error: `timed out after ${timeoutMs / 1000} s` }); }, timeoutMs);
+    child.stdout.on('data', (d) => {
+      if (truncated) return;
+      stdout += d;
+      if (stdout.length > maxStdout) { stdout = stdout.slice(0, maxStdout); truncated = true; end(); finish({ ok: true, stdout, truncated: true }); }
+    });
     child.stderr.on('data', (d) => { if (stderr.length < 1e5) stderr += d; });
     child.on('error', (e) => finish({ ok: false, code: e.code, error: e.message }));
     child.on('close', (code) => finish(code === 0 ? { ok: true, stdout } : { ok: false, code, error: stderr.trim() || `exit ${code}`, stdout }));
@@ -511,7 +539,6 @@ function makeCtx(opts) {
     shortText: (t) => String(t ?? '').split(home + nodePath.sep).join('~' + nodePath.sep).split(String(home).replace(/\\/g, '/') + '/').join('~/'),
   };
 }
-const canonical = (p) => { try { return realpathSync.native(p); } catch { return nodePath.resolve(p); } };
 
 function makeServer(name, cfg, source) {
   const c = asObject(cfg);
@@ -768,7 +795,7 @@ export function validatePack(pack) {
     for (const k of Object.keys(asObject(it.detect))) if (!KNOWN_DETECT_KEYS.has(k)) problems.push(`pack.json item ${it.id}: unknown detect key "${k}" (never matches)`);
     if (it.options !== undefined) {
       const o = asObject(it.options);
-      for (const k of Object.keys(o)) if (!['package', 'bin', 'envPrefix'].includes(k)) problems.push(`pack.json item ${it.id}: unknown options key "${k}" (options holds identity hints only)`);
+      for (const k of Object.keys(o)) if (!OPTION_HINT_KEYS.includes(k)) problems.push(`pack.json item ${it.id}: unknown options key "${k}" (options holds identity hints only)`);
     }
     const need = { plugin: 'plugin', mcp: 'steps', docs: 'doc' }[it.kind];
     if (!need) problems.push(`pack.json item ${it.id}: unknown kind "${it.kind}"`);
@@ -1012,10 +1039,12 @@ export async function run(argv = [], opts = {}) {
     const pk = packStatus(data, pack, findBin);
     const out = buildOutput(data, pk, audit(data, pack), { full });
     // AI hosts and model-provider signals (names only) for the options step; options.mjs has the per-item detail
-    const hostsInfo = readHosts({ home: data.ctx.home, cwd: data.ctx.cwd, env: opts.env ?? process.env, platform: data.ctx.platform });
-    out.hosts = hostsInfo.hosts.map((h) => ({ id: h.id, label: h.label, present: h.present, mcpServers: h.servers.length, configFiles: h.files.map((f) => data.ctx.short(f.file)) }));
+    // (options.mjs reads the same files again for its per-item detail: two parses per skill run, by design, so each
+    // script stays usable on its own; this summary has a different shape from options.mjs hosts[] on purpose)
+    const hostsInfo = readHosts({ home: data.ctx.home, cwd: data.ctx.cwd, env: opts.env ?? process.env, platform: data.ctx.platform, short: data.ctx.short });
+    out.hosts = hostsInfo.hosts.map((h) => ({ id: h.id, label: h.label, present: h.present, mcpServers: h.servers.length, configFiles: h.files.filter((f) => f.exists).map((f) => data.ctx.short(f.file)) }));
     out.providers = detectProviders({ env: opts.env ?? process.env, hosts: hostsInfo.hosts, findBin }).filter((p) => p.signals.length);
-    for (const n of hostsInfo.notes) data.ctx.note(redactText(n).text);
+    for (const n of hostsInfo.notes) data.ctx.note(n); // ctx.note redacts
     return out;
   } catch (e) {
     notes.push(`inventory failed: ${cap(redactText(e?.message ?? String(e)).text, 300)}`);
@@ -1024,8 +1053,7 @@ export async function run(argv = [], opts = {}) {
 }
 
 // ---------------------------------------------------------------- main (only when executed, not when imported)
-const isMain = (() => { try { return !!process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href; } catch { return false; } })();
-if (isMain) {
+if (isMain(import.meta.url)) {
   const argv = process.argv.slice(2);
   run(argv).then(
     (out) => process.stdout.write(JSON.stringify(out, null, argv.includes('--pretty') ? 2 : 0) + '\n'),

@@ -11,6 +11,7 @@ import {
   run, redactText, redactUrl, redactArgs, splitShell, secretKey, inlineSecretKeys, isEnvRef, packageSpecOf, splitSpec,
   normalizeEndpoint, nameMatches, unwrapCommand, isUnderHome, shortPath, isLocalPath, tokenizeCommand,
   projectEntry, parseJsonOutput, parseMcpListLine, findBinDefault, validatePack, FINDING_CATEGORIES, LIMITS,
+  cutAtWhitespace, replaceKeyValues,
 } from './inventory.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -535,6 +536,21 @@ test('redactText: a non-secret key does not swallow a secret pair in its value',
   for (const s of ['Example: DEMO_TOKEN=CANAKV1', 'note=API_KEY=CANAKV1', 'cfg: "password":"CANAKV1"', 'a:b:password=CANAKV1', 'x=y token=CANAKV1']) {
     assert.ok(!redactText(s).text.includes('CANAKV1'), s + ' => ' + redactText(s).text);
   }
-  const t0 = process.hrtime.bigint(); redactText('a:'.repeat(9999)); redactText('a=b='.repeat(4999));
-  assert.ok(Number(process.hrtime.bigint() - t0) / 1e6 < 100);
+});
+
+test('O4-F7/F9: the 20k cut and the key=value scan are linear (checked uncapped, with a generous bound)', () => {
+  // the old forms (.replace(/\S*$/, '') and the value rescan) took seconds here; linear code takes milliseconds
+  let t0 = process.hrtime.bigint();
+  assert.equal(cutAtWhitespace('a'.repeat(200000) + ' b'), 'a'.repeat(200000) + ' ');
+  assert.ok(Number(process.hrtime.bigint() - t0) / 1e6 < 2000, 'cutAtWhitespace is not linear');
+  for (const s of ['a:'.repeat(150000), 'a=b='.repeat(75000), 'k=v;'.repeat(75000)]) {
+    t0 = process.hrtime.bigint();
+    replaceKeyValues(s);
+    assert.ok(Number(process.hrtime.bigint() - t0) / 1e6 < 2000, `replaceKeyValues is not linear on ${s.slice(0, 4)}`);
+  }
+  assert.equal(replaceKeyValues('Example: DEMO_TOKEN=CANAKV2 x=1'), 'Example: DEMO_TOKEN=*** x=1');
+  // a redacted line through the cut path stays fast (whitespace near the cut, then a long tail)
+  t0 = process.hrtime.bigint();
+  redactText('a:'.repeat(9999) + ' ' + 'z'.repeat(100000));
+  assert.ok(Number(process.hrtime.bigint() - t0) / 1e6 < 2000);
 });
