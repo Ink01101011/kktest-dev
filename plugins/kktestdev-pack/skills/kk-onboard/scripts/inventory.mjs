@@ -468,7 +468,9 @@ function readJsonFile(file, ctx, { maxBytes = LIMITS.claudeJsonBytes } = {}) {
 function killTree(child, platform = process.platform) {
   if (!child?.pid) return;
   if (platform === 'win32') {
-    try { spawn('taskkill', ['/T', '/F', '/PID', String(child.pid)], { windowsHide: true, stdio: 'ignore' }).on('error', () => {}); } catch {}
+    // absolute path: a bare `taskkill` could resolve to a file in the current directory (O5 N3)
+    const taskkill = nodePath.win32.join(process.env.SystemRoot || process.env.windir || 'C:\\Windows', 'System32', 'taskkill.exe');
+    try { spawn(taskkill, ['/T', '/F', '/PID', String(child.pid)], { windowsHide: true, stdio: 'ignore' }).on('error', () => {}); } catch {}
     return;
   }
   try { process.kill(-child.pid, 'SIGKILL'); } catch { try { child.kill('SIGKILL'); } catch {} }

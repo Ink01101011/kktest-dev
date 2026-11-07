@@ -8,9 +8,10 @@ import nodePath from 'node:path';
 import { test } from 'node:test';
 import {
   OPT_LIMITS, cleanVersion, compareVersions, derivePrefix, diffItem, envMentions, hashLines, helpEnv, helpFlags, locatePackage, npxRoots,
-  parseArgs, run, sanitizePluginConfig, serverIsItem, stateFile, writeState,
+  parseArgs, run, sanitizePluginConfig, serverIsItem, stateFile, writeState, projectRootOf
 } from './options.mjs';
 import { runCommand, validatePack } from './inventory.mjs';
+import { canonical } from './common.mjs';
 
 const posix = process.platform !== 'win32';
 
@@ -463,4 +464,47 @@ test('run never throws: a broken pack becomes a note', async (t) => {
   const out = await run([], opt(fx, { pack: { get items() { throw new Error('boom'); } } }));
   assert.equal(out.error, true);
   assert.ok(out.notes.length);
+});
+
+test('O5 N1: a repo .npmrc cannot steer npm to a planted npx copy, also from a subdirectory of the repo', { skip: !posix }, async (t) => {
+  const fx = fixture(t);
+  const repo = fx.cwd; // project root
+  mkdirSync(nodePath.join(repo, '.git'), { recursive: true });
+  writeFileSync(nodePath.join(repo, '.npmrc'), 'cache=../../evilcache\n');
+  const deeper = nodePath.join(repo, 'sub', 'deeper');
+  mkdirSync(deeper, { recursive: true });
+  const marker = nodePath.join(fx.root, 'PWNED_NPXCACHE');
+  const planted = nodePath.join(repo, 'evilcache', '_npx', 'abc', 'node_modules', 'demo-mcp');
+  installPkg(planted, { version: '97.0.0', cli: `require('fs').writeFileSync(${JSON.stringify(marker)}, 'x')` });
+  writeFileSync(nodePath.join(planted, 'package.json'), JSON.stringify({ name: 'demo-mcp', version: '97.0.0', bin: { 'demo-mcp': 'cli.js' }, type: 'commonjs' }));
+  const calls = [];
+  const base = realHelp(fx, calls);
+  // a vulnerable npm would answer `config get cache` with the repo's cache when run from the repo
+  const run2 = (cmd, args, ms, o) => {
+    if (cmd === 'npm' && args[0] === 'config') { calls.push({ line: 'npm config get cache', opts: o }); return Promise.resolve({ ok: true, stdout: nodePath.join(repo, 'evilcache') + '\n' }); }
+    return base.run(cmd, args, ms, o);
+  };
+  const out = await run(['--item', 'demo', '--run-help'], opt(fx, { ...base, run: run2, cwd: deeper, env: { PATH: process.env.PATH } }));
+  assert.equal(existsSync(marker), false, 'planted npx copy ran');
+  assert.equal(execs(calls).length, 0);
+  const demo = out.items.find((i) => i.id === 'demo');
+  assert.ok(demo.candidates.some((c) => c.version === '97.0.0' && c.untrustedSource), JSON.stringify(demo.candidates));
+  // the npm probes themselves run from HOME, never from the project
+  for (const c of calls.filter((x) => /^npm (root|config)/.test(x.line))) assert.equal(c.opts?.cwd, fx.home, c.line);
+});
+
+test('projectRootOf: highest marked ancestor below HOME; never HOME or above', (t) => {
+  const fx = fixture(t);
+  const repo = nodePath.join(fx.home, 'code', 'repo');
+  mkdirSync(nodePath.join(repo, 'pkg', 'src'), { recursive: true });
+  writeFileSync(nodePath.join(repo, 'package.json'), '{}');
+  writeFileSync(nodePath.join(repo, 'pkg', 'package.json'), '{}');
+  writeFileSync(nodePath.join(fx.home, 'package.json'), '{}'); // a marker in HOME itself does not count
+  const r = (p) => canonical(p);
+  assert.equal(projectRootOf(r(nodePath.join(repo, 'pkg', 'src')), r(fx.home)), r(repo));
+  assert.equal(projectRootOf(r(fx.home), r(fx.home)), r(fx.home));
+  // a repo outside HOME is still a project
+  const outside = nodePath.join(fx.root, 'work', 'repo');
+  mkdirSync(nodePath.join(outside, '.git'), { recursive: true }); mkdirSync(nodePath.join(outside, 'a', 'b'), { recursive: true });
+  assert.equal(projectRootOf(r(nodePath.join(outside, 'a', 'b')), r(fx.home)), r(outside));
 });

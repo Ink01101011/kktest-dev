@@ -251,10 +251,28 @@ export function npxRoots({ home, env = {}, platform = process.platform, npmCache
  * Untrusted (found only through a project config, or whose real path is inside the current project) copies are
  * reported but never chosen.
  */
+/**
+ * the top of the project that contains `dir`: the highest ancestor that holds .git, .npmrc, package.json or
+ * .mcp.json (a project marker), else `dir` itself. The walk stops at HOME and at the filesystem root, so the
+ * result is never HOME or above, also for a repo outside HOME (e.g. /work/repo).
+ */
+export function projectRootOf(dir, home) {
+  let root = dir; let cur = dir;
+  for (let i = 0; i < 64 && cur && cur !== home && cur !== nodePath.parse(cur).root; i++) {
+    if (['.git', '.npmrc', 'package.json', '.mcp.json'].some((m) => existsSync(nodePath.join(cur, m)))) root = cur;
+    const up = nodePath.dirname(cur);
+    if (up === cur) break;
+    cur = up;
+  }
+  return root;
+}
+
 export function locatePackage(pkg, { home, cwd, env = process.env, platform = process.platform, configPaths = [], npmRoot = null, npmCache = null, preferNpx = false } = {}) {
   const cands = [];
-  const cwdReal = canonical(cwd ?? process.cwd());
-  // when the current directory is HOME (or above it) every install is "inside" it: the guard then does not apply
+  // The guard covers the whole PROJECT the cwd belongs to, not just the cwd: from repo/sub, a repo's .npmrc
+  // (cache=../../x) can point npm at a copy planted elsewhere in the same repo (O5 N1).
+  const cwdReal = projectRootOf(canonical(cwd ?? process.cwd()), canonical(home));
+  // when the project root is HOME (or above it) every install is "inside" it: the guard then does not apply
   const guardCwd = !isInside(canonical(home), cwdReal);
   const add = (dir, via, trusted) => {
     if (!dir) return;
@@ -727,8 +745,9 @@ export async function run(argv = [], opts = {}) {
       run: runFn, runClaude, short,
       // `npm root -g` and the npm cache dir: asked once per run, shared by every item
       npmInfo: () => (npmP ??= Promise.all([
-        runFn('npm', ['root', '-g'], OPT_LIMITS.npmTimeoutMs, { shell: platform === 'win32' }),
-        runFn('npm', ['config', 'get', 'cache'], OPT_LIMITS.npmTimeoutMs, { shell: platform === 'win32' }),
+        // from HOME, never the project: a project .npmrc must not steer the npm cache / global root (O5 N1)
+        runFn('npm', ['root', '-g'], OPT_LIMITS.npmTimeoutMs, { shell: platform === 'win32', cwd: home }),
+        runFn('npm', ['config', 'get', 'cache'], OPT_LIMITS.npmTimeoutMs, { shell: platform === 'win32', cwd: home }),
       ]).then(([r, c]) => {
         let root = r.ok ? String(r.stdout).trim() : null;
         if (root && platform !== 'win32' && /^[A-Za-z]:[\\/]/.test(root)) {
