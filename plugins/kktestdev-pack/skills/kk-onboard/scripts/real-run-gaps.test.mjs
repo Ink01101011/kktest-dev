@@ -104,7 +104,7 @@ test('#21 java: $JAVA_HOME wins over the wrapper default and over java on PATH (
   assert.match(r3.from, /^java on PATH/);
 });
 
-test('#21 java: macOS /usr/bin/java stub is resolved through /usr/libexec/java_home, never run itself', async (t) => {
+test('#21 java: macOS /usr/bin/java stub is resolved through /usr/libexec/java_home, never run itself', { skip: process.platform === 'win32' && 'darwin path rules on a POSIX fixture' }, async (t) => {
   const fx = fakeHome(t);
   const home = jdk(fx.home, 'Home');
   const exec = javaExec({ javaHome: home, [javaOf(home)]: '21.0.1' });
