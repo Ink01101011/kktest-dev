@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 // kktest-dev: use the kktest-dev skills and MCP servers from other AI tools.
-// Exit codes: 0 ok, 1 usage error, 2 refused (nothing unsafe was written).
+// Exit codes: 0 ok, 1 usage error, 2 refused or failed (one REFUSED:/ERROR: line, never a stack trace).
 import { parseArgs } from 'node:util';
 import readline from 'node:readline';
 import { loadCatalog, RefusedError, UsageError, SKILL_TARGETS, MCP_TARGETS, skillTargets } from './lib/catalog.mjs';
-import { FrontmatterError } from './lib/frontmatter.mjs';
+import { FrontmatterError, LIMITS } from './lib/frontmatter.mjs';
 import { EXPORT_TARGETS, planExport, writeExport } from './lib/export.mjs';
-import { applyPlan, formatPlan, planInstall } from './lib/install.mjs';
+import { applyPlan, formatPlan, pendingChanges, planInstall } from './lib/install.mjs';
 import { INSTALL_TARGETS } from './lib/paths.mjs';
+import { ApplyError } from './lib/safefs.mjs';
 
 const HELP = {
   main: `kktest-dev - use kktest-dev skills and MCP servers from other AI tools
@@ -42,15 +43,19 @@ Targets:
 Options:
   --out <dir>       output folder (default: ./kktest-dev-export)
   --plugin <names>  only these plugins (kkskills-personal is exported only when named)
-  --skill <names>   only these skills (no MCP servers)
+  --skill <names>   only these skills (no MCP servers); combined with --plugin, skills of those plugins
 
-The source tree is never modified. Re-exporting gives byte-identical output.`,
+The source tree is never modified. Re-exporting gives byte-identical output. A re-export deletes only
+the files the previous export listed in its .kktest-dev-export manifest; anything else in the folder is
+kept. --out may not be your home folder or a folder a tool reads live (~/.agents, ~/.codex, ...).
+MCP configs point at the servers/ folder inside the export with absolute paths: keep that folder.`,
   install: `Usage: kktest-dev install --target <t> [--scope user|project] [--apply] [--yes] [--force]
                           [--only all|skills|mcp] [--plugin p[,p]] [--skill s[,s]]
 
 Targets: ${INSTALL_TARGETS.join(', ')}
   agents          skills -> ~/.agents/skills (or ./.agents/skills with --scope project)
-  codex           skills + [mcp_servers.*] appended to ~/.codex/config.toml (or .codex/config.toml)
+  codex           skills + [mcp_servers.*] appended to ~/.codex/config.toml, $CODEX_HOME/config.toml
+                  when CODEX_HOME is set (or .codex/config.toml with --scope project)
   gemini          skills + mcpServers merged into ~/.gemini/settings.json (or .gemini/settings.json)
   cursor          skills + mcpServers merged into ~/.cursor/mcp.json (or .cursor/mcp.json)
   vscode          skills + servers merged into .vscode/mcp.json (project); user scope prints
@@ -59,11 +64,13 @@ Targets: ${INSTALL_TARGETS.join(', ')}
   windsurf        refused: config format unverified (use export --target windsurf)
 
 Without --apply nothing is written: the exact changes are printed.
-With --apply: each changed file is backed up to <file>.kktest-dev.bak-<timestamp>, JSON is merged
-(other servers are kept) and written atomically, Codex TOML gets new tables appended only when
-absent, and you are asked to confirm unless --yes is given.
-Refuses (exit 2) on a name collision (unless --force), on JSON files with comments, and on TOML it
-cannot read safely. MCP server files are copied to ~/.kktest-dev/servers/<plugin>/.`,
+With --apply: each changed file is backed up to <file>.kktest-dev.bak-<timestamp>-<random>, JSON is
+merged (other servers are kept) and written atomically with its file mode kept, Codex TOML gets new
+tables appended only when absent, and you are asked to confirm unless --yes is given.
+Refuses (exit 2) on a name collision (unless --force, which applies to JSON configs and skill folders;
+an existing Codex TOML table is never replaced), on JSON files with comments, on TOML it cannot read
+safely, on symlinks inside the project (--scope project), and on a user config that links outside
+its folder. MCP server files are copied to ~/.kktest-dev/servers/<plugin>/.`,
 };
 
 function out(s) {
@@ -97,7 +104,7 @@ function cmdList(args) {
   out(`MCP targets:   ${MCP_TARGETS.join(', ')} (windsurf unverified)\n`);
   for (const r of rows) {
     out(`${r.plugin}  [${r.tier}]${r.optIn ? ' (opt-in)' : ''}${r.note ? `  - ${r.note}` : ''}`);
-    for (const s of r.skills) out(`  skill ${s.name}${s.descriptionChars > 200 ? ' (zip uses short description)' : ''} -> ${s.targets.join(', ') || 'none'}`);
+    for (const s of r.skills) out(`  skill ${s.name}${s.descriptionChars > LIMITS.zipDescription ? ' (zip uses short description)' : ''} -> ${s.targets.join(', ') || 'none'}`);
     for (const s of r.mcpServers) out(`  mcp   ${s.name} (${s.command}, stdio) -> ${s.targets.join(', ')}`);
     if (r.claudeOnly.length) out(`  Claude Code only: ${r.claudeOnly.join(', ')}`);
   }
@@ -147,7 +154,7 @@ async function cmdInstall(args) {
   out(formatPlan(plan, { target: values.target, scope: values.scope, apply: values.apply }));
   if (plan.refusals.length) return 2;
   if (!values.apply) return 0;
-  const changes = plan.actions.filter((a) => a.kind === 'file' || a.state !== 'identical');
+  const changes = pendingChanges(plan);
   if (!changes.length) return 0;
   if (!values.yes) {
     const ok = await confirm(`Write ${changes.length} change(s)? [y/N] `);
@@ -160,7 +167,7 @@ async function cmdInstall(args) {
       return 2;
     }
   }
-  for (const line of applyPlan(plan)) out(line);
+  applyPlan(plan, { log: out });
   return 0;
 }
 
@@ -183,6 +190,11 @@ async function main(argv) {
     }
     if (e instanceof RefusedError || e instanceof FrontmatterError) {
       process.stderr.write(`REFUSED: ${e.message}\n`);
+      return 2;
+    }
+    // ApplyError and system errors (EACCES, ENOSPC, ...) are expected failures: one line, exit 2.
+    if (e instanceof ApplyError || typeof e?.code === 'string') {
+      process.stderr.write(`ERROR: ${e.message}\n`);
       return 2;
     }
     throw e;

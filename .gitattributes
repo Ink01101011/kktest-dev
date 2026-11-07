@@ -1,2 +1,10 @@
-# Keep LF line endings on every OS: SKILL.md frontmatter and the #!/usr/bin/env node shebang break with CRLF.
+# LF everywhere, so a Windows checkout never puts CRLF into SKILL.md frontmatter, the npm package,
+# the CLI shebang, shell hooks or exported files (G3-N2).
 * text=auto eol=lf
+*.mjs text eol=lf
+*.js text eol=lf
+*.py text eol=lf
+*.sh text eol=lf
+pre-commit text eol=lf
+*.png binary
+*.zip binary

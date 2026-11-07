@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeServer, serverRuntimeDirs, loadCatalog } from '../lib/catalog.mjs';
-import { codexTableState, codexToml, hasJsonComments, jsonEntry, jsonSnippet } from '../lib/mcp.mjs';
+import { spawnSync } from 'node:child_process';
+import { RefusedError, UsageError, normalizeServer, serverRuntimeDirs, loadCatalog } from '../lib/catalog.mjs';
+import { codexTableState, codexToml, hasJsonComments, jsonEntry, jsonSnippet, tomlStr } from '../lib/mcp.mjs';
 import { targetPaths } from '../lib/paths.mjs';
-import { ROOT } from './helpers.mjs';
+import { ROOT, python } from './helpers.mjs';
 
 // Fixture covering every value kind: plugin path, env reference (a secret), plain literal.
 const server = normalizeServer('demo', {
@@ -139,6 +140,53 @@ test('paths: macOS, Linux and Windows derivation (pure, injected platform)', () 
   assert.equal(targetPaths('cursor', win).serversDir, 'C:\\Users\\a\\.kktest-dev\\servers');
   assert.equal(targetPaths('vscode', { ...win, scope: 'project', cwd: 'D:\\w' }).mcpConfig, 'D:\\w\\.vscode\\mcp.json');
   assert.equal(targetPaths('vscode', win).mcpConfig, null);
-  assert.throws(() => targetPaths('claude-desktop', { platform: 'win32', env: { USERPROFILE: 'C:\\u' } }), /APPDATA/);
-  assert.throws(() => targetPaths('codex', { platform: 'linux', env: {} }), /HOME/);
+  // APPDATA unset: same fallback as kktestdev-pack's hosts.mjs appDataDir() (S11)
+  assert.equal(targetPaths('claude-desktop', { platform: 'win32', env: { USERPROFILE: 'C:\\u' } }).mcpConfig, 'C:\\u\\AppData\\Roaming\\Claude\\claude_desktop_config.json');
+  assert.throws(() => targetPaths('codex', { platform: 'linux', env: {} }), (e) => e instanceof UsageError && /HOME/.test(e.message));
+});
+
+test('paths: XDG_CONFIG_HOME for Claude Desktop on Linux (absolute only)', () => {
+  assert.equal(targetPaths('claude-desktop', { platform: 'linux', env: { HOME: '/home/a', XDG_CONFIG_HOME: '/x/cfg' } }).mcpConfig, '/x/cfg/Claude/claude_desktop_config.json');
+  assert.equal(targetPaths('claude-desktop', { platform: 'linux', env: { HOME: '/home/a', XDG_CONFIG_HOME: 'rel' } }).mcpConfig, '/home/a/.config/Claude/claude_desktop_config.json');
+});
+
+test('paths: CODEX_HOME is honoured for user scope, set and unset (G1-05, G3-X3)', () => {
+  const unset = targetPaths('codex', { platform: 'darwin', env: { HOME: '/Users/a' } });
+  assert.equal(unset.mcpConfig, '/Users/a/.codex/config.toml');
+  assert.deepEqual(unset.notes, []);
+  const set = targetPaths('codex', { platform: 'darwin', env: { HOME: '/Users/a', CODEX_HOME: '/data/codex' } });
+  assert.equal(set.mcpConfig, '/data/codex/config.toml');
+  assert.equal(set.configRoot, '/data/codex');
+  assert.match(set.notes.join(), /CODEX_HOME/);
+  assert.equal(set.skillsDir, '/Users/a/.agents/skills');
+  const win = targetPaths('codex', { platform: 'win32', env: { USERPROFILE: 'C:\\u', CODEX_HOME: 'D:\\codex' } });
+  assert.equal(win.mcpConfig, 'D:\\codex\\config.toml');
+  assert.equal(targetPaths('codex', { platform: 'darwin', env: { HOME: '/Users/a', CODEX_HOME: '/data/codex' }, scope: 'project', cwd: '/w' }).mcpConfig, '/w/.codex/config.toml');
+  assert.throws(() => targetPaths('codex', { platform: 'darwin', env: { HOME: '/Users/a', CODEX_HOME: 'rel' } }), UsageError);
+});
+
+test('TOML strings escape control characters and DEL; lone surrogates are refused (G2-08, G3-N3)', () => {
+  assert.equal(tomlStr('a"b\\c'), '"a\\"b\\\\c"');
+  assert.equal(tomlStr('x\x7fy\x01\tz\n'), '"x\\u007Fy\\u0001\\tz\\n"');
+  assert.equal(tomlStr('Zoë Ü 🙂'), '"Zoë Ü 🙂"');
+  assert.throws(() => tomlStr('x\ud800y'), RefusedError);
+  const py = python();
+  if (!py) return;
+  const tbl = codexToml(normalizeServer('t', { command: 'node', args: ['/h/a\x7fb/\x01c', 'C:\\x\\y', 'q"\'', 'Zoë'] }), pathFor);
+  const r = spawnSync(py, ['-I', '-c', 'import sys,tomllib,json; print(json.dumps(tomllib.loads(sys.stdin.read())))'], { input: tbl, encoding: 'utf8' });
+  if (r.status !== 0 && /tomllib/.test(r.stderr)) return; // Python < 3.11
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(JSON.parse(r.stdout).mcp_servers.t.args, ['/h/a\x7fb/\x01c', 'C:\\x\\y', 'q"\'', 'Zoë']);
+});
+
+test('codex table detection is linear: 48 KB of blank lines in well under a second (G4-M1)', () => {
+  for (const blank of ['\n', ' \n', '\r\n']) {
+    const text = blank.repeat(Math.floor(48 * 1024 / blank.length)) + '[mcp_servers.demo]\n';
+    const t0 = performance.now();
+    assert.equal(codexTableState(text, 'demo'), 'present');
+    assert.equal(codexTableState(text, 'loop-ledger'), 'absent');
+    assert.ok(performance.now() - t0 < 1000, `${JSON.stringify(blank)}: ${performance.now() - t0} ms`);
+  }
+  assert.equal(codexTableState('\uFEFF[mcp_servers.demo]\r\ncommand = "x"\r\n', 'demo'), 'present', 'BOM + CRLF');
+  assert.equal(codexTableState('[mcp_servers]\r\ndemo = {}\r\n', 'demo'), 'unsure');
 });

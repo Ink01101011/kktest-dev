@@ -50,6 +50,14 @@ def _resolve_memctl_path() -> Path:
         raise FileNotFoundError(f"MEMCTL_PATH is set but not found: {p}")
 
     here = Path(__file__).resolve()
+    # exported layout (kktest-dev export/install for other agents): memctl.py is bundled next to this
+    # file and SKILL.md sits one level up. Prefer that copy there, before any sibling/glob search below,
+    # so a memory-keeper* folder planted next to the skill is never imported. The Claude Code plugin
+    # layout has neither file in those places, so its lookup order below is unchanged.
+    bundled = here.parent / "memctl.py"
+    if bundled.exists() and (here.parents[1] / "SKILL.md").exists():
+        return bundled
+
     # in-repo dev layout: plugins/reflexion/scripts/reflexionctl.py -> plugins/memory-keeper/scripts/memctl.py
     sibling = here.parents[2] / "memory-keeper" / "scripts" / "memctl.py"
     if sibling.exists():
@@ -64,8 +72,7 @@ def _resolve_memctl_path() -> Path:
         if hits:
             return hits[0]
 
-    # exported layout (kktest-dev export/install for other agents): memctl.py bundled next to this file.
-    bundled = here.parent / "memctl.py"
+    # memctl.py bundled next to this file without the exported skill layout around it.
     if bundled.exists():
         return bundled
 

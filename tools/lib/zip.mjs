@@ -1,5 +1,6 @@
 // Minimal deterministic ZIP writer (deflate via node:zlib, fixed timestamps, sorted entries).
 import zlib from 'node:zlib';
+import { RefusedError } from './catalog.mjs';
 
 const CRC_TABLE = (() => {
   const t = new Uint32Array(256);
@@ -32,8 +33,8 @@ export function createZip(entries) {
   const centrals = [];
   let offset = 0;
   for (const e of sorted) {
-    if (seen.has(e.name)) throw new Error(`zip: duplicate entry ${e.name}`);
-    if (e.name.startsWith('/') || e.name.split('/').includes('..') || e.name.includes('\\')) throw new Error(`zip: unsafe entry name ${e.name}`);
+    if (seen.has(e.name)) throw new RefusedError(`zip: duplicate entry ${e.name}`);
+    if (e.name.startsWith('/') || e.name.split('/').includes('..') || e.name.includes('\\')) throw new RefusedError(`zip: unsafe entry name ${e.name}`);
     seen.add(e.name);
     const isDir = e.name.endsWith('/');
     const raw = isDir ? Buffer.alloc(0) : Buffer.isBuffer(e.data) ? e.data : Buffer.from(e.data ?? '', 'utf8');
@@ -89,19 +90,19 @@ export function createZip(entries) {
   end.writeUInt16LE(sorted.length, 10);
   end.writeUInt32LE(cdSize, 12);
   end.writeUInt32LE(offset, 16);
-  if (sorted.length > 0xffff || offset > 0xffffffff) throw new Error('zip: too large (no zip64 support)');
+  if (sorted.length > 0xffff || offset > 0xffffffff) throw new RefusedError('zip: too large (no zip64 support)');
   return Buffer.concat([...locals, ...centrals, end]);
 }
 
 /** Reads back a zip written by createZip (used by tests and the export self-check). */
 export function readZip(buf) {
   const eocd = buf.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
-  if (eocd < 0) throw new Error('zip: no end of central directory');
+  if (eocd < 0) throw new RefusedError('zip: no end of central directory');
   const count = buf.readUInt16LE(eocd + 10);
   let p = buf.readUInt32LE(eocd + 16);
   const out = [];
   for (let i = 0; i < count; i++) {
-    if (buf.readUInt32LE(p) !== 0x02014b50) throw new Error('zip: bad central header');
+    if (buf.readUInt32LE(p) !== 0x02014b50) throw new RefusedError('zip: bad central header');
     const method = buf.readUInt16LE(p + 10);
     const crc = buf.readUInt32LE(p + 16);
     const csize = buf.readUInt32LE(p + 20);
@@ -115,7 +116,7 @@ export function readZip(buf) {
     const start = loff + 30 + lnlen + lelen;
     const body = buf.subarray(start, start + csize);
     const data = method === 8 ? zlib.inflateRawSync(body) : Buffer.from(body);
-    if (crc32(data) !== crc) throw new Error(`zip: crc mismatch for ${name}`);
+    if (crc32(data) !== crc) throw new RefusedError(`zip: crc mismatch for ${name}`);
     out.push({ name, data });
     p += 46 + nlen + elen + clen;
   }

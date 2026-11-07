@@ -2,8 +2,8 @@
 Each layer = badge + "Layer N — NAME" + tagline, a row of chips/process steps,
 and a right-hand 'aside' insight box. Optional side rails and a bottom summary strip.
 """
-from common import (SERIF, SpecError, approx_w, check, check_lines, check_words, color, issue, num,
-                    opt_list, opt_str, req, short, svg_wrap, text, wrap)
+from common import (SERIF, SpecError, approx_w, cap_height, check, check_lines, check_words, color, issue,
+                    num, opt_list, opt_str, req, short, svg_wrap, text, wrap)
 from icons import icon
 #          base       tint       ink
 MUTED = {
@@ -24,9 +24,10 @@ EDGE = "#3A3631"
 
 
 def _chip(P, x, y, label, ic, base, tint, ink):
-    lines = label.count("\n") + 1
-    w = approx_w(label, 15, 500) + (34 if ic else 0) + 26
-    h = 40 + 18 * (lines - 1)
+    # same size as the layout pass measured (chip_w / chip_h), so the two can never drift (S18)
+    it = {"label": label, "icon": ic}
+    w = chip_w(it)
+    h = chip_h(it)
     P.append(f'<rect x="{x:.1f}" y="{y - h/2:.1f}" width="{w:.1f}" height="{h}" rx="8" '
              f'fill="{tint}" stroke="{base}" stroke-opacity=".45" stroke-width="1.4"/>')
     tx = x + 13
@@ -295,7 +296,7 @@ def render_layers(s):
                 P.append(f'<line x1="{arx}" y1="{cy}" x2="{arx+18}" y2="{cy}" stroke="{EDGE}" '
                          f'stroke-width="2.2" marker-end="url(#ah)"/>')
         y += sh
-    H = int(y + 40)
+    H = cap_height(int(y + 40))
     defs = (
         '<defs>'
         f'<marker id="ah" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0L10 5L0 10z" fill="{EDGE}"/></marker>'

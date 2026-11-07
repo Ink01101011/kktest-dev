@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { runCli, tmpdir, treeHash } from './helpers.mjs';
+import { ROOT, runCli, tmpdir, treeHash } from './helpers.mjs';
 
 const SECRET = 'sk-THIS-IS-A-SECRET-123';
 const read = (f) => fs.readFileSync(f, 'utf8');
@@ -239,4 +239,119 @@ test('export of MCP targets writes snippets that point at copied server files', 
   for (const s of Object.values(cur.mcpServers)) assert.ok(fs.existsSync(s.args[0]), s.args[0]);
   assert.match(read(path.join(out, 'windsurf', 'NOTES.txt')), /UNVERIFIED/);
   assert.match(read(path.join(out, 'codex', 'config.toml')), /\[mcp_servers\.loop-ledger\]/);
+});
+
+test('CODEX_HOME: set -> $CODEX_HOME/config.toml, unset -> ~/.codex/config.toml (G1-05, G3-X3)', () => {
+  const home = tmpdir();
+  const ch = path.join(home, 'codex-home');
+  const set = runCli(['install', '--target', 'codex', '--only', 'mcp', '--plugin', 'loop-ledger', '--apply', '--yes'], { home, env: { CODEX_HOME: ch } });
+  assert.equal(set.code, 0, set.stdout + set.stderr);
+  assert.match(set.stdout, /note: CODEX_HOME is set/);
+  assert.match(read(path.join(ch, 'config.toml')), /\[mcp_servers\.loop-ledger\]/);
+  assert.ok(!fs.existsSync(path.join(home, '.codex')));
+  const unset = runCli(['install', '--target', 'codex', '--only', 'mcp', '--plugin', 'loop-ledger', '--apply', '--yes'], { home });
+  assert.equal(unset.code, 0, unset.stdout + unset.stderr);
+  assert.match(read(path.join(home, '.codex', 'config.toml')), /\[mcp_servers\.loop-ledger\]/);
+});
+
+test('JSON with a UTF-8 BOM and CRLF is merged; BOM and CRLF are kept (G3-X4, G3-N1)', () => {
+  const home = tmpdir();
+  const cfg = path.join(home, '.gemini', 'settings.json');
+  fs.mkdirSync(path.dirname(cfg));
+  fs.writeFileSync(cfg, '\uFEFF{\r\n  "theme": "x"\r\n}\r\n');
+  const r = runCli(['install', '--target', 'gemini', '--only', 'mcp', '--plugin', 'loop-ledger', '--apply', '--yes'], { home });
+  assert.equal(r.code, 0, r.stdout + r.stderr);
+  const text = read(cfg);
+  assert.ok(text.startsWith('\uFEFF{\r\n'));
+  assert.ok(!/[^\r]\n/.test(text), 'only CRLF line endings');
+  assert.equal(JSON.parse(text.slice(1)).theme, 'x');
+});
+
+test('codex TOML appended to a CRLF file uses CRLF', () => {
+  const home = tmpdir();
+  const cfg = path.join(home, '.codex', 'config.toml');
+  fs.mkdirSync(path.dirname(cfg));
+  fs.writeFileSync(cfg, 'model = "o3"\r\n');
+  const r = runCli(['install', '--target', 'codex', '--only', 'mcp', '--plugin', 'loop-ledger', '--apply', '--yes'], { home });
+  assert.equal(r.code, 0, r.stdout + r.stderr);
+  assert.ok(!/[^\r]\n/.test(read(cfg)));
+  assert.match(read(cfg), /\r\n\[mcp_servers\.loop-ledger\]\r\n/);
+});
+
+test('--force does not replace a Codex TOML table, and the refusal says so (G1-04)', () => {
+  const home = tmpdir();
+  const cfg = path.join(home, '.codex', 'config.toml');
+  fs.mkdirSync(path.dirname(cfg));
+  fs.writeFileSync(cfg, '[mcp_servers.loop-ledger]\ncommand = "old"\n');
+  const r = runCli(['install', '--target', 'codex', '--only', 'mcp', '--plugin', 'loop-ledger', '--force'], { home });
+  assert.equal(r.code, 2);
+  assert.match(r.stdout, /--force does not apply to config\.toml/);
+  assert.match(runCli(['install', '--help']).stdout, /Codex TOML table is never replaced/);
+});
+
+test('vscode user scope on win32 prints a cmd.exe and a PowerShell-safe form (G1-07, G3-X6)', async () => {
+  const { planInstall } = await import('../lib/install.mjs');
+  const { loadCatalog } = await import('../lib/catalog.mjs');
+  const plan = planInstall(loadCatalog(), 'vscode', { only: 'mcp', plugin: 'loop-ledger', platform: 'win32', env: { USERPROFILE: 'C:\\Users\\Zoë Ü', APPDATA: 'C:\\A' }, cwd: 'C:\\w' });
+  const [cmd, ps] = plan.manual;
+  assert.match(cmd, /^\(cmd\.exe\) code --add-mcp "\{\\"name\\":\\"loop-ledger\\"/);
+  assert.match(ps, /^\(PowerShell\) code --% --add-mcp "\{\\"name\\":\\"loop-ledger\\"/);
+  // the payload after --add-mcp decodes (CommandLineToArgvW rules: \" -> ") to the JSON entry
+  const json = JSON.parse(ps.replace(/^.*--add-mcp "/, '').replace(/"$/, '').replace(/\\"/g, '"'));
+  assert.equal(json.type, 'stdio');
+  assert.match(json.args[0], /^C:\\Users\\Zoë Ü\\\.kktest-dev\\servers\\loop-ledger\\/);
+});
+
+test('notes: agents --only mcp explains itself; win32 python3; WSL; project-scope absolute paths', async () => {
+  const r = runCli(['install', '--target', 'agents', '--only', 'mcp']);
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /agents has no MCP config/);
+  const { planInstall } = await import('../lib/install.mjs');
+  const { loadCatalog } = await import('../lib/catalog.mjs');
+  const cat = loadCatalog();
+  const win = planInstall(cat, 'cursor', { only: 'mcp', plugin: 'memory-keeper', platform: 'win32', env: { USERPROFILE: 'C:\\u' }, cwd: 'C:\\w' });
+  assert.match(win.notes.join('\n'), /Microsoft Store.*`py`/);
+  const wsl = planInstall(cat, 'claude-desktop', { plugin: 'loop-ledger', platform: 'linux', env: { HOME: '/nonexistent-h', WSL_DISTRO_NAME: 'Ubuntu' }, cwd: '/w' });
+  assert.match(wsl.notes.join('\n'), /^WSL: /m);
+  const proj = planInstall(cat, 'cursor', { only: 'mcp', plugin: 'loop-ledger', scope: 'project', platform: 'linux', env: { HOME: '/nonexistent-h' }, cwd: '/nonexistent-w' });
+  assert.match(proj.notes.join('\n'), /do not commit it/);
+});
+
+test('--skill with --plugin narrows within the plugin; opt-in skills need their plugin; empty names (S7, G1-10)', () => {
+  const both = runCli(['install', '--target', 'agents', '--plugin', 'agent-loops', '--skill', 'reflexion']);
+  assert.equal(both.code, 1);
+  assert.match(both.stderr, /belongs to plugin reflexion, which --plugin does not select/);
+  const ok = runCli(['install', '--target', 'agents', '--plugin', 'reflexion', '--skill', 'reflexion']);
+  assert.equal(ok.code, 0, ok.stderr);
+  const personal = runCli(['export', '--target', 'claude-ai', '--skill', 'user-profile', '--out', tmpdir()]);
+  assert.equal(personal.code, 1);
+  assert.match(personal.stderr, /opt-in plugin kkskills-personal; add --plugin kkskills-personal/);
+  assert.equal(runCli(['export', '--target', 'claude-ai', '--plugin', 'kkskills-personal', '--skill', 'user-profile', '--out', tmpdir()]).code, 0);
+  assert.equal(runCli(['install', '--target', 'agents', '--skill', ',']).code, 1);
+  assert.equal(runCli(['install', '--target', 'agents', '--skill', 'secret-hygiene,']).code, 0);
+});
+
+test('typed errors: HOME unset is a usage error (exit 1), never a stack trace (S6)', () => {
+  const h = tmpdir();
+  const r = runCli(['install', '--target', 'codex'], { home: h, env: { HOME: '', USERPROFILE: '' } });
+  assert.equal(r.code, 1, r.stderr);
+  assert.match(r.stderr, /^error: HOME is not set|^error: USERPROFILE is not set/);
+  assert.ok(!/\n\s+at /.test(r.stderr));
+});
+
+test('docs and --help name every target, and the tier table names every plugin (S2)', async () => {
+  const { EXPORT_TARGETS } = await import('../lib/export.mjs');
+  const { INSTALL_TARGETS } = await import('../lib/paths.mjs');
+  const { TIERS } = await import('../lib/catalog.mjs');
+  const docs = read(path.join(ROOT, 'docs', 'providers.md'));
+  const exportHelp = runCli(['export', '--help']).stdout;
+  const installHelp = runCli(['install', '--help']).stdout;
+  for (const t of EXPORT_TARGETS) {
+    assert.match(exportHelp, new RegExp(`^  ${t} `, 'm'), `export --help: ${t}`);
+    assert.ok(docs.includes(`--target ${t}`), `docs/providers.md: --target ${t}`);
+  }
+  for (const t of INSTALL_TARGETS) assert.match(installHelp, new RegExp(`^  ${t} `, 'm'), `install --help: ${t}`);
+  const table = docs.slice(docs.indexOf('| Plugin | Tier |'), docs.indexOf('Skills that name Claude-only tools'));
+  for (const name of Object.keys(TIERS)) assert.ok(table.includes(name), `providers.md tier table: ${name}`);
+  for (const name of fs.readdirSync(path.join(ROOT, 'plugins')).filter((n) => !n.startsWith('_'))) assert.ok(name in TIERS, `TIERS: ${name}`);
 });

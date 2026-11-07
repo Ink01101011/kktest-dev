@@ -2,7 +2,8 @@
 Root request at top, then rows of category groups; each group has a glowing icon,
 an UPPERCASE title, and a bracket of item icons with labels underneath.
 """
-from common import SpecError, approx_w, check, color, is_color, issue, num, opt_list, opt_str, req, short, svg_wrap, text
+from common import (SpecError, approx_w, cap_height, check, color, is_color, issue, num, opt_list, opt_str, req,
+                    short, svg_wrap, text)
 from icons import icon
 
 NEON = {
@@ -174,7 +175,7 @@ def render_tree(s):
         P.append(f'<line x1="{W/2+fw/2+20}" y1="{y}" x2="{W/2+fw/2+180}" y2="{y}" stroke="#6B7280" stroke-width="1.2"/>')
         P.append(text(W / 2, y, footer, 16, "#D1D5DB", 500))
         y += 20
-    H = int(y + 50)
+    H = cap_height(int(y + 50))
     defs = ('<defs><filter id="glow" x="-30%" y="-30%" width="160%" height="160%">'
             '<feGaussianBlur stdDeviation="2.4" result="b"/><feMerge><feMergeNode in="b"/>'
             '<feMergeNode in="SourceGraphic"/></feMerge></filter></defs>')

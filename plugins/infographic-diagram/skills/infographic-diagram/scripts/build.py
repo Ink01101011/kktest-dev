@@ -29,8 +29,8 @@ sys.dont_write_bytecode = True          # do not litter the (possibly read-only)
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import common                                                      # noqa: E402
-from common import (SpecError, approx_w, check, color, esc, issue, num, opt_list,  # noqa: E402,F401
-                    opt_str, req, short, svg_wrap, text, wrap)
+from common import (MAX_CANVAS, SpecError, approx_w, check, cap_height, color, issue,  # noqa: E402
+                    num, opt_list, opt_str, req, short, svg_wrap, text)
 from icons import icon                                             # noqa: E402
 
 THEMES = {
@@ -50,9 +50,7 @@ EDGE = "#1E2B4D"
 MUTED = "#4B5563"
 MIN_GAP = 32      # min px between top-level panels (edge label pills need ~pill width + 24)
 PAD_IN = 16       # inner text padding of a panel
-FONT = common.FONT
 SIDES = ("top", "bottom", "left", "right")
-MAX_CANVAS = 20000
 
 
 def theme(name, default, where):
@@ -414,7 +412,7 @@ class Diagram:
         for k, e in enumerate(opt_list(s, "edges", "spec")):
             self.edge(e, k)
         H = self.Hset if self.Hset is not None else \
-            int(max([b[1] + b[3] for b in self.boxes.values()] + [self.maxy]) + 40)
+            cap_height(int(max([b[1] + b[3] for b in self.boxes.values()] + [self.maxy]) + 40))
         defs = (
             '<defs>'
             f'<marker id="ah" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0L10 5L0 10z" fill="{EDGE}"/></marker>'

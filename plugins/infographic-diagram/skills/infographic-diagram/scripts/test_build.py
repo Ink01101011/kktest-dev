@@ -296,6 +296,40 @@ class Lint(unittest.TestCase):
         self.has(issues_of(tree_spec(rows=[[{"title": "G", "color": "nope"}]])), "SPEC", "'nope'")
 
 
+class Limits(unittest.TestCase):
+    """G4-M2 canvas cap, G2 control characters, S18 chip sizes."""
+
+    def test_auto_height_is_capped_with_a_lint_issue(self):
+        tall_layers = layers_spec(layers=[{"name": f"L{i}", "rows": [{"items": [{"label": "x"}]}]}
+                                          for i in range(150)])
+        tall_tree = tree_spec(rows=[[{"title": f"G{i}", "items": [{"label": "x"}]}] for i in range(400)])
+        tall_map = map_spec(panels=[{"id": "a", "x": 20, "y": 30000, "w": 300, "h": 200, "title": "A"}], edges=[])
+        for spec in (tall_layers, tall_tree, tall_map):
+            svg, issues, (W, H) = build.build(spec)
+            self.assertEqual(H, build.MAX_CANVAS, spec.get("type", "map"))
+            self.assertIn(f'height="{build.MAX_CANVAS}"', svg)
+            self.assertTrue(any(i.startswith("CANVAS") and "split the diagram" in i for i in issues), issues)
+        small = build.build(layers_spec())
+        self.assertLess(small[2][1], build.MAX_CANVAS)
+        self.assertFalse(any("split the diagram" in i for i in small[1]))
+
+    def test_xml_invalid_control_characters_are_dropped(self):
+        for spec in (map_spec(title="a\u0001b\u001fc\ufffe"), layers_spec(title="x\u0008y"),
+                     tree_spec(title="t\u000bu")):
+            svg = build.build(spec)[0]
+            xml.dom.minidom.parseString(svg)
+            self.assertNotRegex(svg, "[\x00-\x08\x0b\x0c\x0e-\x1f]")
+
+    def test_chip_drawing_uses_the_layout_measurements(self):
+        import layers
+        for label, ic in (("chip", None), ("two\nlines", "box"), ("ไทย label", "db")):
+            P = []
+            w = layers._chip(P, 0, 100, label, ic, "#000", "#fff", "#111")
+            it = {"label": label, "icon": ic}
+            self.assertEqual(w, layers.chip_w(it))
+            self.assertIn(f'height="{layers.chip_h(it)}"', P[0])
+
+
 class Cli(unittest.TestCase):
     def setUp(self):
         self._d = tempfile.TemporaryDirectory()

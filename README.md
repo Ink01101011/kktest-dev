@@ -60,9 +60,9 @@ npx kktest-dev export --target claude-ai             # one zip per skill for upl
 |---|---|---|---|
 | Codex CLI / ChatGPT desktop | `.agents/skills` | `config.toml` | `install --target codex` |
 | Gemini CLI | `.agents/skills` or an extension | `settings.json` / extension | `install --target gemini`, `export --target gemini-extension` |
-| GitHub Copilot (VS Code, CLI) | `.agents/skills` | `.vscode/mcp.json` / `code --add-mcp` | `install --target vscode` |
+| GitHub Copilot (VS Code, CLI) | `.agents/skills` | VS Code only: `.vscode/mcp.json` / `code --add-mcp` | `install --target vscode` |
 | Cursor | `.agents/skills` | `mcp.json` | `install --target cursor` |
-| Claude Desktop | not researched (see claude.ai) | `claude_desktop_config.json` | `install --target claude-desktop` |
+| Claude Desktop | upload the claude.ai zips | `claude_desktop_config.json` | `install --target claude-desktop` |
 | claude.ai | zip upload | remote only | `export --target claude-ai` |
 | ChatGPT (web) | zip upload | remote only | `export --target chatgpt` |
 | Windsurf / Devin | unverified | unverified | `export --target windsurf` (paste by hand) |

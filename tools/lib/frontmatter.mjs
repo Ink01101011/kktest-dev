@@ -28,7 +28,7 @@ function fold(lines) {
   let out = '';
   let pendingBreaks = 0;
   lines.forEach((ln, i) => {
-    const t = i === 0 ? ln.replace(/\s+$/, '') : ln.trim();
+    const t = i === 0 ? ln.trimEnd() : ln.trim();
     if (i > 0 && t === '') { pendingBreaks++; return; }
     if (i > 0) out += pendingBreaks ? '\n'.repeat(pendingBreaks) : ' ';
     pendingBreaks = 0;
@@ -77,7 +77,7 @@ function readScalar(first, lines, i, indent, label) {
       collected.push(lines[j]);
     }
     const last = collected.length - 1;
-    collected[last] = collected[last].replace(/\s+$/, '').slice(0, -1);
+    collected[last] = collected[last].trimEnd().slice(0, -1);
     const folded = fold(collected);
     const value = q === '"' ? unescapeDouble(folded, label) : folded.replace(/''/g, "'");
     return [value, j + 1];
@@ -86,7 +86,8 @@ function readScalar(first, lines, i, indent, label) {
     throw new FrontmatterError(`${label}: unsupported YAML value "${v.slice(0, 20)}"`);
   }
   // Plain scalar; allow continuation lines that are more indented.
-  const collected = [v.replace(/\s+#.*$/, '')];
+  const hash = v.search(/\s#/); // linear; `\s+#.*$` backtracks quadratically on long space runs
+  const collected = [hash < 0 ? v : v.slice(0, hash).trimEnd()];
   let j = i + 1;
   while (j < lines.length && lines[j].trim() !== '' && indentOf(lines[j]) > indent && !/^\s*[\w-]+:(\s|$)/.test(lines[j])) {
     collected.push(lines[j++]);
@@ -103,7 +104,6 @@ const KEY_RE = /^( *)([A-Za-z0-9_][A-Za-z0-9_.-]*):(?:\s+(.*)|\s*)$/;
 export function parseYamlSubset(yaml, label = 'SKILL.md') {
   const lines = yaml.split('\n');
   const data = {};
-  const order = [];
   let i = 0;
   while (i < lines.length) {
     const line = lines[i];
@@ -138,7 +138,6 @@ export function parseYamlSubset(yaml, label = 'SKILL.md') {
       data[key] = value;
       i = next;
     }
-    order.push(key);
   }
   return data;
 }
@@ -171,8 +170,8 @@ export function serializeFrontmatter(data) {
   return lines.join('\n') + '\n';
 }
 
-export function cleanDescription(s) {
-  return String(s ?? '').replace(/\s+$/, '');
+export function trimTrailing(s) {
+  return String(s ?? '').trimEnd();
 }
 
 /**
@@ -187,7 +186,7 @@ export function transformFrontmatter(data, { skill, zip = false } = {}) {
   const metadata = { ...(data.metadata && typeof data.metadata === 'object' ? data.metadata : {}) };
   for (const [k, v] of Object.entries(data)) {
     if (k === 'metadata') continue;
-    if (SPEC_KEYS.includes(k)) out[k] = typeof v === 'string' ? cleanDescription(v) : v;
+    if (SPEC_KEYS.includes(k)) out[k] = typeof v === 'string' ? trimTrailing(v) : v;
     else if (typeof v === 'object' && v !== null) throw new FrontmatterError(`${label}: non-spec map key "${k}" cannot move under metadata`);
     else {
       if (k in metadata) throw new FrontmatterError(`${label}: "${k}" exists both top-level and under metadata`);
@@ -198,6 +197,9 @@ export function transformFrontmatter(data, { skill, zip = false } = {}) {
     throw new FrontmatterError(`${label}: invalid skill name "${out.name}"`);
   }
   if (!out.description) throw new FrontmatterError(`${label}: missing description`);
+  if (out.compatibility !== undefined && String(out.compatibility).length > LIMITS.compatibility) {
+    throw new FrontmatterError(`${label}: compatibility is ${String(out.compatibility).length} chars (limit ${LIMITS.compatibility})`);
+  }
   const limit = zip ? LIMITS.zipDescription : LIMITS.description;
   if (out.description.length > limit) {
     const short = metadata['short-description'];
@@ -210,6 +212,9 @@ export function transformFrontmatter(data, { skill, zip = false } = {}) {
     if (short.length > limit) throw new FrontmatterError(`${label}: metadata.short-description is ${short.length} chars (limit ${limit})`);
     out.description = short;
   }
+  // Anthropic's skill validator (skill-creator quick_validate.py) rejects angle brackets in the
+  // description of an uploaded skill; local copy only, not in P0's cited docs.
+  if (zip && /[<>]/.test(out.description)) throw new FrontmatterError(`${label}: description contains < or >, which skill upload rejects`);
   if (Object.keys(metadata).length) out.metadata = metadata;
   return out;
 }

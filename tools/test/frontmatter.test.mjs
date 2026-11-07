@@ -110,3 +110,18 @@ test('source SKILL.md files keep their Claude Code frontmatter (version/updated 
   assert.equal(data.version, '0.1.1');
   assert.ok(data.metadata['short-description']);
 });
+
+test('zip targets refuse < or > in the description (Anthropic skill validator rule)', () => {
+  assert.throws(() => transformFrontmatter({ name: 'x', description: 'use <tag> here' }, { zip: true }), /< or >/);
+  assert.equal(transformFrontmatter({ name: 'x', description: 'use <tag> here' }).description, 'use <tag> here');
+});
+
+test('compatibility over 500 chars is refused (S13)', () => {
+  assert.throws(() => transformFrontmatter({ name: 'x', description: 'd', compatibility: 'c'.repeat(501) }), /compatibility/);
+});
+
+test('long runs of spaces parse in linear time (G4-N2)', () => {
+  const t0 = performance.now();
+  parseYamlSubset(`name: a${' '.repeat(100000)}b\ndescription: "${' '.repeat(100000)}x"\nother: v${' '.repeat(50000)}# c`);
+  assert.ok(performance.now() - t0 < 1000, `${performance.now() - t0} ms`);
+});

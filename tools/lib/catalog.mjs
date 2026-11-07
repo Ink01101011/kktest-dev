@@ -94,17 +94,17 @@ const REF_ONLY = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/;
  *   {kind:'literal', value}  plain non-secret text
  */
 export function normalizeServer(name, cfg) {
-  if (!cfg.command) throw new Error(`MCP server ${name}: only stdio servers (command) are supported`);
+  if (!cfg.command) throw new RefusedError(`MCP server ${name}: only stdio servers (command) are supported`);
   const tag = (v) => {
     const s = String(v);
     if (ROOT_VAR.test(s)) {
       const m = s.match(/^\$\{CLAUDE_PLUGIN_ROOT\}\/(.+)$/);
-      if (!m) throw new Error(`MCP server ${name}: unsupported use of \${CLAUDE_PLUGIN_ROOT} in "${s}"`);
+      if (!m) throw new RefusedError(`MCP server ${name}: unsupported use of \${CLAUDE_PLUGIN_ROOT} in "${s}"`);
       return { kind: 'path', rel: m[1] };
     }
     const r = s.match(REF_ONLY);
     if (r) return { kind: 'ref', name: r[1] };
-    if (s.includes('${')) throw new Error(`MCP server ${name}: mixed interpolation "${s}" is not supported`);
+    if (s.includes('${')) throw new RefusedError(`MCP server ${name}: mixed interpolation "${s}" is not supported`);
     return { kind: 'literal', value: s };
   };
   const env = {};
@@ -126,13 +126,47 @@ export function selectPlugins(catalog, { plugin, skill } = {}) {
   }
   let plugins = catalog.plugins.filter((p) => (wanted ? wanted.includes(p.name) : !p.optIn));
   if (skill) {
-    const names = String(skill).split(',').map((s) => s.trim());
-    for (const n of names) if (!catalog.plugins.some((p) => p.skills.some((s) => s.name === n))) throw new UsageError(`unknown skill "${n}"`);
-    plugins = catalog.plugins
-      .map((p) => ({ ...p, skills: p.skills.filter((s) => names.includes(s.name)), mcpServers: [] }))
-      .filter((p) => p.skills.length);
+    const names = String(skill).split(',').map((s) => s.trim()).filter(Boolean);
+    if (!names.length) throw new UsageError('--skill needs at least one skill name');
+    for (const n of names) {
+      const owner = catalog.plugins.find((p) => p.skills.some((s) => s.name === n));
+      if (!owner) throw new UsageError(`unknown skill "${n}"`);
+      if (!plugins.includes(owner)) {
+        throw new UsageError(
+          wanted
+            ? `skill "${n}" belongs to plugin ${owner.name}, which --plugin does not select`
+            : `skill "${n}" is in the opt-in plugin ${owner.name}; add --plugin ${owner.name}`,
+        );
+      }
+    }
+    // --skill narrows the selected plugins to those skills (and drops their MCP servers).
+    plugins = plugins.map((p) => ({ ...p, skills: p.skills.filter((s) => names.includes(s.name)), mcpServers: [] })).filter((p) => p.skills.length);
   }
   return plugins;
+}
+
+/** Plugins whose skills can leave Claude Code, plus one skip line per Claude-only plugin. */
+export function portableSkillPlugins(plugins) {
+  const out = [];
+  const skipped = [];
+  for (const p of plugins) {
+    if (!p.skills.length) continue;
+    if (p.tier === 'Claude-only') skipped.push(`skip ${p.name}: Claude-only (${p.note})`);
+    else out.push(p);
+  }
+  return { plugins: out, skipped };
+}
+
+/** One line per plugin whose hooks or slash commands stay behind. */
+export function claudeOnlyParts(plugins) {
+  const lines = [];
+  for (const p of plugins) {
+    const parts = [];
+    if (p.hasHooks) parts.push('hooks');
+    if (p.hasCommands) parts.push('slash commands');
+    if (parts.length) lines.push(`skip ${p.name} ${parts.join(' + ')}: Claude Code only`);
+  }
+  return lines;
 }
 
 export class UsageError extends Error {}

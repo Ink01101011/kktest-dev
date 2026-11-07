@@ -28,7 +28,7 @@ function allFiles(dir, base = ROOT) {
 
 test('package.json: publishable by a plain `pnpm publish`', () => {
   assert.equal(pkg.name, 'kktest-dev');
-  assert.equal(pkg.version, '1.0.0');
+  assert.match(pkg.version, /^\d+\.\d+\.\d+$/);
   assert.equal(pkg.type, 'module');
   assert.deepEqual(pkg.bin, { 'kktest-dev': 'tools/cli.mjs' });
   assert.deepEqual(pkg.publishConfig, { access: 'public' }, 'no provenance: it only works in CI');
@@ -36,9 +36,12 @@ test('package.json: publishable by a plain `pnpm publish`', () => {
   assert.match(pkg.engines.node, />=\s*22/);
   for (const k of ['prepublishOnly', 'prepublish', 'prepack', 'prepare', 'postpack']) assert.ok(!(k in (pkg.scripts ?? {})), k);
   for (const k of ['dependencies', 'packageManager']) assert.ok(!(k in pkg), k);
-  assert.match(fs.readFileSync(path.join(ROOT, 'tools', 'cli.mjs'), 'utf8'), /^#!\/usr\/bin\/env node\r?\n/);
+  assert.match(fs.readFileSync(path.join(ROOT, 'tools', 'cli.mjs'), 'utf8'), /^#!\/usr\/bin\/env node\n/);
   assert.equal(marketplace.version, pkg.version);
   for (const f of pkg.files) assert.ok(!f.startsWith('!') && !f.includes('**'), f);
+  // LF in every checkout, so a publish from Windows never ships a CRLF shebang (G3-N2)
+  const attrs = fs.readFileSync(path.join(ROOT, '.gitattributes'), 'utf8');
+  assert.match(attrs, /^\* text=auto eol=lf$/m);
 });
 
 test('package files cover everything the CLI reads and nothing it should not ship', () => {

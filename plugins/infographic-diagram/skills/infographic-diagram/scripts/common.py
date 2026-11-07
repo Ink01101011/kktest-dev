@@ -27,8 +27,25 @@ def issue(msg):
     ISSUES.append(msg)
 
 
+# Characters XML 1.0 forbids even as character references; a spec title with one would make the SVG
+# malformed, so they are dropped (G2 nit). Tab, LF and CR are allowed and kept.
+_XML_INVALID = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f\ufffe\uffff\ud800-\udfff]")
+
+
 def esc(s):
-    return html.escape(str(s), quote=True)
+    return html.escape(_XML_INVALID.sub("", str(s)), quote=True)
+
+
+MAX_CANVAS = 20000   # px, either side; Chromium cannot screenshot much more (G4-M2)
+
+
+def cap_height(H):
+    """Auto-computed canvas height, capped at MAX_CANVAS with a CANVAS lint issue."""
+    if H > MAX_CANVAS:
+        issue(f"CANVAS    the content needs a canvas {H}px tall, over the {MAX_CANVAS}px limit -> "
+              f"cut at {MAX_CANVAS}px; split the diagram")
+        return MAX_CANVAS
+    return H
 
 
 # ---------- value validation ----------
