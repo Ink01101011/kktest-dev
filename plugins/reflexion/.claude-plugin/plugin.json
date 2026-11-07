@@ -6,7 +6,7 @@
     "name": "Ink",
     "email": "supakit.kitj@gmail.com"
   },
-  "homepage": "https://github.com/Ink01101011/kktest-dev/tree/main/plugins/reflexion",
+  "homepage": "https://github.com/Ink01101011/kktest-dev/tree/master/plugins/reflexion",
   "repository": "https://github.com/Ink01101011/kktest-dev",
   "license": "MIT",
   "keywords": ["memory", "reflexion", "lessons", "self-improving", "mcp", "agent-loops"],

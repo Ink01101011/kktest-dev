@@ -1,5 +1,9 @@
 # tool-metrics — Design
 
+> **Historical (2026-11-08).** Working plan/spec from 2026-08-04, kept as a record and not updated.
+> tool-metrics shipped from it; what ships now: [plugins/tool-metrics](../../../plugins/tool-metrics/README.md),
+> [docs/tool-metrics/SPEC.md](../../tool-metrics/SPEC.md).
+
 **Date:** 2026-08-04
 **Status:** Approved — implemented 2026-08-04
 **Target:** new plugin `plugins/tool-metrics` in the `kktest-dev` marketplace

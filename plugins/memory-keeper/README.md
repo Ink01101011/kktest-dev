@@ -9,6 +9,12 @@ cold storage, and **lint** the index against a byte budget so bloat can't return
 > can't drift and its size stays bounded. Active memories stay hot; finished ones move to `archive/`
 > (still on disk, grep-able, reachable via a pointer) so nothing is lost.
 
+> **Folded into bantamkit.** For publishing, memory-keeper was folded into
+> [bantamkit](https://github.com/Ink01101011/bantamkit) (npm `bantamkit-mcp`). Its `bantamkit-memory`
+> CLI has `status`, `lint`, `compact`, `archive` and `restore`, and its MCP server has `memory_compact`
+> next to `memory_recall` / `memory_save`. The team pack (`/kk-onboard`) installs bantamkit. This
+> plugin still works and is still published here and in the `kktest-dev` npm package.
+
 ## Components
 
 | Component | What it is |
@@ -32,7 +38,8 @@ Set the target store so you don't repeat it:
 export MEMCTL_DIR="$HOME/.claude/projects/<your-project>/memory"
 ```
 
-The MCP server reads `MEMCTL_DIR` from your environment (wired in `.mcp.json`). Per-call you can also
+The MCP server reads `MEMCTL_DIR` from the environment it is started with (`.mcp.json` sets only
+`MEMCTL_PATH`). Per-call you can also
 pass `dir`. Optional env: `MEMCTL_BUDGET` (used by the pre-commit hook; default 24000).
 
 ## Automatic mode (zero-config)

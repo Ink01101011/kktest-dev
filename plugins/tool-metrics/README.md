@@ -3,6 +3,15 @@
 Count Claude Code tool usage across all sessions — built-in tools, MCP tools
 (grouped by server), skill invocations, and subagent spawns.
 
+Install inside Claude Code (2.1.275+):
+
+```
+/plugin install tool-metrics --marketplace Ink01101011/kktest-dev
+```
+
+or from a shell: `claude plugin marketplace add Ink01101011/kktest-dev`, then
+`claude plugin install tool-metrics@kktest-dev`.
+
 - `/tool-stats [--since 7d] [--project SUBSTR] [--group tool|server|project|day|skill|agent]` — terminal table
 - `/tool-stats-dashboard` — HTML dashboard published as an Artifact
 

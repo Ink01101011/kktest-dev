@@ -3,6 +3,11 @@
 A complete guide: what the problem is, how memory-keeper solves it, how to install it, how to use it,
 and every option explained.
 
+> **Folded into bantamkit.** For publishing, memory-keeper was folded into
+> [bantamkit](https://github.com/Ink01101011/bantamkit) (npm `bantamkit-mcp`, `bantamkit-memory` CLI:
+> `status`, `lint`, `compact`, `archive`, `restore`). New setups get it from the team pack
+> (`/kk-onboard`). This plugin still works; this guide describes it.
+
 ---
 
 ## 1. The concept

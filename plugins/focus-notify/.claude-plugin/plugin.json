@@ -6,7 +6,7 @@
     "name": "Ink",
     "email": "supakit.kitj@gmail.com"
   },
-  "homepage": "https://github.com/Ink01101011/kktest-dev/tree/main/plugins/focus-notify",
+  "homepage": "https://github.com/Ink01101011/kktest-dev/tree/master/plugins/focus-notify",
   "repository": "https://github.com/Ink01101011/kktest-dev",
   "license": "MIT",
   "keywords": ["notification", "macos", "linux", "windows", "hooks", "focus", "terminal-notifier"]

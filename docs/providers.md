@@ -23,8 +23,8 @@ other tools' documented formats and are skipped with a reason line.
 
 | Plugin | Tier | Skills | MCP server | Claude Code only |
 |---|---|---|---|---|
-| kkskills-situational | portable | 9 | - | - |
-| kkskills-essentials | with fallbacks | 5 | - | - |
+| kkskills-situational | portable | 10 | - | - |
+| kkskills-essentials | with fallbacks | 4 | - | - |
 | kkskills-personal | with fallbacks (opt-in: `--plugin kkskills-personal`) | 2 | - | - |
 | agent-loops | with fallbacks | 6 | - | - |
 | infographic-diagram | with fallbacks (needs python3; PNG needs playwright) | 1 | - | - |
@@ -92,7 +92,7 @@ Skills that name Claude-only tools carry a short **Other agents** section with t
 ## Per tool
 
 Facts below come from each vendor's documentation (checked 2026-11-07; Windsurf/Devin, Claude Desktop,
-claude.ai and ChatGPT re-checked 2026-11-08 for issue #24; sources at the end). Items
+claude.ai and ChatGPT re-checked 2026-11-08 for issues #24 and #25; sources at the end). Items
 marked **UNVERIFIED** could not be confirmed from an official page; for those kktest-dev only prints
 text for you to check, it never writes them.
 
@@ -193,21 +193,33 @@ npx kktest-dev export --target claude-ai     # kktest-dev-export/claude-ai/<skil
 
 ### ChatGPT
 
-- Skills (web): Plugins > Skills > Create > Upload from your computer. The same zips as claude.ai.
-  The ChatGPT app's own size limit and Plus/Pro eligibility: UNVERIFIED (the help article answers
-  automated reads with HTTP 403; re-tried 2026-11-08). Personal skills are documented for Business,
-  Enterprise, Healthcare and Edu. The OpenAI **API** documents its skill-bundle limits: a zip of at most
-  50 MB with one top-level folder, at most 500 files, at most 25 MB per file, exactly one `SKILL.md`.
-  The exporter refuses a zip over any of these, so an export fits the API and is the best bound we have
-  for the app.
-- Custom GPT knowledge files and Project files (not used by kktest-dev; asked in #24): UNVERIFIED. The
-  official File uploads FAQ (https://help.openai.com/en/articles/8555545-file-uploads-faq) answers
-  automated reads with HTTP 403 (2026-11-08). Its search-result snippet says file uploads are for Plus,
-  Pro and Enterprise, spreadsheets about 50 MB, images 20 MB, 25 GB per end user, and Projects up to 20
-  files on Plus and 40 on Pro, Team, Edu and Business. Community posts (not official) cite 20 knowledge
-  files per GPT and 512 MB / 2M tokens per file. Treat all of these as unconfirmed.
+What the official pages say (re-checked 2026-11-08):
+
+- Custom GPTs are being retired. OpenAI's guide "Moving your custom GPT workflows to plugins"
+  (learn.chatgpt.com/docs/migrate-custom-gpts) says that at retirement custom GPTs stop running and
+  leave the GPT directory, that new GPT creation stops, and that migrating a GPT copies its
+  knowledge files into the new plugin. So kktest-dev does not target custom GPT knowledge files.
+  The dates (retirement on 2026-12-11; 2027-02-11 for Enterprise workspaces with a deferral) come
+  from the ChatGPT release notes as quoted in search results; help.openai.com answers automated reads
+  with HTTP 403, so the dates are UNVERIFIED here.
+- Skills: "Build skills" (learn.chatgpt.com/docs/build-skills) documents a skill as a folder with a
+  `SKILL.md` (with `name` and `description`) plus optional `scripts/`, `references/` and `assets/`,
+  and says plugins are the way to share skills with other people. That is the folder each export
+  zip holds.
+- The OpenAI **API** documents its skill-bundle limits: a zip of at most 50 MB with one top-level
+  folder, at most 500 files, at most 25 MB per file, exactly one `SKILL.md`. The exporter refuses a
+  zip over any of these, so an export fits the API and is the best bound we have for the app.
+- UNVERIFIED: the upload steps in the ChatGPT app (the menu path below and a `chatgpt.com/skills`
+  page come from search snippets of help articles that return 403), the app's own size limit, and
+  which plans can upload. The pages above document neither.
+- Project files (not used by kktest-dev): UNVERIFIED. The File uploads FAQ
+  (https://help.openai.com/en/articles/8555545-file-uploads-faq) returns 403; its search snippet says
+  Projects take up to 20 files on Plus and 40 on Pro, Team, Edu and Business.
 - MCP (web): remote servers only (developer mode / apps); stdio is not possible. The desktop app shares
   Codex's config, so use the Codex target there.
+
+To upload: try Plugins > Skills > Create > Upload from your computer (UNVERIFIED path), one zip per
+skill.
 
 ```bash
 npx kktest-dev export --target chatgpt
@@ -237,7 +249,8 @@ Still UNVERIFIED, so `install --target windsurf` refuses and `export --target wi
 
 ## Unverified / gaps
 
-- ChatGPT skills upload (app): size limit, Plus/Pro eligibility (the API limits are documented; the app's are not).
+- ChatGPT skills upload (app): menu path, size limit and plan eligibility (the API limits are documented;
+  the app's are not). Custom GPT retirement dates (the retirement itself is documented).
 - ChatGPT developer mode: plan availability and the exact menu path.
 - Windsurf/Devin: env interpolation inside `env`; whether Devin Local reads the CLI's `mcp_config.json`
   files (paths and format are documented, so only these two block `install`).
@@ -292,7 +305,7 @@ trusted publisher entry for workflow `publish.yml` on npmjs.com; the workflow do
 
 - Agent Skills: https://agentskills.io/specification
 - Codex: https://learn.chatgpt.com/docs/build-skills , https://learn.chatgpt.com/docs/extend/mcp?surface=cli ; local `codex mcp add --help` (0.165.0)
-- ChatGPT: https://learn.chatgpt.com/docs/extend/mcp , https://developers.openai.com/api/docs/guides/tools-skills.md , https://help.openai.com/en/articles/20001066-skills-in-chatgpt (search snippet only), https://help.openai.com/en/articles/8555545-file-uploads-faq (search snippet only; both 403 on 2026-11-08), https://developers.openai.com/api/docs/guides/tools-skills.md (2026-11-08)
+- ChatGPT: https://learn.chatgpt.com/docs/extend/mcp , https://developers.openai.com/api/docs/guides/tools-skills.md , https://help.openai.com/en/articles/20001066-skills-in-chatgpt (search snippet only), https://help.openai.com/en/articles/8555545-file-uploads-faq (search snippet only; both 403 on 2026-11-08), https://learn.chatgpt.com/docs/migrate-custom-gpts , https://learn.chatgpt.com/docs/build-skills (2026-11-08)
 - Gemini CLI: https://geminicli.com/docs/cli/skills/ , https://geminicli.com/docs/extensions/reference/ , https://geminicli.com/docs/tools/mcp-server/
 - VS Code / Copilot: https://code.visualstudio.com/docs/copilot/customization/agent-skills , https://code.visualstudio.com/docs/agents/reference/mcp-configuration , https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-skills
 - Cursor: https://cursor.com/docs/skills , https://cursor.com/docs/mcp

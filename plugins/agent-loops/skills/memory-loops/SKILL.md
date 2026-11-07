@@ -9,8 +9,8 @@ description: "Use this skill whenever an agent should learn across tasks instead
   just working context, not memory) — and prefer the bantamkit MCP server's memory tools over
   hand-rolling these patterns if it's installed. For running the recall/reflect loop on the file-based
   store, or for reviewing and compressing lessons already stored there, use the reflexion skill instead."
-version: "0.2.1"
-updated: "2026-11-05"
+version: "0.2.2"
+updated: "2026-11-08"
 metadata:
   short-description: "Use when an agent should learn across tasks: recall before acting, reflect after, keep an error/success library, compress recurring lessons. Covers Reflexion and related memory patterns."
 ---
@@ -27,8 +27,10 @@ store doesn't just grow forever.
 **This category already has a working implementation: [bantamkit](https://github.com/Ink01101011/bantamkit)'s memory tools.** `memory_recall`
 covers recall-before-acting, `memory_save` writes one lesson (a `feedback` fact with **Why:** /
 **How to apply:** lines) and refuses a near-duplicate, and `memory_compact` archives without deleting.
-Two pieces are not served yet — an error/success library view ([#219](https://github.com/Ink01101011/bantamkit/issues/219)) and merging several lessons into
-one pattern ([#220](https://github.com/Ink01101011/bantamkit/issues/220)); until they land, do those by hand with the shapes below. Read this skill for the
+Since bantamkit 0.36.2 the last two pieces are served too: the error/success library view
+([#219](https://github.com/Ink01101011/bantamkit/issues/219): `memory_recall` with `outcome: error|success`,
+or `bantamkit-memory list --outcome`) and merging several lessons into one pattern
+([#220](https://github.com/Ink01101011/bantamkit/issues/220): `bantamkit-memory merge`, a dry run unless `--apply`). Read this skill for the
 *pattern shapes* and the `loop-ledger` brake each one wires to; **use bantamkit's tools for the actual
 store operations** rather than re-implementing a memory store from these subsections. If bantamkit isn't
 installed, these patterns still apply to whatever memory store you do have (a file, a doc, a database) —
@@ -157,6 +159,7 @@ Z"), dry-run preview, confirm, apply — three lessons become one, archived not 
 
 ## Changelog
 
+- 0.2.2 (2026-11-08) — bantamkit 0.36.2 serves the library view (#219) and merge (#220); say so (#25).
 - 0.2.0 (2026-10-20) — the working implementation is now bantamkit's memory tools
   (`memory_recall` / `memory_save` / `memory_compact`); the `reflexion` and `memory-keeper` plugins were
   folded into bantamkit. Library view and multi-lesson merge are tracked as bantamkit #219 / #220.

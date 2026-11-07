@@ -1,5 +1,9 @@
 # reflexion — Specification
 
+> **Historical (2026-11-08).** This is the proposal written before `reflexion` shipped. It is kept as a
+> design record and is not updated. What ships now: [plugins/reflexion](../../plugins/reflexion/README.md),
+> [docs/reflexion/SPEC.md](../reflexion/SPEC.md).
+
 Status: 0.1.0 (proposal) · Date: 2026-07-02 · Author: Ink
 
 > Proposal spec. Self-improving agent memory (Loop Category 2) built **on top of** `memory-keeper`'s

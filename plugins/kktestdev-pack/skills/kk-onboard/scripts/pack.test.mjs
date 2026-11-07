@@ -125,3 +125,15 @@ test('#15/#17/#18: the routing rules are written where onboarding reads them', (
     assert.match(sec, /playwright[\s\S]*chrome-devtools/); // #14
   }
 });
+
+test('#25: README "Who publishes what" names every installable pack item, and nothing the pack dropped', () => {
+  const start = README.indexOf('## Who publishes what');
+  assert.ok(start >= 0);
+  const sec = README.slice(start, README.indexOf('\n## ', start + 1));
+  const named = new Set(
+    sec.split('\n').filter((l) => l.startsWith('| `')).flatMap((l) => [...l.split('|')[1].matchAll(/`([^`]+)`/g)].map((m) => m[1])),
+  );
+  for (const it of PACK.items.filter((i) => i.kind !== 'docs')) assert.ok(named.has(it.id), `publisher table: ${it.id}`);
+  const ids = new Set(PACK.items.map((i) => i.id));
+  for (const n of named) assert.ok(ids.has(n), `publisher table names ${n}, which is not a pack item`);
+});

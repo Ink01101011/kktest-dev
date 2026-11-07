@@ -6,7 +6,7 @@
     "name": "Ink",
     "email": "supakit.kitj@gmail.com"
   },
-  "homepage": "https://github.com/Ink01101011/kktest-dev/tree/main/plugins/critique-gate",
+  "homepage": "https://github.com/Ink01101011/kktest-dev/tree/master/plugins/critique-gate",
   "repository": "https://github.com/Ink01101011/kktest-dev",
   "license": "MIT",
   "keywords": ["critique", "quality-gate", "self-improving", "agent-loops", "rubric", "adversarial", "judge-ensemble"]

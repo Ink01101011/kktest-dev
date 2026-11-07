@@ -1,5 +1,9 @@
 # agent-loops — Specification
 
+> **Historical (2026-11-08).** This is the proposal written before `agent-loops` shipped. It is kept as a
+> design record and is not updated. What ships now: [plugins/agent-loops](../../plugins/agent-loops/README.md),
+> [docs/agent-loops/SPEC.md](../agent-loops/SPEC.md).
+
 Status: 0.1.0 (proposal) · Date: 2026-07-02 · Author: Ink
 
 > Proposal spec. Ships the existing `loop-ledger` MCP server as a first-class marketplace plugin,

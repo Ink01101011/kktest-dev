@@ -14,7 +14,7 @@
  *              (null: no reference syntax documented, so a placeholder is written instead)
  * exportFile   the snippet file `export` writes; howTo: the NOTES.txt line saying where it goes
  * exportHelp / installHelp   the target's line(s) in `export --help` / `install --help`
- * unverified   the MCP format is not confirmed from an official page (export only, never installed)
+ * unverified   part of the MCP setup is not confirmed from an official page (export only, never installed)
  */
 export const TARGETS = Object.freeze([
   {
@@ -39,7 +39,7 @@ export const TARGETS = Object.freeze([
     provider: 'ChatGPT',
     export: 'skills',
     howTo:
-      "Upload each zip in ChatGPT: Plugins > Skills > Create > Upload from your computer. The zips stay within the documented OpenAI API skill limits (50 MB zip, 500 files, 25 MB per file); the ChatGPT app's own size limit and Plus/Pro eligibility are UNVERIFIED (its help page refuses automated reads).",
+      "Upload each zip in ChatGPT (menu path UNVERIFIED: Plugins > Skills > Create > Upload from your computer). The zips stay within the documented OpenAI API skill limits (50 MB zip, 500 files, 25 MB per file); the ChatGPT app's own size limit and plan eligibility are UNVERIFIED (its help pages refuse automated reads). Custom GPTs are being retired, so knowledge-file upload is not a target.",
     exportHelp: 'one .zip per skill for ChatGPT upload',
   },
   {
@@ -122,8 +122,8 @@ export const TARGETS = Object.freeze([
     exportFile: 'mcp_config.json',
     howTo:
       'Windsurf is now Devin Local (docs.devin.ai). Merge mcp_config.json ("mcpServers") into .devin/mcp_config.json (project), ~/.config/devin/mcp_config.json (user) or %APPDATA%\\devin\\mcp_config.json (Windows user). UNVERIFIED: whether Devin Local reads exactly these files (its page links to the Devin CLI docs for them).',
-    exportHelp: 'mcp_config.json snippet (UNVERIFIED format) + server files',
-    installHelp: ['refused: config format unverified (use export --target windsurf)'],
+    exportHelp: 'mcp_config.json snippet + server files (env references UNVERIFIED: secrets stay placeholders)',
+    installHelp: ['refused: env interpolation and whether Devin Local reads these files are unverified', '(use export --target windsurf)'],
   },
 ].map((t) => Object.freeze(t)));
 
@@ -140,7 +140,7 @@ export const SKILL_TARGETS = Object.freeze([...ids((t) => t.export === 'skills')
 export const MCP_TARGETS = Object.freeze([...ids((t) => t.export === 'mcp'), ...ids((t) => t.export === 'extension')]);
 /** the tools docs/providers.md has a "Per tool" section for, each once, in table order */
 export const PROVIDERS = Object.freeze([...new Set(TARGETS.map((t) => t.provider).filter(Boolean))]);
-/** targets whose MCP format is not confirmed from an official page */
+/** targets whose MCP setup is not fully confirmed from an official page (export only) */
 export const UNVERIFIED_TARGETS = ids((t) => t.unverified);
 
 /** "a, b or c" */

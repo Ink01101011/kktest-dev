@@ -20,7 +20,7 @@
         "name": "Ink",
         "email": "supakit.kitj@gmail.com"
       },
-      "homepage": "https://github.com/Ink01101011/kktest-dev/tree/main/plugins/memory-keeper",
+      "homepage": "https://github.com/Ink01101011/kktest-dev/tree/master/plugins/memory-keeper",
       "repository": "https://github.com/Ink01101011/kktest-dev",
       "license": "MIT",
       "category": "productivity",
@@ -49,7 +49,7 @@
         "name": "Ink",
         "email": "supakit.kitj@gmail.com"
       },
-      "homepage": "https://github.com/Ink01101011/kktest-dev/tree/main/plugins/focus-notify",
+      "homepage": "https://github.com/Ink01101011/kktest-dev/tree/master/plugins/focus-notify",
       "repository": "https://github.com/Ink01101011/kktest-dev",
       "license": "MIT",
       "category": "productivity",
@@ -79,7 +79,7 @@
         "name": "Ink",
         "email": "supakit.kitj@gmail.com"
       },
-      "homepage": "https://github.com/Ink01101011/kktest-dev/tree/main/plugins/kkskills-essentials",
+      "homepage": "https://github.com/Ink01101011/kktest-dev/tree/master/plugins/kkskills-essentials",
       "repository": "https://github.com/Ink01101011/kktest-dev",
       "license": "MIT",
       "category": "productivity",
@@ -108,7 +108,7 @@
         "name": "Ink",
         "email": "supakit.kitj@gmail.com"
       },
-      "homepage": "https://github.com/Ink01101011/kktest-dev/tree/main/plugins/kkskills-situational",
+      "homepage": "https://github.com/Ink01101011/kktest-dev/tree/master/plugins/kkskills-situational",
       "repository": "https://github.com/Ink01101011/kktest-dev",
       "license": "MIT",
       "category": "productivity",
@@ -142,7 +142,7 @@
         "name": "Ink",
         "email": "supakit.kitj@gmail.com"
       },
-      "homepage": "https://github.com/Ink01101011/kktest-dev/tree/main/plugins/kkskills-personal",
+      "homepage": "https://github.com/Ink01101011/kktest-dev/tree/master/plugins/kkskills-personal",
       "repository": "https://github.com/Ink01101011/kktest-dev",
       "license": "MIT",
       "category": "productivity",
@@ -169,7 +169,7 @@
         "name": "Ink",
         "email": "supakit.kitj@gmail.com"
       },
-      "homepage": "https://github.com/Ink01101011/kktest-dev/tree/main/plugins/loop-ledger",
+      "homepage": "https://github.com/Ink01101011/kktest-dev/tree/master/plugins/loop-ledger",
       "repository": "https://github.com/Ink01101011/kktest-dev",
       "license": "MIT",
       "category": "productivity",
@@ -201,7 +201,7 @@
         "name": "Ink",
         "email": "supakit.kitj@gmail.com"
       },
-      "homepage": "https://github.com/Ink01101011/kktest-dev/tree/main/plugins/reflexion",
+      "homepage": "https://github.com/Ink01101011/kktest-dev/tree/master/plugins/reflexion",
       "repository": "https://github.com/Ink01101011/kktest-dev",
       "license": "MIT",
       "category": "productivity",
@@ -230,7 +230,7 @@
         "name": "Ink",
         "email": "supakit.kitj@gmail.com"
       },
-      "homepage": "https://github.com/Ink01101011/kktest-dev/tree/main/plugins/critique-gate",
+      "homepage": "https://github.com/Ink01101011/kktest-dev/tree/master/plugins/critique-gate",
       "repository": "https://github.com/Ink01101011/kktest-dev",
       "license": "MIT",
       "category": "productivity",
@@ -259,7 +259,7 @@
         "name": "Ink",
         "email": "supakit.kitj@gmail.com"
       },
-      "homepage": "https://github.com/Ink01101011/kktest-dev/tree/main/plugins/prompt-evolve",
+      "homepage": "https://github.com/Ink01101011/kktest-dev/tree/master/plugins/prompt-evolve",
       "repository": "https://github.com/Ink01101011/kktest-dev",
       "license": "MIT",
       "category": "productivity",
@@ -284,12 +284,12 @@
       "name": "agent-loops",
       "source": "./plugins/agent-loops",
       "description": "Playbook for the 5 categories of agent loop design patterns (Quality, Memory, Planning, Exploration, System Optimization) — when to use each, its minimal shape, and the exact loop-ledger brake to wire (exit_mode/target_value/direction/max_iterations or dry_rounds). Includes a loop-selector router skill. Skills-only; pairs with the loop-ledger plugin for enforcement.",
-      "version": "0.1.3",
+      "version": "0.1.4",
       "author": {
         "name": "Ink",
         "email": "supakit.kitj@gmail.com"
       },
-      "homepage": "https://github.com/Ink01101011/kktest-dev/tree/main/plugins/agent-loops",
+      "homepage": "https://github.com/Ink01101011/kktest-dev/tree/master/plugins/agent-loops",
       "repository": "https://github.com/Ink01101011/kktest-dev",
       "license": "MIT",
       "category": "productivity",
@@ -320,7 +320,7 @@
         "name": "Ink",
         "email": "supakit.kitj@gmail.com"
       },
-      "homepage": "https://github.com/Ink01101011/kktest-dev/tree/main/plugins/tool-metrics",
+      "homepage": "https://github.com/Ink01101011/kktest-dev/tree/master/plugins/tool-metrics",
       "repository": "https://github.com/Ink01101011/kktest-dev",
       "license": "MIT",
       "category": "productivity",

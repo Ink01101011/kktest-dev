@@ -1,5 +1,9 @@
 # tool-metrics Plugin Implementation Plan
 
+> **Historical (2026-11-08).** Working plan/spec from 2026-08-04, kept as a record and not updated.
+> tool-metrics shipped from it; what ships now: [plugins/tool-metrics](../../../plugins/tool-metrics/README.md),
+> [docs/tool-metrics/SPEC.md](../../tool-metrics/SPEC.md).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** A `tool-metrics` plugin for the kktest-dev marketplace that counts tool/MCP/skill/agent usage across all Claude Code sessions, viewable via `/tool-stats` (terminal table) and `/tool-stats-dashboard` (HTML artifact).

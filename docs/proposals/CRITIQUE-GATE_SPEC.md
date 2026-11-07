@@ -1,5 +1,9 @@
 # critique-gate — Specification
 
+> **Historical (2026-11-08).** This is the proposal written before `critique-gate` shipped. It is kept as a
+> design record and is not updated. What ships now: [plugins/critique-gate](../../plugins/critique-gate/README.md),
+> [docs/critique-gate/SPEC.md](../critique-gate/SPEC.md).
+
 Status: 0.1.0 (proposal) · Date: 2026-07-02 · Author: Ink
 
 > Proposal spec. A quality brake for Loop Category 1: output does not leave the session until it passes

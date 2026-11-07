@@ -74,5 +74,6 @@ skill's rule is to escalate to the user rather than spin. Enforcement (`enforce:
 `loop-ledger`'s Stop hook) is opt-in and defaults to off — advisory by default, non-optional only when
 explicitly requested.
 
-See `../../docs/proposals/CRITIQUE-GATE_SPEC.md` for the formal spec and its place in the
-[self-improvement chain](../../docs/proposals/SELF-IMPROVEMENT-CHAIN_SPEC.md).
+Docs: [concepts](../../docs/critique-gate/CONCEPTS.md), [specification](../../docs/critique-gate/SPEC.md).
+The pre-release proposal ([CRITIQUE-GATE_SPEC.md](../../docs/proposals/CRITIQUE-GATE_SPEC.md)) and the
+[self-improvement chain](../../docs/proposals/SELF-IMPROVEMENT-CHAIN_SPEC.md) note are historical.
