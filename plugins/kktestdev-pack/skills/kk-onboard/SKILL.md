@@ -42,7 +42,9 @@ changes anything without an explicit choice** from the user.
   (`~/.claude/settings.json`, the project's `.claude/settings.json` and `.claude/settings.local.json`),
   the project's `.mcp.json`, and every AI tool config (`claude_desktop_config.json`,
   `~/.cursor/mcp.json` and the project's `.cursor/mcp.json`, VS Code `mcp.json` (user and the
-  project's `.vscode/mcp.json`), Windsurf `mcp_config.json`). Also:
+  project's `.vscode/mcp.json`), Windsurf `mcp_config.json`, Codex CLI `config.toml` (user
+  `$CODEX_HOME/config.toml`, default `~/.codex/config.toml`, and the project's `.codex/config.toml`),
+  Gemini CLI `settings.json` (`~/.gemini/settings.json` and the project's `.gemini/settings.json`)). Also:
   - before deleting a skill directory: copy the whole directory to
     `~/.claude/backups/kk-onboard-<YYYYMMDDHHMM>/<name>/` (outside `skills/`, so it does not load);
   - before `claude plugin uninstall` or `claude mcp remove`: back up `~/.claude.json` (it holds
@@ -51,7 +53,10 @@ changes anything without an explicit choice** from the user.
   user where every backup is and that they should delete them once they are sure.
 - **Use the CLI where one exists** (`claude plugin ...`, `claude mcp ...`). Where none exists
   (Claude Desktop, Cursor, VS Code, Windsurf configs, Claude Code settings `env`), make a minimal
-  JSON edit of that one file and show it to the user as a diff before writing it.
+  JSON edit of that one file and show it to the user as a diff before writing it. Codex CLI has
+  `codex mcp add <name> --env K=V -- <cmd>` and Gemini CLI has `gemini mcp add` (project scope by
+  default); for a Codex env change without the CLI, make a minimal edit of the one
+  `[mcp_servers.<name>]` table in `config.toml` (TOML, not JSON; keep comments), diff first.
 - **Every write gets two confirmations**, like removals: first show the exact change list (file,
   key, new value or reference; never a secret), then ask for an explicit yes, then back up and
   write.
@@ -151,9 +156,9 @@ the user agrees) its `--help`. A newer release can add, rename or drop options; 
 
 Ask two multi-select questions (one AskUserQuestion call):
 - **AI tools** where the pack's MCP servers should be set up: Claude Code, Claude Desktop,
-  Cursor, VS Code (GitHub Copilot), Windsurf. The inventory's `hosts[]` (from `inventory.mjs`:
-  `present`, `mcpServers` count) says which ones look installed; list those first and say
-  "found on this machine". Each choice decides which config files this step may write.
+  Cursor, VS Code (GitHub Copilot), Windsurf, Codex CLI, Gemini CLI. The inventory's `hosts[]`
+  (from `inventory.mjs`: `present`, `mcpServers` count) says which ones look installed; list
+  those first and say "found on this machine". Each choice decides which config files this step may write.
 - **Model providers** the user works with: Anthropic API, Amazon Bedrock, Google Vertex AI,
   OpenAI / OpenAI-compatible, Azure OpenAI, Google Gemini, OpenRouter, Ollama (local),
   LM Studio (local), other. The inventory's `providers[]` lists signals (env var names, local
@@ -252,18 +257,27 @@ Run `options.mjs --item <id>` for the full doc lines (add `--run-help` only if t
    - Cursor: `~/.cursor/mcp.json` or the project's `.cursor/mcp.json` → `mcpServers.<name>.env`;
    - VS Code / Copilot: `mcp.json` → `servers.<name>.env` (it may contain comments: keep them);
    - Windsurf: `mcp_config.json` → `mcpServers.<name>.env`;
+   - Codex CLI: `config.toml` (user `$CODEX_HOME/config.toml`, default `~/.codex/config.toml`, or
+     the project's `.codex/config.toml`, which Codex reads only for trusted projects) →
+     `[mcp_servers.<name>]` `env` (inline table or a `[mcp_servers.<name>.env]` sub-table) for a
+     literal, or `env_vars = ["NAME"]` to pass a variable through from the environment Codex runs in;
+   - Gemini CLI: `~/.gemini/settings.json` or the project's `.gemini/settings.json` →
+     `mcpServers.<name>.env`;
    - the shell profile or the OS credential store.
    Read the target file's structure (keys only) before editing; if it differs from the shapes
    above, follow the file and tell the user.
    **References are per AI tool.** Use the form that tool documents, and check it against the
    tool's current docs or the references already in that file rather than assuming:
    Claude Code (`.mcp.json`, `~/.claude.json`, `claude mcp add`): `${VAR}`; Cursor and VS Code:
-   `${env:VAR}` (VS Code can also prompt with `${input:id}`); Claude Desktop and Windsurf: check
-   their current docs. If a tool does not expand references, say so: the choices are then the
-   shell profile or credential store with the tool started from that environment (gain: no secret
-   in the file; cost: it only works when the tool inherits that environment), or a literal value in
-   the file (gain: works everywhere; cost: the secret sits in plain text in that file and its
-   backups). Do not write `${KEY}` where the tool would pass it on as literal text.
+   `${env:VAR}` (VS Code can also prompt with `${input:id}`); Codex CLI: no `${VAR}` expansion,
+   list the name in `env_vars` instead (`bearer_token_env_var` / `env_http_headers` for HTTP
+   headers); Gemini CLI: `${VAR}` or `$VAR` in `env` (`%VAR%` on Windows; an undefined variable
+   becomes an empty string); Claude Desktop and Windsurf: check their current docs. If a tool
+   does not expand references, say so: the choices are then the shell profile or credential
+   store with the tool started from that environment (gain: no secret in the file; cost: it only
+   works when the tool inherits that environment), or a literal value in the file (gain: works
+   everywhere; cost: the secret sits in plain text in that file and its backups).
+   Do not write `${KEY}` where the tool would pass it on as literal text.
 7. **Confirm and apply**: first show the exact change list (file, key, new value or reference, and
    the backup path), then ask for an explicit yes, then back up (rules above), apply, and report.
    Non-sensitive plugin options:

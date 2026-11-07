@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import nodePath from 'node:path';
 import { test } from 'node:test';
-import { detectProviders, hostDefinitions, readHosts, valueState } from './hosts.mjs';
+import { HOST_IDS, TOML_SCALAR, detectProviders, hostDefinitions, parseToml, readHosts, readTomlConfig, valueState } from './hosts.mjs';
 import { isEnvRef, readJsonText, stripJsonc } from './common.mjs';
 import { isEnvRef as inventoryIsEnvRef } from './inventory.mjs';
 
@@ -142,4 +142,176 @@ test('detectProviders: env names from the shell and settings, local binaries; no
   assert.ok(by.bedrock[0].includes('user settings'));
   assert.ok(by.ollama[0].includes('binary ollama'));
   assert.ok(!JSON.stringify(p).includes('CANAOPT5'));
+});
+
+// ---------------------------------------------------------------- I2: Codex CLI and Gemini CLI
+// Paths and keys: .shiftwork/reports-xp/P0-providers.md sections 2 (Codex) and 3 (Gemini).
+const CODEX_TOML = `# my Codex config
+model = "o3"
+[projects."/somewhere/repo"]
+trust_level = 'trusted'
+
+[mcp_servers.demo]
+command = "npx"   # runner
+args = [
+  "-y",          # comment inside an array
+  'demo-mcp@latest',
+]
+env = { DEMO_TOKEN = "CANAI2A", DEMO_EMPTY = "", DEMO_LOOKS_REF = "\${HOME_VAR}" }
+env_vars = ["DEMO_FWD", { name = "DEMO_FWD2", source = "local" }]
+startup_timeout_sec = 20
+enabled = true
+
+[mcp_servers.sub]
+command = "sub-mcp"
+
+[mcp_servers.sub.env]
+SUB_KEY = "CANAI2B"
+'SUB_LIT' = 'x'
+
+[mcp_servers.web]
+url = "https://example.invalid/mcp"
+bearer_token_env_var = "WEB_TOKEN"
+http_headers = { "X-Team" = "CANAI2C" }
+env_http_headers = { "X-Key" = "WEB_KEY" }
+`;
+
+test('I2: HOST_IDS and hostDefinitions both list codex and gemini (additive: the first five are unchanged)', () => {
+  assert.deepEqual(HOST_IDS.slice(0, 5), ['claude-code', 'claude-desktop', 'cursor', 'vscode', 'windsurf']);
+  const defs = hostDefinitions({ home: '/h', cwd: '/w', env: {}, platform: 'linux' });
+  assert.deepEqual(defs.map((h) => h.id), [...HOST_IDS]);
+  const codex = defs.find((h) => h.id === 'codex');
+  assert.deepEqual(codex.files.map((f) => [f.file, f.scope]), [['/h/.codex/config.toml', 'user'], ['/w/.codex/config.toml', 'project']]);
+  const gem = defs.find((h) => h.id === 'gemini');
+  assert.deepEqual(gem.files.map((f) => [f.file, f.scope, f.key]), [['/h/.gemini/settings.json', 'user', 'mcpServers'], ['/w/.gemini/settings.json', 'project', 'mcpServers']]);
+  const win = hostDefinitions({ home: 'C:\\Users\\a', cwd: 'C:\\w', env: { CODEX_HOME: 'D:\\cx' }, platform: 'win32' }).find((h) => h.id === 'codex');
+  assert.equal(win.files[0].file, 'D:\\cx\\config.toml');
+});
+
+test('I2: Codex config.toml (user + project): env literal/empty, env_vars and env_http_headers are refs, values never returned', (t) => {
+  const fx = fixture(t);
+  fx.write(nodePath.join(fx.home, '.codex', 'config.toml'), CODEX_TOML);
+  fx.write(nodePath.join(fx.cwd, '.codex', 'config.toml'), '[mcp_servers.projsrv]\r\ncommand = "proj-mcp"\r\nenv_vars = ["PROJ_TOKEN"]\r\n');
+  const r = readHosts({ home: fx.home, cwd: fx.cwd, env: {}, platform: 'linux' });
+  const txt = JSON.stringify(r);
+  for (const secret of ['CANAI2A', 'CANAI2B', 'CANAI2C', 'HOME_VAR']) assert.ok(!txt.includes(secret), `a value leaked: ${secret}`);
+  const cx = host(r, 'codex');
+  assert.equal(cx.present, true);
+  assert.deepEqual(cx.files.map((f) => [f.scope, f.exists, f.ok]), [['user', true, true], ['project', true, true]]);
+  const by = Object.fromEntries(cx.servers.map((s) => [s.name, s]));
+  assert.deepEqual(Object.keys(by), ['demo', 'sub', 'web', 'projsrv']);
+  assert.equal(by.demo.command, 'npx');
+  assert.deepEqual(by.demo.args, ['-y', 'demo-mcp@latest']);
+  assert.deepEqual(by.demo.env, [
+    { name: 'DEMO_TOKEN', state: 'literal' }, { name: 'DEMO_EMPTY', state: 'empty' },
+    // Codex does not expand ${VAR} (P0 section 2): the text is passed on as written, so it is a literal
+    { name: 'DEMO_LOOKS_REF', state: 'literal' },
+    { name: 'DEMO_FWD', state: 'ref' }, { name: 'DEMO_FWD2', state: 'ref' },
+  ]);
+  assert.ok(r.notes.some((n) => /DEMO_LOOKS_REF/.test(n) && /literal text/.test(n)));
+  assert.deepEqual(by.sub.env, [{ name: 'SUB_KEY', state: 'literal' }, { name: 'SUB_LIT', state: 'literal' }]); // [mcp_servers.sub.env] sub-table
+  assert.equal(by.web.url, 'https://example.invalid/mcp');
+  assert.deepEqual(by.web.headers, [{ name: 'X-Team', state: 'literal' }, { name: 'X-Key', state: 'ref' }, { name: 'Authorization', state: 'ref' }]);
+  assert.deepEqual([by.demo.scope, by.projsrv.scope], ['user', 'project']);
+  assert.deepEqual(by.projsrv.env, [{ name: 'PROJ_TOKEN', state: 'ref' }]);
+});
+
+test('I2: CODEX_HOME is honoured when set and absolute; a relative one is not guessed', (t) => {
+  const fx = fixture(t);
+  const ch = nodePath.join(fx.root, 'codexhome');
+  fx.write(nodePath.join(ch, 'config.toml'), '[mcp_servers.fromCodexHome]\ncommand = "x"\n');
+  fx.write(nodePath.join(fx.home, '.codex', 'config.toml'), '[mcp_servers.fromDotCodex]\ncommand = "x"\n');
+  const set = readHosts({ home: fx.home, cwd: fx.cwd, env: { CODEX_HOME: ch }, platform: 'linux' });
+  assert.deepEqual(host(set, 'codex').servers.map((s) => s.name), ['fromCodexHome']);
+  assert.ok(set.notes.some((n) => /CODEX_HOME is set/.test(n)));
+  const unset = readHosts({ home: fx.home, cwd: fx.cwd, env: {}, platform: 'linux' });
+  assert.deepEqual(host(unset, 'codex').servers.map((s) => s.name), ['fromDotCodex']);
+  const rel = readHosts({ home: fx.home, cwd: fx.cwd, env: { CODEX_HOME: 'rel/codex' }, platform: 'linux' });
+  assert.deepEqual(host(rel, 'codex').servers, []);
+  assert.deepEqual(host(rel, 'codex').files.map((f) => f.scope), ['project']);
+  assert.ok(rel.notes.some((n) => /CODEX_HOME is not an absolute path/.test(n)));
+});
+
+test('I2: a config.toml the reader does not understand is reported (file ok: false + note), never thrown, never guessed', (t) => {
+  const fx = fixture(t);
+  fx.write(nodePath.join(fx.home, '.codex', 'config.toml'), '[mcp_servers.a]\ncommand = "x"\nwhen = 1979-05-27T07:32:00Z\n');
+  fx.write(nodePath.join(fx.cwd, '.codex', 'config.toml'), '[mcp_servers.ok]\ncommand = "y"\n');
+  const r = readHosts({ home: fx.home, cwd: fx.cwd, env: {}, platform: 'linux' });
+  const cx = host(r, 'codex');
+  assert.deepEqual(cx.files[0], { file: nodePath.join(fx.home, '.codex', 'config.toml'), scope: 'user', exists: true, ok: false, error: 'TOML not understood (line 3)' });
+  assert.deepEqual(cx.servers.map((s) => s.name), ['ok']); // nothing from the refused file, not even server "a"
+  assert.ok(r.notes.some((n) => n.startsWith('Codex CLI: ') && n.endsWith('TOML not understood (line 3)')));
+});
+
+test('I2: parseToml refuses what it does not understand, with the line number', () => {
+  const refused = [
+    ['a = """x"""', 1], ["a = '''x'''", 1], ['a = 1979-05-27', 1], ['a = 07:32:00', 1], ['[a]\n[a]', 2], ['a = 1\na = 2', 2],
+    ['a = "\\q"', 1], ['a = "\\x41"', 1], ['[[mcp_servers.x]]\ncommand = "y"', 1], ['a = { b = 1, }', 1], ['a = { b = 1,\n c = 2 }', 1],
+    ['a = [1\n2]', 2], ['x = "s" junk', 1], ['a = "x"\n[a.b]', 2], ['a = 012', 1], ['a = bare', 1], ['a\n', 1], ['= 1', 1],
+    ['a = "line\nbreak"', 1], ['[mcp_servers.s]\nenv = { K = "v" }\n[mcp_servers.s.env]\nL = "w"', 3], ['a = 1\r', 1],
+    ['a = "\\uD800"', 1], ['x = ' + '['.repeat(40) + ']'.repeat(40), 1],
+  ];
+  for (const [text, line] of refused) assert.deepEqual(parseToml(text), { ok: false, error: `TOML not understood (line ${line})` }, JSON.stringify(text));
+  const ok = parseToml([
+    'a.b = "1"', 'a.c = [ ]',
+    'n = [+1, -2.5e3, 0x1F, 0o7, 0b1, inf, -nan, true, 1_000]', 'e = "\\u00e9\\U0001F600\\t"', `"q k" = { "i.j" = 'lit\\' }`,
+    '[[other]]', 'x = 1', '[[other]]', 'x = 2',
+  ].join('\n'));
+  assert.equal(ok.ok, true, JSON.stringify(ok));
+  assert.equal(ok.value.a.b, '1');
+  assert.equal(ok.value.other, undefined); // [[array of tables]] outside mcp_servers: checked, dropped
+  assert.ok(ok.value.n.every((v) => v === TOML_SCALAR));
+  assert.equal(ok.value.e, '\u00e9\u{1F600}\t');
+  assert.equal(ok.value['q k']['i.j'], 'lit\\');
+  assert.equal(parseToml('').ok, true);
+});
+
+test('I2: the TOML reader is linear: 48 KB of blank lines, spaces, comments or a long array read in under 1 s', () => {
+  const texts = ['\n'.repeat(48 * 1024), ' '.repeat(48 * 1024) + '\n', '\r\n \t\n'.repeat(12 * 1024), `a = [${'"x",'.repeat(12 * 1024)}]`, `a = "${'\\\\'.repeat(24 * 1024)}"`, '#'.repeat(48 * 1024)];
+  for (const text of texts) {
+    const t0 = performance.now();
+    const r = parseToml(text);
+    const ms = performance.now() - t0;
+    assert.equal(r.ok, true);
+    assert.ok(ms < 1000, `${ms} ms`);
+  }
+  const t0 = performance.now();
+  assert.equal(parseToml(' '.repeat(48 * 1024) + 'x').ok, false); // a refusal after a long run of spaces is fast too
+  assert.ok(performance.now() - t0 < 1000);
+});
+
+test('I2: readTomlConfig keeps the JSON path contract: missing, size cap, read error; never throws', () => {
+  assert.deepEqual(readTomlConfig('/nope', { exists: () => false }), { ok: false, missing: true });
+  assert.deepEqual(readTomlConfig('/big', { exists: () => true, stat: () => ({ size: 51 * 1024 * 1024 }), readFile: () => assert.fail('read a file over the cap') }), { ok: false, error: 'over 50 MB, skipped' });
+  assert.deepEqual(readTomlConfig('/x', { exists: () => true, stat: () => ({ size: 1 }), readFile: () => { throw Object.assign(new Error('x'), { code: 'EACCES' }); } }), { ok: false, error: 'EACCES' });
+  assert.equal(readTomlConfig('/x', { exists: () => true, stat: () => ({ size: 1 }), readFile: () => Buffer.from('\uFEFF[mcp_servers.b]\ncommand = "c"\n') }).ok, true);
+});
+
+test('I2: Gemini settings.json (user + project): ${VAR} / $VAR are refs, httpUrl is the url, values never returned', (t) => {
+  const fx = fixture(t);
+  fx.write(nodePath.join(fx.home, '.gemini', 'settings.json'), { theme: 'x', mcpServers: { gm: { command: 'gm-mcp', args: ['--x'], env: { GM_TOKEN: 'CANAI2D', GM_REF: '${GM_SECRET}', GM_DOLLAR: '$GM_SECRET', GM_EMPTY: '' } }, gh: { httpUrl: 'https://h.invalid/mcp', headers: { Authorization: 'Bearer CANAI2E' } } } });
+  fx.write(nodePath.join(fx.cwd, '.gemini', 'settings.json'), { mcpServers: { sse: { url: 'https://s.invalid/sse' } } });
+  const r = readHosts({ home: fx.home, cwd: fx.cwd, env: {}, platform: 'linux' });
+  assert.ok(!/CANAI2[DE]/.test(JSON.stringify(r)), 'a value leaked');
+  const g = host(r, 'gemini');
+  assert.equal(g.label, 'Gemini CLI');
+  assert.deepEqual(g.servers.map((s) => [s.name, s.scope, s.url]), [['gm', 'user', null], ['gh', 'user', 'https://h.invalid/mcp'], ['sse', 'project', 'https://s.invalid/sse']]);
+  assert.deepEqual(g.servers[0].env, [{ name: 'GM_TOKEN', state: 'literal' }, { name: 'GM_REF', state: 'ref' }, { name: 'GM_DOLLAR', state: 'ref' }, { name: 'GM_EMPTY', state: 'empty' }]);
+  assert.deepEqual(g.servers[1].headers, [{ name: 'Authorization', state: 'literal' }]);
+  // httpUrl is a Gemini key only: another host's httpUrl is not read as its url (Claude Code behaviour unchanged)
+  fx.write(nodePath.join(fx.cwd, '.mcp.json'), { mcpServers: { cc: { httpUrl: 'https://x.invalid' } } });
+  const r2 = readHosts({ home: fx.home, cwd: fx.cwd, env: {}, platform: 'linux' });
+  assert.equal(host(r2, 'claude-code').servers[0].url, null);
+});
+
+test('I2: Codex and Gemini are absent with no files; present via their app directory alone', (t) => {
+  const fx = fixture(t);
+  const r = readHosts({ home: fx.home, cwd: fx.cwd, env: {}, platform: 'linux' });
+  assert.equal(host(r, 'codex').present, false);
+  assert.equal(host(r, 'gemini').present, false);
+  assert.ok(host(r, 'codex').files.every((f) => f.exists === false));
+  mkdirSync(nodePath.join(fx.home, '.codex')); mkdirSync(nodePath.join(fx.home, '.gemini'));
+  const r2 = readHosts({ home: fx.home, cwd: fx.cwd, env: {}, platform: 'linux' });
+  assert.equal(host(r2, 'codex').present, true);
+  assert.equal(host(r2, 'gemini').present, true);
 });
