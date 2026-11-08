@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "kktestdev-pack",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Team onboarding pack: /kk-onboard inventories what you already have installed or connected, skips what is already there, audits existing skills/MCP/plugins/hooks for redundancy and risk, and asks you item by item (neutral pros and cons) what to install, keep, or remove. /kk-update pulls the latest of everything the pack manages. Installs nothing by itself.",
   "author": {
     "name": "Ink",
