@@ -645,3 +645,75 @@ test('run --diff: a name recorded before the fix and now known to be a code valu
   const d = (await run(['--item', 'demo', '--diff'], opt(fx))).diff[0];
   assert.deepEqual([d.added, d.removed, d.changed], [[], [], []]);
 });
+
+// ------------------------------------------------------------------ 1.2.0 gate fixes (G1 / G2)
+test('G1#1/G2-F1: exportedValueNames is linear on blank lines (200k \\n, 512 KB of \\r\\n) and still finds the names', () => {
+  // the quadratic `\s*` after `[;\n]` took ~4 s on 64K newlines (x4 per doubling): 200k is tens of seconds
+  for (const blank of ['\n'.repeat(200000), '\r\n'.repeat(256 * 1024), ' \t\n'.repeat(100000)]) {
+    const t0 = performance.now();
+    const n = exportedValueNames(`${blank}export { DEMO_A }\n${blank}  export const DEMO_B = 1;`);
+    const ms = performance.now() - t0;
+    assert.ok(ms < 1500, `took ${Math.round(ms)} ms on ${blank.length} chars`);
+    assert.deepEqual([...n].sort(), ['DEMO_A', 'DEMO_B']);
+  }
+  // an indented or CRLF statement start still counts
+  assert.deepEqual([...exportedValueNames('x;\r\n\t  export { DEMO_C,\r\n DEMO_D };\r\n')].sort(), ['DEMO_C', 'DEMO_D']);
+});
+
+test('G1#5b: `export [declare] const enum X` gives X, never the word `enum`', () => {
+  const n = exportedValueNames('export const enum DEMO_CE { A }\nexport declare const enum DEMO_DE { B }\n');
+  assert.deepEqual([...n].sort(), ['DEMO_CE', 'DEMO_DE']);
+});
+
+test('G2-F3: a secret-looking name stays an option even when the package also exports it as a code value', async (t) => {
+  const fx = fixture(t);
+  const dir = installDemo(fx); // README: DEMO_LEVEL and DEMO_TOKEN
+  fx.write(nodePath.join(dir, 'index.d.ts'), 'export declare const DEMO_TOKEN: string;\nexport declare const DEMO_LEVEL: string;\n');
+  const demo = (await run(['--item', 'demo'], opt(fx))).items[0];
+  assert.deepEqual(demo.options.map((o) => [o.name, o.sensitive]), [['DEMO_TOKEN', true]]);
+  assert.deepEqual(demo.notEnv, ['DEMO_LEVEL']);
+  assert.ok(demo.notes.some((n) => /kept 1 secret-looking name\(s\) as options .*DEMO_TOKEN/.test(n)));
+});
+
+test('G2-F4 (all OSes; win32 = junction): a types file reached through a linked folder (lib -> outside) gives no names', async (t) => {
+  const fx = fixture(t);
+  const dir = installDemo(fx, { readme: API_TABLE });
+  fx.write(nodePath.join(fx.root, 'ext', 'o.d.ts'), 'export { DEMO_LEVEL, DEMO_GITIGNORE_TEXT };\n');
+  symlinkSync(nodePath.join(fx.root, 'ext'), nodePath.join(dir, 'lib'), posix ? 'dir' : 'junction');
+  writeFileSync(nodePath.join(dir, 'package.json'), JSON.stringify({ name: 'demo-mcp', version: '1.2.3', bin: { 'demo-mcp': 'cli.js' }, types: 'lib/o.d.ts' }));
+  const demo = (await run(['--item', 'demo'], opt(fx))).items[0];
+  assert.deepEqual(demo.options.map((o) => o.name).sort(), ['DEMO_GITIGNORE_TEXT', 'DEMO_LEVEL']);
+  assert.equal(demo.notEnv, undefined);
+});
+
+test('G2-F5: the package-supplied types file name in the note is redacted, stripped of control characters and capped', async (t) => {
+  const fx = fixture(t);
+  const dir = installDemo(fx, { readme: API_TABLE });
+  // Windows file names cannot hold a control character: there only the redaction and the cap are checked
+  const file = `a${posix ? '\u001b[2J' : ''}-sk-ant-api03-ABCDEFGHIJKLMNOPQRSTUV${'x'.repeat(150)}.d.ts`;
+  fx.write(nodePath.join(dir, file), 'export { DEMO_GITIGNORE_TEXT };\n');
+  writeFileSync(nodePath.join(dir, 'package.json'), JSON.stringify({ name: 'demo-mcp', version: '1.2.3', bin: { 'demo-mcp': 'cli.js' }, types: file }));
+  const note = (await run(['--item', 'demo'], opt(fx))).items[0].notes.find((n) => /exports as code values/.test(n));
+  assert.ok(note, 'the code-value note is there');
+  assert.ok(!note.includes('ABCDEFGHIJKLMNOP'), 'token-like part redacted');
+  assert.ok(!/[\u0000-\u001f]/.test(note), 'no control characters');
+  assert.ok(!note.includes('x'.repeat(130)), 'file name capped');
+});
+
+test('G1#3: --diff --network applies the code-value filter to the @latest README too', async (t) => {
+  const fx = fixture(t);
+  const dir = installDemo(fx, { readme: API_TABLE });
+  await run(['--item', 'demo', '--record'], opt(fx)); // no types file yet: DEMO_LEVEL and DEMO_GITIGNORE_TEXT recorded
+  fx.write(nodePath.join(dir, 'index.d.ts'), "export { DEMO_GITIGNORE_TEXT, DEMO_NEW_TEXT } from './store.js';\n");
+  const latest = { version: '2.0.0', readme: `${API_TABLE}| \`DEMO_NEW_TEXT\` | a constant |\n| \`DEMO_NEW\` | an option |\n` };
+  const d = (await run(['--item', 'demo', '--diff', '--network'], opt(fx, stubs(fx, [], { latest })))).diff[0];
+  assert.deepEqual(d.latest.added, ['DEMO_NEW'], 'a code value in the @latest README is not a new option');
+  assert.deepEqual(d.latest.removed, [], 'a recorded name now known to be a code value is not "removed" from @latest');
+});
+
+test('G1#4: notEnv hides only a removed package option, not a removed plugin option of the same name', () => {
+  const d = diffItem({ options: [{ name: 'DEMO_X', hash: '1' }], pluginOptions: [{ name: 'DEMO_X', hash: 'h' }] },
+    { options: [], notEnv: ['DEMO_X'], pluginOptions: [] });
+  assert.deepEqual(d.removed, []);
+  assert.deepEqual(d.pluginRemoved, ['DEMO_X']);
+});

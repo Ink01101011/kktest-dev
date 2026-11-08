@@ -24,6 +24,18 @@ Every commit on `release/1.2.0` since 1.1.0 (#28-#31). npm package `kktest-dev` 
 - **No named project, port or home path in docs and skills** (c229852, #31). The user-profile and
   meta-skill-self-improve skills and the kkskills-essentials concepts and tool-metrics plan/spec docs use
   generic examples; kk-onboard and tool-metrics test fixtures and an inventory.mjs comment use `/Users/me`. kkskills-personal and kkskills-situational 0.2.1.
+- **Release-gate fixes to #28 and #30** (this release). Reading a types file is linear again: a
+  `.d.ts` made of blank lines (or `\r\n` runs) no longer stalls `options.mjs` for minutes (a statement
+  start is `;` or a newline plus spaces/tabs on that line). `export const enum X` gives `X`. A
+  secret-looking name (`FOO_TOKEN`) stays an option even when the package also exports it as a code
+  value, with a note, so a package cannot hide a credential prompt that way. A types file reached
+  through a linked folder (`lib -> elsewhere`) gives no names. The types file name in the note is
+  redacted, stripped of control characters and capped. `--diff --network` applies the same code-value
+  filter to the `@latest` README, and `notEnv` no longer hides a removed plugin option of the same
+  name. `npm test` fails when a suite is killed by a signal (status `null`) instead of reading it as a
+  pass. kk-update: pass the command to the perl fallback as separate words, never one quoted string
+  (perl runs one string through `sh -c`); on Windows the Bash tool runs Git Bash, which usually has
+  GNU `timeout`.
 - **kktestdev-pack 0.2.2** (this release). #30 and #31 changed the pack after 0.2.1 shipped, so it gets
   a new version for members to pull them.
 
