@@ -20,6 +20,17 @@ minutes: every step is network-bound.
 - Give each command its own timeout (about 120 s; 300 s for `npm i -g` and `go install`). If one
   fails or times out, record the error and **continue with the rest**; report all failures at
   the end.
+- How to set that timeout, per platform. Simplest everywhere: one Bash tool call per command, with
+  the tool's own `timeout` parameter. In a shell loop, wrap each command:
+  - Linux: `timeout 120 <cmd>` (GNU coreutils). Exit 124 = timed out.
+  - macOS: there is no `timeout`. Use `gtimeout` if Homebrew coreutils is installed, otherwise
+    perl (ships with macOS): `perl -e 'alarm shift; exec @ARGV or exit 127' 120 <cmd>`.
+    Exit 142 = timed out, 127 = command not found. Keep `or exit 127`: without it a missing
+    command exits 0 and looks like a success. The alarm kills only that process, not its children.
+  - Windows: `timeout` in cmd and PowerShell is a sleep, not a time limit. Use the Bash tool's
+    `timeout` parameter, one command per call.
+  - Exit 127 on every command means the wrapper itself is missing, not that the updates failed:
+    switch to the fallback and run the list again.
 - Never use `sudo`. On EACCES (or EPERM on Windows) from `npm i -g`, show the error and suggest a
   user-owned Node: a version manager (mise, nvm, nvm-windows, fnm, volta) or
   `npm config set prefix ~/.npm-global` and adding its `bin` to PATH.
