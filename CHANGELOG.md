@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.2.0
+
+Every commit on `release/1.2.0` since 1.1.0 (#28-#31). npm package `kktest-dev` 1.2.0; marketplace
+`kktest-dev` 1.2.0; kktestdev-pack 0.2.2.
+
+- **`/kk-update` timeout fallback per platform** (d70022b, #28). The kk-update SKILL says how to give
+  each command its time limit: the Bash tool's own `timeout` parameter, one command per call, works
+  everywhere. In a shell loop: Linux `timeout 120 <cmd>`; macOS has no `timeout`, so `gtimeout` from
+  Homebrew coreutils or `perl -e 'alarm shift; exec @ARGV or exit 127' 120 <cmd>` (exit 142 = timed
+  out, 127 = not found; without `or exit 127` a missing command exits 0 and looks like a success);
+  Windows `timeout` is a sleep, so use the tool's `timeout` parameter. Exit 127 on every command means
+  the wrapper is missing: switch to the fallback and run the list again. A test pins the text.
+- **kktestdev-pack 0.2.1** (7a72911, #29). Version bump so `claude plugin update` ships the #28 fix.
+- **options.mjs leaves out names a package exports as code values** (44b60f0, #30). A name in a README
+  API table that the package's types entry (`types`/`typings` in `package.json`, else `index.d.ts` or
+  `dist/index.d.ts`) exports as a value (`export { A, B as C }`, `export const|let|var|function|class|enum`;
+  `export type` names do not count) is not offered as an env option. It is listed under `notEnv` with a
+  note naming the file. The file is read as text, never run; a linked file or a path out of the package
+  gives no names. `options --diff` does not report a name recorded earlier and now in `notEnv` as
+  `removed`. `npm test` now also runs the kk-onboard suite (`tools/run-tests.mjs`), as CI does, and runs
+  it even when the first suite fails.
+- **No named project, port or home path in docs and skills** (c229852, #31). The user-profile and
+  meta-skill-self-improve skills and the kkskills-essentials concepts and tool-metrics plan/spec docs use
+  generic examples; kk-onboard and tool-metrics test fixtures and an inventory.mjs comment use `/Users/me`. kkskills-personal and kkskills-situational 0.2.1.
+- **kktestdev-pack 0.2.2** (this release). #30 and #31 changed the pack after 0.2.1 shipped, so it gets
+  a new version for members to pull them.
+
 ## 1.1.0
 
 Every commit on `release/1.1.0` since 1.0.0 (`997c209`), grouped. npm package `kktest-dev` 1.1.0;
