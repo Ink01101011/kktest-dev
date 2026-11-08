@@ -191,11 +191,13 @@ export function diffItem(before, now) {
   // a snapshot taken when nothing could be read is not a baseline (every option would read "added")
   if (before && before.optionsKnown === false) out.noBaseline = true;
   if (now?.optionsKnown === false) out.nowUnknown = true;
+  // a name recorded as an option that is now known to be a code value was never an option: not "removed"
+  const notEnvNow = new Set(asArray(now?.notEnv));
   const cmp = (bList, nList, { changed = true, removedFilter = () => true } = {}) => {
     const b = new Map(optList(bList).map((o) => [o.name, o])); const n = new Map(optList(nList).map((o) => [o.name, o]));
     return {
       added: [...n.keys()].filter((k) => !b.has(k)),
-      removed: [...b.keys()].filter((k) => !n.has(k) && removedFilter(b.get(k))).map((k) => cap(k, OPT_LIMITS.nameChars)),
+      removed: [...b.keys()].filter((k) => !n.has(k) && !notEnvNow.has(k) && removedFilter(b.get(k))).map((k) => cap(k, OPT_LIMITS.nameChars)),
       changed: changed ? [...n.keys()].filter((k) => b.has(k) && b.get(k).hash && n.get(k).hash && b.get(k).hash !== n.get(k).hash) : [],
     };
   };
@@ -358,6 +360,46 @@ function readPackageDocs(dir, visit) {
     walk(docs, 1);
   }
   return res;
+}
+
+/**
+ * value names a types file exports: `export { A, B as C } [from '...']` (C, not B) and
+ * `export [declare] const|let|var|function|class|enum X`. `export type { ... }` and type-only names are not values.
+ * Pure and linear; used to tell a code constant that looks like an env var (FOO_DEFAULT_TEXT in an API table) from one.
+ */
+export function exportedValueNames(text) {
+  const names = new Set();
+  const src = String(text ?? '');
+  for (const m of src.matchAll(/(?:^|[;\n])\s*export\s+\{([^}]{0,20000})\}/g)) {
+    for (const part of m[1].split(',')) {
+      const p = part.trim().replace(/^type\s+/, '');
+      if (!p || part.trim().startsWith('type ')) continue;
+      const as = p.match(/\bas\s+([A-Za-z_$][\w$]*)$/);
+      const id = as ? as[1] : (p.match(/^([A-Za-z_$][\w$]*)$/) ?? [])[1];
+      if (id) names.add(id);
+    }
+  }
+  for (const m of src.matchAll(/(?:^|[;\n])\s*export\s+(?:declare\s+)?(?:const|let|var|function\*?|class|enum|abstract\s+class)\s+([A-Za-z_$][\w$]*)/g)) names.add(m[1]);
+  return names;
+}
+
+/**
+ * the package's own types entry (package.json types/typings, else index.d.ts or dist/index.d.ts), read bounded, as
+ * text only (never run). A link, a path out of the package or a missing file gives no names.
+ */
+function packageExports(dir) {
+  let pkg = {};
+  try { pkg = JSON.parse(readBounded(nodePath.join(dir, 'package.json'), OPT_LIMITS.docBytes)); } catch { /* no package.json: try the defaults */ }
+  const rels = [pkg?.types, pkg?.typings].filter((r) => typeof r === 'string' && r).concat(['index.d.ts', 'dist/index.d.ts']);
+  for (const rel of rels) {
+    const f = nodePath.resolve(dir, rel);
+    if (!isInside(f, dir)) continue;
+    let st;
+    try { st = lstatSync(f); } catch { continue; }
+    if (!st.isFile()) continue;
+    try { return { file: nodePath.relative(dir, f), names: exportedValueNames(readBounded(f, OPT_LIMITS.docBytes)) }; } catch { continue; }
+  }
+  return null;
 }
 
 /** environment for a --help child: an allowlist (PATH, HOME, temp dirs, locale); never a token or key */
@@ -538,6 +580,16 @@ async function discoverPackage(it, ctx, prefix, out) {
 
   if (helpText) addMentions(acc, helpText, prefix, '--help');
   if (acc.capped) out.notes.push(`more than ${OPT_LIMITS.names} option names in the docs; the rest were not collected`);
+  // a name the package exports as a code value (an API table in the README) is not an env var
+  const exp = found ? packageExports(found.real) : null;
+  if (exp) {
+    const notEnv = [...acc.map.keys()].filter((n) => exp.names.has(n));
+    for (const n of notEnv) acc.map.delete(n);
+    if (notEnv.length) {
+      out.notEnv = notEnv.slice(0, OPT_LIMITS.options).map(name);
+      out.notes.push(`left out ${notEnv.length} name(s) the package exports as code values in ${exp.file}, not env vars: ${cap(out.notEnv.join(', '), 240)}`);
+    }
+  }
   out.options = [...acc.map.values()].slice(0, OPT_LIMITS.options).map((e) => ({
     name: name(e.name), sensitive: secretKey(e.name), seenIn: e.seenIn.slice(0, 5),
     contexts: e.contexts.slice(0, OPT_LIMITS.contexts), hash: hashLines(e.contexts), docs: e.seenIn.some((r) => r !== '--help'),
@@ -626,6 +678,7 @@ export function snapshotOf(item) {
     optionsKnown: item.sources.length > 0,
     ...(item.docsOnly ? { docsOnly: true } : {}),
     options: item.options.map((o) => ({ name: o.name, hash: o.hash, ...(o.docs === false ? { docs: false } : {}) })),
+    ...(item.notEnv?.length ? { notEnv: item.notEnv } : {}),
     flagsKnown: !!item.helpRead,
     flags: item.flags.map((f) => f.flag),
     pluginOptions: asArray(item.pluginConfig?.options).map((o) => ({ name: o.name, hash: o.hash ?? null })),
