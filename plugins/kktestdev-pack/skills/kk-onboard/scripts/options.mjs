@@ -193,17 +193,18 @@ export function diffItem(before, now) {
   if (now?.optionsKnown === false) out.nowUnknown = true;
   // a name recorded as an option that is now known to be a code value was never an option: not "removed"
   const notEnvNow = new Set(asArray(now?.notEnv));
-  const cmp = (bList, nList, { changed = true, removedFilter = () => true } = {}) => {
+  const cmp = (bList, nList, { changed = true, removedFilter = () => true, notEnv = new Set() } = {}) => {
     const b = new Map(optList(bList).map((o) => [o.name, o])); const n = new Map(optList(nList).map((o) => [o.name, o]));
     return {
       added: [...n.keys()].filter((k) => !b.has(k)),
-      removed: [...b.keys()].filter((k) => !n.has(k) && !notEnvNow.has(k) && removedFilter(b.get(k))).map((k) => cap(k, OPT_LIMITS.nameChars)),
+      removed: [...b.keys()].filter((k) => !n.has(k) && !notEnv.has(k) && removedFilter(b.get(k))).map((k) => cap(k, OPT_LIMITS.nameChars)),
       changed: changed ? [...n.keys()].filter((k) => b.has(k) && b.get(k).hash && n.get(k).hash && b.get(k).hash !== n.get(k).hash) : [],
     };
   };
   if (!out.noBaseline && !out.nowUnknown) {
     // a README-only view (registry @latest) cannot see options that only --help mentioned, and hashes differ in basis
-    Object.assign(out, now?.docsOnly ? cmp(before?.options, now?.options, { changed: false, removedFilter: (o) => o.docs !== false }) : cmp(before?.options, now?.options));
+    Object.assign(out, now?.docsOnly ? cmp(before?.options, now?.options, { changed: false, removedFilter: (o) => o.docs !== false, notEnv: notEnvNow }) : cmp(before?.options, now?.options, { notEnv: notEnvNow }));
+  // notEnv is about package env names only: a plugin userConfig option of the same name is still reported when removed
   } else Object.assign(out, { added: [], removed: [], changed: [] });
   const p = cmp(before?.pluginOptions, now?.pluginOptions);
   Object.assign(out, { pluginAdded: p.added, pluginRemoved: p.removed, pluginChanged: p.changed });
@@ -365,12 +366,14 @@ function readPackageDocs(dir, visit) {
 /**
  * value names a types file exports: `export { A, B as C } [from '...']` (C, not B) and
  * `export [declare] const|let|var|function|class|enum X`. `export type { ... }` and type-only names are not values.
- * Pure and linear; used to tell a code constant that looks like an env var (FOO_DEFAULT_TEXT in an API table) from one.
+ * Pure and linear: the start of a statement is `^`, `;` or a newline plus spaces/tabs/CR on that line only (`\s*`
+ * there re-scanned every following blank line from each newline: quadratic on a file of blank lines).
+ * `export [declare] const enum X` gives X. Used to tell a code constant that looks like an env var (FOO_DEFAULT_TEXT in an API table) from one.
  */
 export function exportedValueNames(text) {
   const names = new Set();
   const src = String(text ?? '');
-  for (const m of src.matchAll(/(?:^|[;\n])\s*export\s+\{([^}]{0,20000})\}/g)) {
+  for (const m of src.matchAll(/(?:^|[;\n])[ \t\r]*export\s+\{([^}]{0,20000})\}/g)) {
     for (const part of m[1].split(',')) {
       const p = part.trim().replace(/^type\s+/, '');
       if (!p || part.trim().startsWith('type ')) continue;
@@ -379,13 +382,26 @@ export function exportedValueNames(text) {
       if (id) names.add(id);
     }
   }
-  for (const m of src.matchAll(/(?:^|[;\n])\s*export\s+(?:declare\s+)?(?:const|let|var|function\*?|class|enum|abstract\s+class)\s+([A-Za-z_$][\w$]*)/g)) names.add(m[1]);
+  for (const m of src.matchAll(/(?:^|[;\n])[ \t\r]*export\s+(?:declare\s+)?(?:const\s+enum|const|let|var|function\*?|class|enum|abstract\s+class)\s+([A-Za-z_$][\w$]*)/g)) names.add(m[1]);
   return names;
 }
 
 /**
+ * drop from `acc` the names the package exports as code values, except a secret-looking one (FOO_TOKEN): a package
+ * could hide a real credential option that way, and asking once too often is the safe side. Returns both lists.
+ */
+function leaveOutExported(acc, exported) {
+  const hit = [...acc.map.keys()].filter((n) => exported.has(n));
+  const keptSecret = hit.filter((n) => secretKey(n));
+  const notEnv = hit.filter((n) => !secretKey(n));
+  for (const n of notEnv) acc.map.delete(n);
+  return { notEnv, keptSecret };
+}
+
+/**
  * the package's own types entry (package.json types/typings, else index.d.ts or dist/index.d.ts), read bounded, as
- * text only (never run). A link, a path out of the package or a missing file gives no names.
+ * text only (never run). A link (also a linked folder on the way), a path out of the package or a missing file
+ * gives no names.
  */
 function packageExports(dir) {
   let pkg = {};
@@ -397,6 +413,9 @@ function packageExports(dir) {
     let st;
     try { st = lstatSync(f); } catch { continue; }
     if (!st.isFile()) continue;
+    // lstat sees only the last component: a linked folder on the way (lib -> elsewhere) must not lead out either
+    let real; try { real = realpathSync.native(f); } catch { continue; }
+    if (!isInside(real, dir)) continue;
     try { return { file: nodePath.relative(dir, f), names: exportedValueNames(readBounded(f, OPT_LIMITS.docBytes)) }; } catch { continue; }
   }
   return null;
@@ -583,12 +602,16 @@ async function discoverPackage(it, ctx, prefix, out) {
   // a name the package exports as a code value (an API table in the README) is not an env var
   const exp = found ? packageExports(found.real) : null;
   if (exp) {
-    const notEnv = [...acc.map.keys()].filter((n) => exp.names.has(n));
-    for (const n of notEnv) acc.map.delete(n);
+    // kept off the JSON output (not enumerable): the --diff --network @latest pass filters the registry README with it
+    Object.defineProperty(out, 'exportNames', { value: exp.names, enumerable: false });
+    const { notEnv, keptSecret } = leaveOutExported(acc, exp.names);
+    // a package-supplied file name: redacted, control characters replaced, capped
+    const file = cap(redactText(exp.file.split(nodePath.sep).join('/')).text.replace(/[\u0000-\u001f\u007f-\u009f]/g, '?'), 120);
     if (notEnv.length) {
       out.notEnv = notEnv.slice(0, OPT_LIMITS.options).map(name);
-      out.notes.push(`left out ${notEnv.length} name(s) the package exports as code values in ${exp.file}, not env vars: ${cap(out.notEnv.join(', '), 240)}`);
+      out.notes.push(`left out ${notEnv.length} name(s) the package exports as code values in ${file}, not env vars: ${cap(out.notEnv.join(', '), 240)}`);
     }
+    if (keptSecret.length) out.notes.push(`kept ${keptSecret.length} secret-looking name(s) as options although ${file} also exports them as code values: ${cap(keptSecret.map(name).join(', '), 240)}`);
   }
   out.options = [...acc.map.values()].slice(0, OPT_LIMITS.options).map((e) => ({
     name: name(e.name), sensitive: secretKey(e.name), seenIn: e.seenIn.slice(0, 5),
@@ -868,7 +891,9 @@ export async function run(argv = [], opts = {}) {
           if (!latest.ok) { e.latest = { error: 'registry lookup failed' }; continue; }
           const prefix = d.envPrefix;
           const acc = addMentions(newMentions(), latest.readme, prefix, 'registry');
-          const snap = { version: latest.version, optionsKnown: true, docsOnly: true, flagsKnown: false, options: [...acc.map.values()].map((m) => ({ name: name(m.name), hash: hashLines(m.contexts) })) };
+          // the same code-value filter as the local view, with the local copy's exports (the registry types are not read)
+          const { notEnv } = d.exportNames ? leaveOutExported(acc, d.exportNames) : { notEnv: [] };
+          const snap = { version: latest.version, optionsKnown: true, docsOnly: true, flagsKnown: false, options: [...acc.map.values()].map((m) => ({ name: name(m.name), hash: hashLines(m.contexts) })), ...(notEnv.length ? { notEnv: notEnv.map(name) } : {}) };
           const ld = diffItem(st.state.items[d.id], snap);
           e.latest = { against: 'registry @latest README (no --help; changed lines are not compared)', versionNow: latest.version, added: ld.added, removed: ld.removed, ...(ld.noBaseline ? { noBaseline: true } : {}) };
         }

@@ -241,6 +241,9 @@ test('kk-update: per-command timeout has a macOS fallback (no `timeout` there) t
   assert.ok(text.includes("`perl -e 'alarm shift; exec @ARGV or exit 127' 120 <cmd>`"), 'perl alarm fallback, with `or exit 127`');
   assert.match(text, /Windows: `timeout` in cmd and PowerShell is a sleep/);
   assert.match(text, /Exit 127 on every command means the wrapper itself is missing/);
+  // G2-F6: perl `exec` of ONE string goes through sh -c (injection); G1#6: Git Bash on Windows has GNU timeout
+  assert.match(text, /separate words after the number, never as one quoted string/);
+  assert.match(text, /Git Bash, which usually\s+has GNU `timeout`/);
 });
 
 test('#21 hooks: /kk-update re-runs the hook check after its updates (node upgrade moves the hook path)', () => {

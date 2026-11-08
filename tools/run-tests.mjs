@@ -4,7 +4,9 @@
 // python, or the Windows launcher `py -3`) (G3-X8).
 import { spawnSync } from 'node:child_process';
 
-const run = (cmd, args) => spawnSync(cmd, args, { stdio: 'inherit', env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1' } }).status;
+// status is null when the child is killed by a signal (OOM, CI cancel) or never starts (ENOENT): that is a failure,
+// not a 0 that a later passing suite would leave in place (G1#2/G2-F2)
+const run = (cmd, args) => spawnSync(cmd, args, { stdio: 'inherit', env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1' } }).status ?? 1;
 
 function findPython() {
   for (const [cmd, ...pre] of [['python3'], ['python'], ['py', '-3']]) {

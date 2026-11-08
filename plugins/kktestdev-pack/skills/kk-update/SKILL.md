@@ -27,8 +27,11 @@ minutes: every step is network-bound.
     perl (ships with macOS): `perl -e 'alarm shift; exec @ARGV or exit 127' 120 <cmd>`.
     Exit 142 = timed out, 127 = command not found. Keep `or exit 127`: without it a missing
     command exits 0 and looks like a success. The alarm kills only that process, not its children.
+    Pass the command as separate words after the number, never as one quoted string: perl runs a
+    single string with `;`, `|` or `$(...)` in it through `sh -c`.
   - Windows: `timeout` in cmd and PowerShell is a sleep, not a time limit. Use the Bash tool's
-    `timeout` parameter, one command per call.
+    `timeout` parameter, one command per call. (The Bash tool there runs Git Bash, which usually
+    has GNU `timeout`, so `timeout 120 <cmd>` often works too; the parameter works either way.)
   - Exit 127 on every command means the wrapper itself is missing, not that the updates failed:
     switch to the fallback and run the list again.
 - Never use `sudo`. On EACCES (or EPERM on Windows) from `npm i -g`, show the error and suggest a
