@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// `npm test` on every OS: the Node suite, then the infographic Python suite with whichever
-// Python 3 exists (python3, python, or the Windows launcher `py -3`) (G3-X8).
+// `npm test` on every OS: the Node suite, the kktestdev-pack kk-onboard suite (the same two Node
+// steps CI runs), then the infographic Python suite with whichever Python 3 exists (python3,
+// python, or the Windows launcher `py -3`) (G3-X8).
 import { spawnSync } from 'node:child_process';
 
 const run = (cmd, args) => spawnSync(cmd, args, { stdio: 'inherit', env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1' } }).status;
@@ -14,6 +15,9 @@ function findPython() {
 }
 
 let code = run(process.execPath, ['--test', 'tools/test/*.test.mjs']);
+// run it even when the first suite failed (`code ||= run(...)` would skip it), then keep the first failure
+const packCode = run(process.execPath, ['--test', 'plugins/kktestdev-pack/skills/kk-onboard/scripts/*.test.mjs']);
+code ||= packCode;
 const py = findPython();
 if (!py) {
   process.stderr.write('python 3 not found (tried python3, python, py -3): infographic tests not run\n');

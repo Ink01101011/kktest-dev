@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import nodePath from 'node:path';
 import { test } from 'node:test';
 import {
-  OPT_LIMITS, cleanVersion, compareVersions, derivePrefix, diffItem, envMentions, hashLines, helpEnv, helpFlags, locatePackage, npxRoots,
+  OPT_LIMITS, cleanVersion, compareVersions, derivePrefix, diffItem, envMentions, exportedValueNames, hashLines, helpEnv, helpFlags, locatePackage, npxRoots,
   parseArgs, run, sanitizePluginConfig, serverIsItem, stateFile, writeState, projectRootOf
 } from './options.mjs';
 import { run as inventoryRun, runCommand, validatePack } from './inventory.mjs';
@@ -595,4 +595,53 @@ test('run: the old runner names (run / runClaude) are refused, never silently re
   await assert.rejects(run([], { ...stubbed, runClaude: async () => ({ ok: true, stdout: '[]' }) }), /opts\.runClaude was renamed to opts\.execClaude/);
   await assert.rejects(run([], { ...stubbed, run: async () => ({ ok: false }) }), /opts\.run was renamed to opts\.exec/);
   await assert.rejects(inventoryRun([], { home: fx.home, cwd: fx.cwd, env: {}, findBin: () => ({ found: true }), execClaude: async () => ({ ok: true, stdout: '[]' }), runClaude: async () => ({ ok: true, stdout: '[]' }) }), /opts\.runClaude was renamed/);
+});
+
+// ------------------------------------------------------------------ code constants that look like env vars
+const API_TABLE = '| `DEMO_LEVEL` | log level |\n| `store.js` | the store | `DEMO_GITIGNORE_TEXT`, `DEFAULT_BUDGET`, `MemoryStore` |\n';
+
+test('exportedValueNames: export lists (with `as`) and declarations are values; type-only exports are not', () => {
+  const dts = [
+    "export { DEMO_GITIGNORE_TEXT, DEFAULT_BUDGET, inner as DEMO_RENAMED, type DEMO_TYPE_ONLY } from './store.js';",
+    "export type { DEMO_ALSO_TYPE } from './types.js';",
+    'export declare const DEMO_DECLARED: string;',
+    'export function demoFn(): void;',
+    '/** DEMO_IN_COMMENT is read from the environment */',
+  ].join('\n');
+  const n = exportedValueNames(dts);
+  for (const v of ['DEMO_GITIGNORE_TEXT', 'DEFAULT_BUDGET', 'DEMO_RENAMED', 'DEMO_DECLARED', 'demoFn']) assert.ok(n.has(v), v);
+  for (const v of ['inner', 'DEMO_TYPE_ONLY', 'DEMO_ALSO_TYPE', 'DEMO_IN_COMMENT']) assert.ok(!n.has(v), v);
+});
+
+test('run: a prefixed name the package exports as a code value (README API table) is not offered as an env option', async (t) => {
+  const fx = fixture(t);
+  const dir = installDemo(fx, { readme: API_TABLE });
+  writeFileSync(nodePath.join(dir, 'package.json'), JSON.stringify({ name: 'demo-mcp', version: '1.2.3', bin: { 'demo-mcp': 'cli.js' }, types: 'dist/index.d.ts' }));
+  fx.write(nodePath.join(dir, 'dist', 'index.d.ts'), "export { DEMO_GITIGNORE_TEXT, DEFAULT_BUDGET, MemoryStore } from './store.js';\n");
+  const demo = (await run(['--item', 'demo'], opt(fx))).items[0];
+  assert.deepEqual(demo.options.map((o) => o.name), ['DEMO_LEVEL']);
+  assert.deepEqual(demo.notEnv, ['DEMO_GITIGNORE_TEXT']);
+  assert.ok(demo.notes.some((n) => /exports as code values in dist[\\/]index\.d\.ts/.test(n)));
+});
+
+test('run: without a types file, or with a types path out of the package or a linked one, nothing is left out', async (t) => {
+  const fx = fixture(t);
+  const dir = installDemo(fx, { readme: API_TABLE });
+  fx.write(nodePath.join(fx.root, 'outside.d.ts'), 'export { DEMO_LEVEL, DEMO_GITIGNORE_TEXT };\n');
+  writeFileSync(nodePath.join(dir, 'package.json'), JSON.stringify({ name: 'demo-mcp', version: '1.2.3', bin: { 'demo-mcp': 'cli.js' }, types: '../../outside.d.ts' }));
+  assert.deepEqual((await run(['--item', 'demo'], opt(fx))).items[0].options.map((o) => o.name).sort(), ['DEMO_GITIGNORE_TEXT', 'DEMO_LEVEL']);
+  if (posix) {
+    symlinkSync(nodePath.join(fx.root, 'outside.d.ts'), nodePath.join(dir, 'index.d.ts'));
+    writeFileSync(nodePath.join(dir, 'package.json'), JSON.stringify({ name: 'demo-mcp', version: '1.2.3', bin: { 'demo-mcp': 'cli.js' } }));
+    assert.deepEqual((await run(['--item', 'demo'], opt(fx))).items[0].options.map((o) => o.name).sort(), ['DEMO_GITIGNORE_TEXT', 'DEMO_LEVEL']);
+  }
+});
+
+test('run --diff: a name recorded before the fix and now known to be a code value is not reported as removed', async (t) => {
+  const fx = fixture(t);
+  const dir = installDemo(fx, { readme: API_TABLE });
+  await run(['--item', 'demo', '--record'], opt(fx)); // no types file yet: both names recorded as options
+  fx.write(nodePath.join(dir, 'index.d.ts'), "export { DEMO_GITIGNORE_TEXT } from './store.js';\n");
+  const d = (await run(['--item', 'demo', '--diff'], opt(fx))).diff[0];
+  assert.deepEqual([d.added, d.removed, d.changed], [[], [], []]);
 });
