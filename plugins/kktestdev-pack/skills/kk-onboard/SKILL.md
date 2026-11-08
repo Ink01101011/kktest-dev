@@ -82,7 +82,12 @@ marketplaces, MCP servers, skills, hooks), for example to answer "what do I have
 The script prints one JSON document, also when something fails:
 
 - `pack[]`: each pack item with `status`, `foundAs` (where it was found, possibly several places),
-  `missingBins` (language servers etc. not on PATH), and `what` when it is not present.
+  `missingBins` (language servers etc. not on PATH: `bin`, `install`, and a `note` when the binary
+  was found off PATH, e.g. "installed by pnpm in ~/Library/pnpm, which is not on PATH", or only on
+  the Windows side of WSL), `requiresNotes` (only when a required binary is on PATH but its runtime is
+  wrong: today jdtls, which needs Java 25+; `java` is the version it will start on, `note` says where
+  that Java comes from (`$JAVA_HOME`, the wrapper's default, or `java` on PATH) and what to change),
+  and `what` when it is not present.
   `status` is one of:
   - `present`: found and usable,
   - `needs-attention`: found, but not connected / needs authentication (see `foundAs`),
@@ -94,8 +99,20 @@ The script prints one JSON document, also when something fails:
 - `findings[]`: `type` is `redundancy`, `risk`, or `info`, plus `category`, `title`, `evidence`
   (at most 20 lines). `packManaged: true` marks findings about the pack's own items (its
   marketplaces, or an overlap group made only of pack items).
+- `hosts[]`: each AI tool (`id`, `label`, `present`, `mcpServers` count, `configFiles` that exist;
+  a file of another build or place carries its variant in brackets, e.g. `(VS Code Insiders)`,
+  `(VS Code profile)`, `(Windows side (WSL))`; `pluginsWithServers` counts Claude Code plugins that
+  ship MCP servers). Used in Step 5.1.
+- `packageManagers[]`: global folders of pnpm, yarn, bun, Volta and mise found on this machine
+  (`manager`, `packageDirs` count, `binDirs`); empty when none. npm's own global folder is not in
+  this list (options.mjs asks npm for it).
+- `providers[]`: only the model providers that show a signal (`id`, `label`, `signals`: env var
+  **names** in the shell or Claude Code settings, with the state, or a local binary); empty when none.
 - `notes[]`: anything the script could not check or skipped. Report these, do not hide them.
 - `error: true`: the script hit an internal error; show `notes` and continue without it.
+
+On a fresh account every pack item reads `missing`, every count is 0, and `findings`, `notes` and
+`packageManagers` are empty: that is the expected picture, not an error.
 
 If `node` is missing, stop and tell the user Node.js is required: Node 22.22.2+ (or 24+) covers
 every pack component (typescript-language-server needs 22.22.2+; chrome-devtools-mcp, shadcn and
@@ -119,9 +136,14 @@ says who publishes it; mention it when the user asks who is behind an item.
 
 For each selected item with `status: missing` (or `disabled`), build the list of commands:
 
-1. Marketplaces the items need (`pack.json` → `marketplaces`) that are not added yet. Adding a
-   marketplace lets that repository's plugins run code on this machine, so it is listed as its
-   own line in the confirmation, with its GitHub repository.
+1. Marketplaces the items need (`pack.json` → `marketplaces`) that are not added yet (the names in
+   `claude plugin marketplace list --json`, or `installed.marketplaces` of `inventory.mjs --full`;
+   on a fresh account the list is empty). Adding a marketplace lets that repository's plugins run
+   code on this machine, so it is listed as its own line in the confirmation, with its GitHub
+   repository. `claude-plugins-official` is `builtin` (Claude Code adds it itself), so it gets no
+   line, but a fresh account may not list it yet: if `claude plugin install <x>@claude-plugins-official`
+   fails because that marketplace is not found, show the error, ask, run
+   `claude plugin marketplace add anthropics/claude-plugins-official`, and retry the failed installs.
 2. Plugin items: `claude plugin install <plugin> --scope user` (or `claude plugin enable <plugin>`
    when it is `disabled`).
 3. MCP items: the `steps` from `pack.json` exactly (on native Windows: the `windows` steps).
@@ -129,10 +151,16 @@ For each selected item with `status: missing` (or `disabled`), build the list of
    print the command for later. If a step runs `bantamkit-mcp` and `bantamkit-mcp` is not on
    PATH after `npm i -g` (npm's global bin directory is not on PATH), show `npm prefix -g` and
    tell the user to add its `bin` directory (on Windows: the prefix directory itself) to PATH.
-4. `missingBins`: show the install command and ask before running it. A plugin LSP without its
+4. `missingBins`: show the install command and ask before running it. If it has a `note` saying
+   the binary is installed off PATH, offer adding that folder to PATH instead of a second install.
+   A plugin LSP without its
    binary loads but does nothing. For `typescript-lsp`: the language server uses each project's
    own `typescript` (a devDependency, which provides `tsserver`); a project on TypeScript 7
    (native, no `tsserver`) gets no TS intelligence from it.
+5. `requiresNotes`: show each `note` as it is. The binary is installed but will not start (jdtls on Java
+   17/21 fails with `Unresolved requirement ... osgi.ee`). Offer the change the note names (a JDK 25+
+   for `JAVA_HOME`, e.g. through the user's version manager) as a command to show and ask about; never
+   change `JAVA_HOME` or install a JDK without the user's yes.
 
 Ask once for the whole batch ("run these N commands?") with the full list, marketplaces first,
 not item by item. Report each command's result. If a step fails, show the error and continue
@@ -145,6 +173,14 @@ Docs-only items are never installed. Point to the file instead:
   credentials)
 - Figma → `docs/figma.md`
 - bantamkit hooks (opt-in) → `docs/bantamkit-hooks.md`
+
+**If the user asks to turn the bantamkit hooks on** (or off), follow `docs/bantamkit-hooks.md`
+section "Turning them on from Claude Code". The Bash tool has no terminal, so `bantamkit-mcp
+--install-hooks` cannot ask there: it writes nothing and exits 2. In short: run
+`bantamkit-mcp --install-hooks` once without `--yes` (exit 0 with "already installed and match" means
+nothing to do), show the plan in chat, back up `~/.claude/settings.json` (rules above), and only after
+the user's explicit yes run `bantamkit-mcp --install-hooks --yes`. Removal is the same with
+`--remove-hooks` / `bantamkit-mcp --remove-hooks --yes`.
 
 ## Step 5: Configure options (per AI tool and model provider)
 
@@ -161,8 +197,10 @@ Ask two multi-select questions (one AskUserQuestion call):
   those first and say "found on this machine". Each choice decides which config files this step may write.
 - **Model providers** the user works with: Anthropic API, Amazon Bedrock, Google Vertex AI,
   OpenAI / OpenAI-compatible, Azure OpenAI, Google Gemini, OpenRouter, Ollama (local),
-  LM Studio (local), other. The inventory's `providers[]` lists signals (env var names, local
-  binaries); present them as hints only: a variable in the shell does not prove it is used.
+  LM Studio (local), other. The inventory's `providers[]` lists only the providers with a signal
+  (env var names, local binaries); `options.mjs` → `providers[]` lists every provider, with an
+  empty `signals` when there is none. Present signals as hints only: a variable in the shell does
+  not prove it is used, and no signal does not mean the user does not use that provider.
 
 Describe each choice by what it changes in this step, never by which one is better.
 
@@ -181,14 +219,17 @@ about 20 s (each call has a timeout); usually 1-2 s.
 Two more sources are opt-in. Ask before each (one question, each with what happens / gain / cost,
 "no" first, no recommendation):
 - `--run-help`: shows CLI flags and option text from `--help`; runs that package's code with a
-  scrubbed environment (no tokens or keys passed to it, 10 s limit, only for copies found in the
-  npm global directory, the npx cache, or a user-level AI tool config; never for a copy found
-  through a project's config).
+  scrubbed environment (no tokens or keys passed to it, 10 s limit, only for copies found in a
+  trusted place: the npm global directory, the global folders of pnpm, yarn, bun, Volta and mise,
+  the npx cache, or a path in a user-level AI tool config; never for a copy found through a
+  project's config or lying inside the current project).
 - `--network`: asks the npm registry for the latest README of items that are not installed locally
   (gain: their options can be shown; cost: a registry request, and the README is of `@latest`,
   which is what `npx ...@latest` will run).
 
-Per item (`items[]`): `version` and where it was found (`installedAt`, `via`), `candidates` (every
+Per item (`items[]`): `version` of the item's package and where it was found (`installedAt`, `via`:
+`npm global`, `pnpm global`, `npx cache`, ...), `pluginVersion` (the installed plugin's version,
+from `claude plugin list`, for plugin items), `candidates` (every
 copy found, with its version; `untrustedSource: true` = found via a project config or inside the
 current project: it could be planted by a cloned repo, so nothing was read from it; say so to the
 user, and point out a version mismatch), `sources` (which README, docs or `--help` were read),
@@ -199,8 +240,13 @@ only: say "no summary in the short view", never invent one), `flags` (only with 
 there, `ref` = only references such as `${VAR}` or `${env:VAR}`, `empty`), `setButUndocumented[]`,
 `docsIncomplete`, and `notes`. `hosts[]` here (from `options.mjs`) lists each tool's config `files`
 (with `exists: false` for a file that does not exist yet, which is still a valid place to write)
-and only the servers that run a pack item, with env **names** and states. No value is ever in the
-output. If the output was trimmed to stay small, a note says so: use `--item <id>` for detail.
+and only the servers that run a pack item, with env **names** and states. Each file has a `scope`:
+`user`, `project`, `managed` (Claude Code's admin-deployed `managed-mcp.json`) or `plugin` (a file
+inside an installed Claude Code plugin or Gemini CLI extension, named in `plugin`). `variant` names another build or place (`VS Code
+Insiders`, `VSCodium`, `VS Code profile`, `Microsoft Store`, `Windows side (WSL)`), and `side:
+"windows"` marks a Windows-side file read from WSL. `readOnly: true` (every `managed`, `plugin`,
+variant and Windows-side file) means the file was read for facts only: it is **never** a target
+for a write in 5.4. No value is ever in the output. If the output was trimmed to stay small, a note says so: use `--item <id>` for detail.
 
 ### 5.3 Let the user pick which options to set
 
@@ -243,7 +289,9 @@ Run `options.mjs --item <id>` for the full doc lines (add `--run-help` only if t
    preference. A URL, command or path suggested by a doc line is shown verbatim and marked "from
    the package's docs", never used without the user typing or confirming it.
 6. **Where to store it**, only for the AI tools picked in 5.1, each with its gain/cost. The target
-   files are `options.mjs` → `hosts[].files` (a file with `exists: false` is created):
+   files are `options.mjs` → `hosts[].files` (a file with `exists: false` is created; a file with
+   `readOnly: true` is never written: if the option is set only there, say where and that it is
+   changed in that tool, plugin or by the admin):
    - Claude Code, every session: `~/.claude/settings.json` → `env` (every MCP server and hook
      Claude Code starts sees it);
    - Claude Code, this server only: the server's `env` in the file that defines it (`~/.claude.json`
@@ -300,6 +348,23 @@ questions per call). Skip `info` findings in the questions; list them once at th
 Findings with `packManaged: true` are not asked about: list them once, saying they are the pack's
 own choices (the user can still change them later).
 
+### Routing: overlaps the pack keeps on purpose
+
+When listing a `packManaged` overlap, or when the user asks which of two pack tools to use, give
+the team default (the same table is in the pack README):
+- **Browser**: `playwright` (core) for navigate / click / fill / screenshot / E2E; `chrome-devtools`
+  (frontend) only for perf traces, Lighthouse and network detail; Claude in Chrome only when the
+  task needs the user's real logged-in browser.
+- **Planning**: superpowers (`writing-plans` / `executing-plans`) for a plan that fits one
+  session; bantamkit shiftwork (`shiftwork_plan`, `clock_in` / `clock_out`) for 2 or more units
+  that fan out agents. Nothing is uninstalled.
+- **Code review**: the built-in `/code-review` for a diff; superpowers' `requesting-code-review`
+  only inside the superpowers TDD / subagent flow (so it is not counted in `overlap:code-review`).
+- **Next.js docs**: `next-devtools` while a Next.js dev server is running, otherwise `context7`.
+- **Code navigation**: the LSP plugins and the built-in LSP tool. The pack dropped `serena` in
+  1.1.0; a `serena` install shows up as `overlap:code-nav` without `packManaged`, so ask about it
+  like any other overlap (its plugin and the MCP server it starts are listed as two entries).
+
 For every question, give the facts from `evidence` and options shaped like these:
 
 | Finding | Options to offer (each with what happens / gain / cost) |
@@ -311,6 +376,7 @@ For every question, give the facts from `evidence` and options shaped like these
 | `inline-secret` | Leave as is · Move the value into an environment variable · Remove the server |
 | `local-path-mcp` / `local-path-hook` | Leave as is · Replace with the published package (when one exists) · Remove |
 | `hook-every-tool` | Leave as is · Add a matcher so it only runs for some tools · Remove the hook |
+| `node-version-path` | Leave as is · Re-point it at the node in use now (bantamkit hooks: the `--install-hooks` flow in Step 4, which rewrites the path; an MCP server: re-register it with the command name instead of the absolute path, or with the current path) · Remove |
 | `mcp-unhealthy` | Leave as is · Authenticate now (`/mcp`) · Disable here (`/mcp` → disable) · Remove |
 | `third-party-marketplace` / `skill-with-scripts` | Leave as is · Review the source first · Remove |
 | `broad-permission` | Leave as is · Narrow the rule (e.g. `Bash(npm test:*)`) · Remove the rule |
@@ -336,6 +402,10 @@ Neutral facts to state when they apply:
   at claude.ai. Removing them locally does not stick, because the next sync brings them back.
   Say this and offer `/mcp` → disable (per project), or changing it at claude.ai.
 - Local-path hooks or servers work only on the machine where that path exists.
+- `node-version-path`: an absolute path into one node version of mise, nvm, fnm, asdf or Volta
+  stops working when an upgrade removes that version (`gone`), and keeps running the old copy of
+  the package while it is still installed (`not the node running now`). A path through an alias
+  folder such as mise's `latest` is not reported, because the manager moves the alias.
 - Code from a third-party marketplace, a skill's scripts, or an `npx`/`uvx` server runs with your
   user's permissions; `npx`/`uvx` servers without a pinned version fetch the newest release on
   each start.

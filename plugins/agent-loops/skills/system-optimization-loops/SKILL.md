@@ -7,8 +7,8 @@ description: "Use this skill whenever you're tuning a reusable system artifact �
   Workflow Optimization. Do NOT use for improving a single piece of content (see quality-loops) — the
   distinguishing feature here is that the thing being optimized is reused across many future runs, and
   the metric must be measured on held-out cases, not the same cases used to tune it."
-version: "0.1.1"
-updated: "2026-07-02"
+version: "0.1.2"
+updated: "2026-11-08"
 metadata:
   short-description: "Use when tuning a reusable prompt, workflow or pipeline against a held-out metric (success rate, latency, cost), not when improving a single piece of content."
 ---
@@ -23,10 +23,10 @@ critical discipline this category adds beyond `quality-loops` is **held-out eval
 against the same cases you tune on overfits (the prompt learns the eval set, not the task), so every
 pattern here evaluates on a validation set distinct from whatever was used to propose each change.
 
-**Prompt Optimization has a planned turnkey implementation: `prompt-evolve`** (see
-`docs/proposals/PROMPT-EVOLVE_SPEC.md`). Read this skill for the pattern shape and brake wiring; use
-`prompt-evolve` for a ready-made held-out-eval harness once it ships, rather than hand-rolling the eval
-loop from scratch each time.
+**Prompt Optimization has a turnkey implementation: the `prompt-evolve` plugin** (see
+`docs/prompt-evolve/SPEC.md`). Read this skill for the pattern shape and brake wiring; use
+`prompt-evolve` as the ready-made held-out-eval harness rather than hand-rolling the eval loop from
+scratch each time.
 
 ## When to Use
 
@@ -137,6 +137,7 @@ If the `loop-ledger` tools (`loop_start`, `loop_tick`, `loop_status`) are not av
 
 ## Changelog
 
+- 0.1.2 (2026-11-08) — docs: prompt-evolve has shipped; point to docs/prompt-evolve/SPEC.md (#25).
 - 0.1.1 (2026-07-02) — fix: documented `exit_mode: "dry"`'s direction-blindness. Live-verified against
   `loop-ledger` that `dry` mode's convergence tracking (`improved = progress > best_progress`) is
   hardcoded to "higher is better" and ignores `exit.direction` — combining `dry` with a

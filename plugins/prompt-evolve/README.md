@@ -54,7 +54,7 @@ Requires only `python3` (no pip installs, no MCP server for this plugin).
 export PEVOLVE_DIR="$HOME/.claude/projects/<your-project>/prompt-evolve"
 ```
 
-Data model, per `docs/proposals/PROMPT-EVOLVE_SPEC.md` section 4:
+Data model (see [docs/prompt-evolve/SPEC.md](../../docs/prompt-evolve/SPEC.md)):
 
 ```
 <dir>/
@@ -124,7 +124,7 @@ last attempt.
 
 ## What's narrowed vs. the spec
 
-`docs/proposals/PROMPT-EVOLVE_SPEC.md` describes reusing `critique-gate` as the default scorer and
+The pre-release proposal (`docs/proposals/PROMPT-EVOLVE_SPEC.md`, historical) describes reusing `critique-gate` as the default scorer and
 `loop-ledger`'s `gate.mjs` machinery directly inside this plugin. In this implementation:
 
 - The CLI itself **never calls a model** — it has no MCP client and no network access. Interactive
@@ -139,5 +139,6 @@ last attempt.
 - The `schema` scorer's `rubric` encoding (a flat JSON array of required key names) is this
   implementation's own convention, not a JSON-Schema document.
 
-See `../../docs/proposals/PROMPT-EVOLVE_SPEC.md` for the full spec and its place in the
-[self-improvement chain](../../docs/proposals/SELF-IMPROVEMENT-CHAIN_SPEC.md).
+Docs: [concepts](../../docs/prompt-evolve/CONCEPTS.md), [specification](../../docs/prompt-evolve/SPEC.md).
+The pre-release proposal ([PROMPT-EVOLVE_SPEC.md](../../docs/proposals/PROMPT-EVOLVE_SPEC.md)) and the
+[self-improvement chain](../../docs/proposals/SELF-IMPROVEMENT-CHAIN_SPEC.md) note are historical.

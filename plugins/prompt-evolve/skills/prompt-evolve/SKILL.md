@@ -112,7 +112,9 @@ lessons once a case fails repeatedly across evolve rounds.
 - `run` is safe-by-default: it refuses to overwrite an existing `generations/scores.jsonl` unless
   `--force` (which starts a clean v1 evolution). It never touches a history the interactive path built.
 - Everything is plain files under `--dir` — diffable and revertible under git like any other artifact.
-- See `../../../../docs/proposals/PROMPT-EVOLVE_SPEC.md` for the formal spec (this implementation
+- See https://github.com/Ink01101011/kktest-dev/blob/master/docs/prompt-evolve/SPEC.md (in the repo:
+  `docs/prompt-evolve/SPEC.md`; it is not inside the installed plugin) for the formal spec (the pre-release proposal in
+  `docs/proposals/` is historical; this implementation
   narrows a few points — the CLI never calls a model, and the offline `run` mode and `schema` scorer's
   rubric encoding are both intentionally narrow; see the plugin README for exactly what changed).
 

@@ -3,14 +3,43 @@
 The pack installs the bantamkit **MCP server** (memory tools you or Claude call explicitly).
 The **hooks** are the automatic part, and you turn them on yourself:
 
+In your own terminal:
+
 ```sh
 bantamkit-mcp --install-hooks     # shows the plan, asks, backs up ~/.claude/settings.json
 bantamkit-mcp --remove-hooks      # takes them out again
 ```
 
+### Turning them on from Claude Code
+
+Claude runs commands through its Bash tool, which has **no terminal**. There `--install-hooks` cannot
+ask, so it writes nothing, prints no plan and exits 2 (`bantamkit-mcp --help` has no dry-run flag).
+`--yes` answers the question in advance. So the model-run form is:
+
+1. Run `bantamkit-mcp --install-hooks` without `--yes`. Exit 0 with "already installed and match"
+   means the hooks are on and point at this install: stop here. Exit 2 means it needs consent.
+2. Show the plan in chat: it adds bantamkit's hook entries (the events in the table below) to
+   `~/.claude/settings.json`, each running this `bantamkit-mcp` by its absolute path with `--hook`;
+   entries of other tools stay; bantamkit makes a dated backup of the file first.
+3. Only after the user says yes to that plan in chat: `bantamkit-mcp --install-hooks --yes`, and
+   report what it prints (`installed bantamkit hooks into`, `command:`, `backup:`). Restart Claude
+   Code or run `/hooks`.
+
+Removing works the same way: `bantamkit-mcp --remove-hooks` (exit 0 "no bantamkit hooks are
+installed" = nothing to do), show what goes, then `bantamkit-mcp --remove-hooks --yes` after a yes.
+Never add `--yes` before the user has approved the plan in chat.
+
 `--install-hooks` registers the global `bantamkit-mcp` you installed during onboarding, so
 `/kk-update` (which runs `npm i -g bantamkit-mcp@latest`) updates the hooks too. Running it twice
 changes nothing (bantamkit's own claim; this pack did not re-test it).
+
+**Node from a version manager (mise, nvm, fnm, asdf, Volta):** the hook command is an absolute path
+into one node version, e.g. `~/.local/share/mise/installs/node/26.13.0/bin/bantamkit-mcp`. After a
+node upgrade that version may be removed (the hooks then fail) or left behind (they run the old
+copy). `/kk-onboard`'s inventory reports this as `node-version-path`. Fix: `npm i -g
+bantamkit-mcp@latest` under the new node, then the flow above again: the hooks no longer read
+"already installed and match", so step 1 exits 2 and the plan shows the new command. `/kk-update`
+runs this check after its updates.
 
 If your shell says `bantamkit-mcp: command not found`:
 - after `npm i -g`, npm's global bin directory is not on PATH: run `npm prefix -g` and add its

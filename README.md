@@ -1,13 +1,13 @@
 # kktest-dev
 
-A Claude Code / Cowork **plugin marketplace** by Ink. Developer-grade automation, starting with
-memory hygiene.
+A Claude Code / Cowork **plugin marketplace** by Ink (13 plugins), and an npm package (`kktest-dev`)
+that brings the portable skills and MCP servers to other AI tools.
 
 ## Plugins
 
 | Plugin | Description |
 |---|---|
-| [memory-keeper](./plugins/memory-keeper) | Keep file-based agent memory lean and durable — compact the index, archive done/stale memories to cold storage, lint against a byte budget. Ships a skill, slash commands, a zero-dependency MCP server, and a stdlib CLI. |
+| [memory-keeper](./plugins/memory-keeper) | Keep file-based agent memory lean and durable — compact the index, archive done/stale memories to cold storage, lint against a byte budget. Ships a skill, slash commands, a zero-dependency MCP server, and a stdlib CLI. Also available in [bantamkit](#memory-keeper-and-reflexion-in-bantamkit). |
 | [focus-notify](./plugins/focus-notify) | Focus-aware desktop notifications for Claude Code on macOS, Linux & Windows — notify only when your terminal is *not* the frontmost app. Three kinds (finished, approve, question), each with its own sound, plus click-to-focus. |
 | [kkskills-essentials](./plugins/kkskills-essentials) | 4 generic, **self-improving** everyday working skills — additive-changes & no-duplicate-docs feedback discipline, proactive task reminders, and a Conventional Commits reference. Skills-only. |
 | [kkskills-situational](./plugins/kkskills-situational) | 10 generic working skills that are correct but not everyday — additive-first migrations, verify-with-real-data, clean architecture, secret hygiene, concurrency, MCP authoring, timezone & local-LLM selection, plan decomposition & orchestration, plus the meta-skill that folds new learnings back in. Split out of essentials so they can be toggled as a unit. Skills-only. |
@@ -15,15 +15,24 @@ memory hygiene.
 | [kktestdev-pack](./plugins/kktestdev-pack) | Team onboarding: `/kk-onboard` inventories what you already have, skips it, installs the missing pack items you pick, and audits existing skills/MCP/plugins/hooks for redundancy and risk with neutral, ask-first choices. `/kk-update` pulls the latest of everything. Installs nothing by itself. |
 | [infographic-diagram](./plugins/infographic-diagram) | Presentation-ready architecture, layer-stack and tech-stack diagrams (SVG + 2x PNG) from a JSON spec, in three looks, with a layout lint pass. Thai text supported. Skill + stdlib Python script. |
 | [loop-ledger](./plugins/loop-ledger) | A guardrail for agent loops — a deterministic state machine (budget + stall-hash + exit predicate) that decides should-continue per iteration, plus an opt-in Stop hook that enforces it so the agent can neither quit early nor spin forever. Zero-dependency MCP server. |
-| [reflexion](./plugins/reflexion) | Self-improving agent memory built on memory-keeper — recall matching lessons before a task, reflect a new lesson after it, browse the error/success library, and compress recurring lessons into higher-level patterns. |
+| [reflexion](./plugins/reflexion) | Self-improving agent memory built on memory-keeper — recall matching lessons before a task, reflect a new lesson after it, browse the error/success library, and compress recurring lessons into higher-level patterns. Also available in [bantamkit](#memory-keeper-and-reflexion-in-bantamkit). |
 | [critique-gate](./plugins/critique-gate) | A quality brake for agent output — generate, critic scores against a rubric, rewrite, re-score, wired to loop-ledger's retry-count backstop. Four modes: score-retry, multi-critic, adversarial, judge-ensemble. Skills-only, no new server. |
 | [prompt-evolve](./plugins/prompt-evolve) | Evolve a prompt against a test set — run it, score every output, rewrite the prompt from its failures, repeat. Deterministic scorers (exact-match/regex/schema) plus a fully offline verification loop; stdlib CLI + skill, no model calls of its own. |
 | [agent-loops](./plugins/agent-loops) | Playbook for the 5 categories of agent loop design patterns (Quality, Memory, Planning, Exploration, System Optimization) — when to use each, its minimal shape, and the exact `loop-ledger` brake to wire. Plus a `loop-selector` router skill. Skills-only; pairs with `loop-ledger` for enforcement. |
 | [tool-metrics](./plugins/tool-metrics) | Count Claude Code tool usage across every session — built-in tools, MCP tools grouped by server, skill invocations and subagent spawns. Merges session transcripts with a durable `PostToolUse` event log; `/tool-stats` prints a terminal table, `/tool-stats-dashboard` publishes an HTML dashboard. Stdlib-only, no dependencies. |
 
-Together with `loop-ledger` and `memory-keeper`, these plugins complete the "self-improvement chain" —
-see [docs/proposals/SELF-IMPROVEMENT-CHAIN_SPEC.md](./docs/proposals/SELF-IMPROVEMENT-CHAIN_SPEC.md) for
-how they wire together (no new plugin needed — it's a composition of the ones above).
+Together with `loop-ledger` and `memory-keeper`, these plugins make up the "self-improvement chain".
+The design note is [docs/proposals/SELF-IMPROVEMENT-CHAIN_SPEC.md](./docs/proposals/SELF-IMPROVEMENT-CHAIN_SPEC.md)
+(historical: written before the plugins shipped; the per-plugin docs below describe what shipped).
+
+### memory-keeper and reflexion in bantamkit
+
+memory-keeper and reflexion were folded into [bantamkit](https://github.com/Ink01101011/bantamkit)
+(npm `bantamkit-mcp`) for publishing. Its MCP tools `memory_recall` (with `outcome: error|success`),
+`memory_save` and `memory_compact`, and its `bantamkit-memory` CLI (`status`, `lint`, `compact`,
+`archive`, `restore`, `list`, `candidates`, `merge`), cover what the two plugins do. New setups get
+bantamkit from the team pack (`/kk-onboard`, core profile). Both plugins stay in this marketplace
+and in the npm package, and still work.
 
 ## Install
 
@@ -42,6 +51,10 @@ claude plugin install memory-keeper@kktest-dev
 ```
 
 Update later with `/plugin marketplace update kktest-dev`.
+
+For a team machine, install `kktestdev-pack` and run `/kk-onboard`: it installs the team pack
+(this marketplace's plugins plus the third-party items it lists) and asks before every change. See
+[plugins/kktestdev-pack](./plugins/kktestdev-pack/README.md).
 
 ## Use with other AI tools
 
@@ -64,10 +77,11 @@ npx kktest-dev export --target claude-ai             # one zip per skill for upl
 | Cursor | `.agents/skills` | `mcp.json` | `install --target cursor` |
 | Claude Desktop | upload the claude.ai zips | `claude_desktop_config.json` | `install --target claude-desktop` |
 | claude.ai | zip upload | remote only | `export --target claude-ai` |
-| ChatGPT (web) | zip upload | remote only | `export --target chatgpt` |
-| Windsurf / Devin | unverified | unverified | `export --target windsurf` (paste by hand) |
+| ChatGPT (web) | zip upload (custom GPTs are being retired) | remote only | `export --target chatgpt` |
+| Windsurf / Devin | `.agents/skills` | `mcp_config.json` (env references unverified) | `install --target agents`, `export --target windsurf` (paste by hand) |
 
 Details, manual steps and the list of unverified facts: [docs/providers.md](./docs/providers.md).
+Windows notes: [docs/windows.md](./docs/windows.md).
 
 ## Local development / testing
 
@@ -108,6 +122,26 @@ Per-plugin guides live under [`docs/`](./docs), one folder per plugin.
 
 - [Concepts, usage & installation](./docs/loop-ledger/CONCEPTS.md)
 - [Specification](./docs/loop-ledger/SPEC.md)
+
+**Other plugins**: concepts and specification, one folder each:
+[agent-loops](./docs/agent-loops/CONCEPTS.md),
+[critique-gate](./docs/critique-gate/CONCEPTS.md),
+[prompt-evolve](./docs/prompt-evolve/CONCEPTS.md),
+[reflexion](./docs/reflexion/CONCEPTS.md),
+[infographic-diagram](./docs/infographic-diagram/CONCEPTS.md),
+[kkskills-situational](./docs/kkskills-situational/CONCEPTS.md),
+[kktestdev-pack](./docs/kktestdev-pack/CONCEPTS.md),
+[tool-metrics](./docs/tool-metrics/CONCEPTS.md).
+
+**Cross-cutting**
+
+- [Using the skills and MCP servers in other AI tools](./docs/providers.md)
+- [Windows: what CI covers and what to check by hand](./docs/windows.md)
+- [kk-onboard on a fresh account](./docs/kk-onboard-e2e.md)
+- [Adding a plugin to this marketplace](./ADD_PLUGIN.md)
+- [Changelog](./CHANGELOG.md)
+- Historical design notes (written before the plugins shipped): [docs/proposals](./docs/proposals),
+  [docs/superpowers](./docs/superpowers)
 
 ## License
 

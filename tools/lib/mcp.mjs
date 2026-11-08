@@ -1,19 +1,15 @@
 // MCP config emitters, one per tool, each in that tool's documented syntax (docs/providers.md).
 // Env values that are references (secrets, user settings) are emitted as references, never values.
 import { RefusedError } from './catalog.mjs';
+import { TARGETS } from './providers.mjs';
 
 const PLACEHOLDER = (name) => `<set ${name} here>`;
 
-// How each target spells "read this from the environment".
-const REF_SYNTAX = {
-  cursor: (n) => `\${env:${n}}`, // cursor.com/docs/mcp
-  vscode: (n) => `\${env:${n}}`, // code.visualstudio.com/docs/agents/reference/mcp-configuration
-  gemini: (n) => `\${${n}}`, // geminicli.com/docs/tools/mcp-server ($VAR / ${VAR})
-  'claude-desktop': null, // no reference support documented
-  windsurf: null, // unverified
-};
+// How each target spells "read this from the environment" (null: no syntax, write a placeholder), and the JSON
+// key its servers go under. Only targets with a configKey have a JSON emitter. Both come from providers.mjs.
+const REF_SYNTAX = Object.fromEntries(TARGETS.filter((t) => t.configKey).map((t) => [t.id, t.envRef ?? null]));
 
-export const CONFIG_KEY = { cursor: 'mcpServers', vscode: 'servers', gemini: 'mcpServers', 'claude-desktop': 'mcpServers', windsurf: 'mcpServers' };
+export const CONFIG_KEY = Object.fromEntries(TARGETS.filter((t) => t.configKey).map((t) => [t.id, t.configKey]));
 
 function value(v, target, pathFor, notes, serverName) {
   if (v.kind === 'literal') return v.value;

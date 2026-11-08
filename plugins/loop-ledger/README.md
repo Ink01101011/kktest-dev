@@ -7,6 +7,21 @@ An opt-in **Stop hook** enforces the answer so the agent can neither quit early 
 Zero-dependency: the MCP server speaks the stdio JSON-RPC protocol by hand, so it runs straight from a
 clone with no `npm install`. Requires Node.js.
 
+## Install
+
+Inside Claude Code (2.1.275+):
+
+```
+/plugin install loop-ledger --marketplace Ink01101011/kktest-dev
+```
+
+or from a shell:
+
+```sh
+claude plugin marketplace add Ink01101011/kktest-dev
+claude plugin install loop-ledger@kktest-dev
+```
+
 ## Why
 
 Self-paced agent loops fail in two directions: they **quit early** (declare done before they are) or

@@ -1,7 +1,7 @@
 {
   "name": "kktestdev-pack",
   "policy": "Never pin versions: plugins follow their marketplace, npm packages use @latest. /kk-update refreshes everything.",
-  "keys": "Read by inventory.mjs: items[].id/profile/kind/detect/requires/what, overlapGroups. Read by the skills only: marketplaces, items[].plugin/steps/windows/scope/doc/publisher. detect keys: plugins (id prefix), mcpName (whole-token match at start or end of the server name), mcpNameExact, mcpUrl (substring), mcpCommand (binary name), mcpArgs (package or path segment), skills (exact name).",
+  "keys": "Read by inventory.mjs: items[].id/profile/kind/detect/requires/what, overlapGroups. requires[].java: N = the bin needs Java N+ to start; inventory reports (requiresNotes) when the Java it will use ($JAVA_HOME, a wrapper's default, or java on PATH) is older. Read by the skills only: marketplaces, items[].plugin/steps/windows/scope/doc/publisher. detect keys: plugins (id prefix), mcpName (whole-token match at start or end of the server name), mcpNameExact, mcpUrl (substring), mcpCommand (binary name), mcpArgs (package or path segment), skills (exact name).",
   "windowsNote": "On native Windows, npx and npm-installed bins are .cmd shims: stdio MCP servers must be registered through cmd /c. Each mcp item has a `windows` variant of its steps.",
   "optionsNote": "items[].options holds identity hints only (npm package, binary, env-var prefix) so options.mjs can find the INSTALLED version's own --help and docs; the option list itself is never stored here.",
   "marketplaces": {
@@ -27,7 +27,7 @@
       "id": "context7", "profile": "core", "kind": "plugin",
       "plugin": "context7@claude-plugins-official", "publisher": "Upstash; queries go to the hosted service mcp.context7.com",
       "detect": { "plugins": ["context7@"], "mcpUrl": ["context7.com"], "mcpArgs": ["@upstash/context7-mcp"] },
-      "what": "Current library documentation lookup (Next.js, React, NestJS, Spring, ...) instead of the model's memory."
+      "what": "Current library documentation lookup (Next.js, React, NestJS, Spring, ...) instead of the model's memory. For Next.js docs while a Next.js dev server is running, next-devtools answers instead."
     },
     {
       "id": "typescript-lsp", "profile": "core", "kind": "plugin",
@@ -56,7 +56,7 @@
       "id": "jdtls-lsp", "profile": "core", "kind": "plugin",
       "plugin": "jdtls-lsp@claude-plugins-official",
       "detect": { "plugins": ["jdtls-lsp@"] },
-      "requires": [{ "bin": "jdtls", "install": "macOS/Linuxbrew: brew install jdtls. Otherwise download a milestone build from https://github.com/eclipse-jdtls/eclipse.jdt.ls, unpack it, and put its bin/ (jdtls, jdtls.bat; needs Java 25+ and Python 3) on PATH" }],
+      "requires": [{ "bin": "jdtls", "install": "macOS/Linuxbrew: brew install jdtls. Otherwise download a milestone build from https://github.com/eclipse-jdtls/eclipse.jdt.ls, unpack it, and put its bin/ (jdtls, jdtls.bat; needs Java 25+ and Python 3) on PATH", "java": 25 }],
       "what": "Java / Spring Boot code intelligence. jdtls 1.63+ needs Java 25+ to run (its bundles require JavaSE 25; on 17 or 21 it fails with 'Unresolved requirement ... osgi.ee'). The brew wrapper uses $JAVA_HOME when it is set (mise, sdkman, asdf set it), so that JDK must be 25+, not only the openjdk brew installs as a dependency."
     },
     {
@@ -81,16 +81,16 @@
       "publisher": "Microsoft",
       "detect": { "plugins": ["playwright@"], "mcpName": ["playwright"], "mcpArgs": ["@playwright/mcp"] },
       "options": { "package": "@playwright/mcp", "envPrefix": "PLAYWRIGHT_MCP_" },
-      "what": "Browser automation and E2E checks (cross-browser, headless)."
+      "what": "Browser automation and E2E checks (cross-browser, headless). The default browser tool; chrome-devtools (frontend) adds perf traces and Lighthouse."
     },
     {
-      "id": "chrome-devtools", "profile": "core", "kind": "mcp",
+      "id": "chrome-devtools", "profile": "frontend", "kind": "mcp",
       "steps": ["claude mcp add --scope user chrome-devtools -- npx -y chrome-devtools-mcp@latest"],
       "windows": ["claude mcp add --scope user chrome-devtools -- cmd /c npx -y chrome-devtools-mcp@latest"],
       "publisher": "Google (ChromeDevTools)",
       "detect": { "plugins": ["chrome-devtools-mcp@"], "mcpName": ["chrome-devtools"], "mcpArgs": ["chrome-devtools-mcp"] },
       "options": { "package": "chrome-devtools-mcp", "envPrefix": "CHROME_DEVTOOLS_MCP_" },
-      "what": "Chrome performance traces, Lighthouse, network/console debugging."
+      "what": "Chrome performance traces, Lighthouse, network/console debugging. In frontend (not core) since 1.1.0: playwright covers everyday browser checks."
     },
     {
       "id": "impeccable", "profile": "frontend", "kind": "plugin",
@@ -105,7 +105,7 @@
       "publisher": "Vercel",
       "detect": { "mcpName": ["next-devtools"], "mcpArgs": ["next-devtools-mcp"] },
       "options": { "package": "next-devtools-mcp", "envPrefix": "NEXT_DEVTOOLS_MCP_" },
-      "what": "Talks to a running Next.js 16+ dev server: routes, build/runtime errors, docs."
+      "what": "Talks to a running Next.js 16+ dev server: routes, build/runtime errors, docs. Next.js docs come from here while a dev server is running, otherwise from context7."
     },
     {
       "id": "shadcn", "profile": "frontend", "kind": "mcp", "scope": "project",
@@ -129,12 +129,6 @@
       "what": "Query Prometheus/Loki, dashboards, alerts (needs a Grafana service-account token)."
     },
     {
-      "id": "serena", "profile": "investigate", "kind": "plugin",
-      "plugin": "serena@claude-plugins-official", "publisher": "Oraios (community-managed entry in the official catalog)",
-      "detect": { "plugins": ["serena@"], "mcpName": ["serena"] },
-      "what": "Semantic code navigation for large codebases (symbol-level find/refactor)."
-    },
-    {
       "id": "jira-confluence", "profile": "docs", "kind": "docs", "doc": "docs/jira-confluence.md", "publisher": "Server/DC: sooperset/mcp-atlassian (community, PyPI via uvx); Cloud: Atlassian",
       "detect": { "mcpUrl": ["mcp.atlassian.com"], "mcpName": ["atlassian", "mcp-atlassian", "jira", "confluence"], "mcpArgs": ["mcp-atlassian"] },
       "what": "Not installed by the pack: each person connects with their own credentials (LDAP)."
@@ -150,13 +144,13 @@
       "id": "browser",
       "label": "Browser automation",
       "match": { "mcpArgs": ["@playwright/mcp", "chrome-devtools-mcp", "puppeteer", "@modelcontextprotocol/server-puppeteer"], "mcpName": ["playwright", "chrome-devtools", "puppeteer"], "mcpNameExact": ["browser"], "skills": ["browser-automation", "claude-in-chrome"], "plugins": ["playwright@", "chrome-devtools-mcp@"] },
-      "note": "Playwright: scripted, cross-browser, E2E. chrome-devtools: perf traces, Lighthouse, live debugging. Claude in Chrome (built into Claude Code; this scan cannot see it): drives your real logged-in browser. More of these means more tool descriptions loaded in every session."
+      "note": "Team routing: playwright (core) is the default. chrome-devtools (frontend) only for perf traces, Lighthouse, network detail. Claude in Chrome (built in; this scan cannot see it) only for your real logged-in browser. Each one loads its tool descriptions in every session."
     },
     {
       "id": "code-review",
       "label": "Code review",
-      "match": { "plugins": ["pr-review-toolkit@", "code-review@", "coderabbit@", "greptile@", "qodo@"], "skills": ["code-review", "requesting-code-review"] },
-      "note": "Claude Code ships /code-review. superpowers has requesting-code-review. Extra review plugins add different reviewers (external services or specialised agents), at the cost of more skills/agents in context."
+      "match": { "plugins": ["pr-review-toolkit@", "code-review@", "coderabbit@", "greptile@", "qodo@"], "skills": ["code-review"] },
+      "note": "Team routing: built-in /code-review is the default for a diff; superpowers' review skills run only inside its own flow and are not counted here. Extra review plugins add other reviewers (external services or agents), at the cost of more skills/agents in context."
     },
     {
       "id": "commit",
@@ -168,7 +162,7 @@
       "id": "planning",
       "label": "Planning / orchestration",
       "match": { "skills": ["writing-plans", "executing-plans", "plan-decompose-orchestrate", "subagent-driven-development"], "plugins": ["feature-dev@"], "mcpName": ["bantamkit"] },
-      "note": "Two planning skill sets can both trigger on the same request and give different procedures."
+      "note": "Team routing: a plan that fits one session uses superpowers (writing-plans / executing-plans); 2+ units that fan out agents use bantamkit shiftwork (shiftwork_plan, clock_in / clock_out). Both can trigger on one request, so follow this split. Nothing needs uninstalling."
     },
     {
       "id": "frontend-design",
@@ -187,6 +181,13 @@
       "label": "Security review",
       "match": { "plugins": ["security-guidance@", "semgrep@", "claude-security@", "aikido@", "sonarqube@"] },
       "note": "Claude Code ships /security-review (on demand). Plugins here add edit-time warnings or external scanners."
+    },
+    {
+      "id": "code-nav",
+      "label": "Code navigation",
+      "match": { "plugins": ["serena@"], "mcpName": ["serena"], "mcpArgs": ["serena", "mcp-language-server"] },
+      "with": { "plugins": ["typescript-lsp@", "vtsls@", "gopls-lsp@", "pyright-lsp@", "jdtls-lsp@", "rust-analyzer-lsp@", "clangd-lsp@", "csharp-lsp@", "kotlin-lsp@", "php-lsp@", "swift-lsp@", "lua-lsp@"] },
+      "note": "serena (and LSP-over-MCP bridges) run their own language servers. The pack's *-lsp plugins feed the built-in LSP tool the same data, so files are indexed twice. The pack dropped serena in 1.1.0. A plugin and the MCP server it starts are listed separately."
     },
     {
       "id": "lsp-ts",

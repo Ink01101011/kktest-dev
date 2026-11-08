@@ -40,29 +40,23 @@ Windows (native): stdio MCP servers are registered through `cmd /c` (each MCP it
 
 ## Options and env (step 5 of `/kk-onboard`)
 
-`/kk-onboard` asks which AI tools you use (Claude Code, Claude Desktop, Cursor, VS Code / GitHub
-Copilot, Windsurf) and which model providers (Anthropic, Bedrock, Vertex, OpenAI-compatible, Azure
-OpenAI, Gemini, OpenRouter, Ollama, LM Studio, ...). It then reads each pack item's options **from
-the version installed on your machine** (README/docs, `claude plugin configure`, and `--help` if
-you agree), with nothing hard-coded in the pack. You pick which ones to set. Each picked option is
-explained step by step, with neutral pros and cons per choice, and stored where your AI tool reads
-it. Secrets stay in your credential store, and configs only get references in the form each AI tool
-documents (`${VAR}` for Claude Code, `${env:VAR}` for Cursor and VS Code).
+`/kk-onboard` asks which AI tools and model providers you use, then reads each pack item's options
+**from the version installed on your machine**. Nothing is hard-coded in the pack. You pick which
+options to set; each is explained with neutral pros and cons and stored where your AI tool reads it.
+Secrets stay in your credential store; configs get only references (`${VAR}` in Claude Code,
+`${env:VAR}` in Cursor and VS Code). Values are never printed. `/kk-update` later asks only about
+options a new version added, removed or changed.
 
-`scripts/options.mjs` does the reading (flags and flow: see the kk-onboard SKILL). By default it
-reads docs and configs only and runs no package code; `--help` (which runs the package) and the npm
-registry are opt-in, and each is asked first. It never prints a value, only a state:
-`literal` / `ref` / `empty`. `--record` / `--diff` save names, versions and hashes (no values) so
-`/kk-update` asks only about options a new version added, removed or changed, and the ones you
-deferred.
+The steps are in the [kk-onboard SKILL](skills/kk-onboard/SKILL.md) (Step 5). What the script
+reads and runs is in [docs/kktestdev-pack/SPEC.md](../../docs/kktestdev-pack/SPEC.md).
 
 ## What's in the pack
 
 | Profile | Items |
 |---|---|
-| **core** | `superpowers`, `kkskills-essentials`, `context7`; LSP: `typescript-lsp`, `gopls-lsp`, `pyright-lsp`, `jdtls-lsp`; MCP: `bantamkit`, `playwright`, `chrome-devtools` |
-| **frontend** | `impeccable`, `next-devtools` MCP (Next.js 16+), `shadcn` MCP (per project) |
-| **investigate** | `sentry`, `grafana-mcp`, `serena` |
+| **core** | `superpowers`, `kkskills-essentials`, `context7`; LSP: `typescript-lsp`, `gopls-lsp`, `pyright-lsp`, `jdtls-lsp`; MCP: `bantamkit`, `playwright` |
+| **frontend** | `impeccable`, `chrome-devtools` MCP (perf traces, Lighthouse), `next-devtools` MCP (Next.js 16+), `shadcn` MCP (per project) |
+| **investigate** | `sentry`, `grafana-mcp` |
 | **docs only** | [Jira / Confluence](docs/jira-confluence.md) (your own LDAP login), [Figma](docs/figma.md), [bantamkit hooks](docs/bantamkit-hooks.md) (opt-in) |
 
 The catalog is [`skills/kk-onboard/pack.json`](skills/kk-onboard/pack.json). To change the pack,
@@ -70,6 +64,25 @@ edit that file: `detect` says how an item is recognised as already installed, `s
 `windows` / `plugin` say how to install it, and `overlapGroups` drive the redundancy audit. Its
 `keys` field lists which keys the script reads; the script reports unknown `detect` keys in
 `notes`.
+
+## Routing: which tool for which job
+
+Some pack items overlap on purpose. Nothing is uninstalled for this; the team default is:
+
+| Job | Default | Use the other one only when |
+|---|---|---|
+| Browser: navigate, click, fill, screenshot, E2E | `playwright` (core) | `chrome-devtools` (frontend): perf traces, Lighthouse, network detail. Claude in Chrome (built in): the task needs your real logged-in browser |
+| Planning | superpowers (`writing-plans` / `executing-plans`) for a plan that fits one session | bantamkit shiftwork (`shiftwork_plan`, `clock_in` / `clock_out`) for 2 or more units that fan out agents |
+| Code review of a diff | built-in `/code-review` (and `/security-review`) | superpowers' `requesting-code-review`: only inside the superpowers TDD / subagent flow. `receiving-code-review` has no built-in equivalent and stays |
+| Next.js docs | `next-devtools` while a Next.js dev server is running | `context7` otherwise (and for every other library) |
+| Code navigation | the LSP plugins + Claude Code's built-in LSP tool | none: the pack dropped `serena` in 1.1.0 |
+
+The audit still lists the planning overlap (and the browser one when `frontend` is installed) as
+`packManaged`: these are the pack's own choices, not questions. An existing `serena` plugin is
+no longer a pack item: the audit reports it (the plugin and the MCP server it starts) under
+`overlap:code-nav` and asks whether to keep it.
+`chrome-devtools` moved from `core` to `frontend` in 1.1.0; a copy installed earlier keeps working
+and `/kk-update` keeps it current.
 
 ## Who publishes what
 
@@ -90,29 +103,21 @@ their newest release from the registry on each start (team policy: no pinned ver
 | `shadcn` | shadcn-ui, npm `shadcn` | `npx`, writes the project's `.mcp.json` |
 | `sentry` | Sentry, official plugin catalog | remote MCP (OAuth to your Sentry) |
 | `grafana-mcp` | Grafana Labs, official plugin catalog | MCP with your Grafana token |
-| `serena` | Oraios, community-managed entry in the official catalog | MCP |
 | Jira / Confluence (docs) | Server/DC: `sooperset/mcp-atlassian` (community, PyPI via `uvx`; the npm package of the same name is a different project). Cloud: Atlassian | stdio MCP / remote MCP |
 | Figma (docs) | Figma | claude.ai connector or official plugin |
 
 ## What the audit checks
 
-The read-only script `skills/kk-onboard/scripts/inventory.mjs` reports (it always prints JSON;
-anything it cannot read is listed in `notes`):
+The read-only script `skills/kk-onboard/scripts/inventory.mjs` reports **redundancy** (the same
+server, package or skill in several places; several tools doing one job; installed-but-disabled
+plugins), **risk** (plain-text credentials, by key name only; code run from a local path; hooks on
+every tool call; servers not connected; third-party marketplaces; skills with scripts; broad
+permission rules) and **info** (servers that fetch their newest release on each start). Findings
+about the pack's own items are marked `packManaged`. Secret values never reach the output.
 
-- **Redundancy**: the same MCP endpoint or package configured more than once (for example a
-  claude.ai connector plus a synced plugin), the same skill name in several places, several
-  tools doing the same job (browser automation, code review, planning, memory, ...), and plugins
-  that are installed but disabled.
-- **Risk**: credentials stored in plain text in MCP config (key names only, never values),
-  servers or hooks that run code from a local path, hooks that run on every tool call, MCP
-  servers not connected or not authenticated, third-party marketplaces, skills that ship
-  executable scripts, and broad permission rules. Findings about the pack's own items are
-  marked `packManaged`.
-- **Info**: servers that fetch their newest release from the registry on each start.
-
-Secret values never reach the output: env/header values are not read out, and URLs, args, hook
-commands and CLI messages are redacted (`***`) before printing.
+The full list of checks, the output shape and the flags are in
+[docs/kktestdev-pack/SPEC.md](../../docs/kktestdev-pack/SPEC.md).
 
 Run it yourself: `node skills/kk-onboard/scripts/inventory.mjs [--fast] [--full] [--pretty]`.
-Tests (stdlib only, fake HOMEs in the temp dir):
-`node --test plugins/kktestdev-pack/skills/kk-onboard/scripts/` from the repo root.
+Tests (stdlib only, fake HOMEs in the temp dir), from the repo root:
+`node --test "plugins/kktestdev-pack/skills/kk-onboard/scripts/*.test.mjs"`.

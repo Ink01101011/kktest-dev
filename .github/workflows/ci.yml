@@ -36,5 +36,30 @@ jobs:
         run: python -m unittest discover -s plugins/infographic-diagram/skills/infographic-diagram/scripts -p "test_*.py"
         env:
           PYTHONDONTWRITEBYTECODE: '1'
+      # #20: the onboarding inventory on an empty fake HOME/USERPROFILE/APPDATA must print one valid JSON document
+      # on every OS (no claude on PATH here, so it also proves that case degrades to notes, not a crash).
+      - name: Inventory on a fake HOME
+        shell: bash
+        run: |
+          node -e '
+            const { spawnSync } = require("node:child_process"); const fs = require("node:fs"); const os = require("node:os"); const p = require("node:path");
+            const h = fs.realpathSync.native(fs.mkdtempSync(p.join(os.tmpdir(), "kk-ci-home-")));
+            const env = { ...process.env, HOME: h, USERPROFILE: h, APPDATA: p.join(h, "AppData", "Roaming"), LOCALAPPDATA: p.join(h, "AppData", "Local") };
+            for (const k of ["CLAUDE_CONFIG_DIR", "CODEX_HOME", "XDG_CONFIG_HOME"]) delete env[k];
+            const script = p.resolve("plugins/kktestdev-pack/skills/kk-onboard/scripts/inventory.mjs");
+            const r = spawnSync(process.execPath, [script, "--full"], { cwd: h, env, encoding: "utf8", timeout: 120000 });
+            if (r.status !== 0) { console.error(r.stderr); process.exit(1); }
+            const out = JSON.parse(r.stdout);
+            if (out.error || !Array.isArray(out.pack) || !out.pack.length || !Array.isArray(out.findings)) { console.error(r.stdout.slice(0, 4000)); process.exit(1); }
+            console.log(`inventory OK on ${process.platform}: ${out.pack.length} pack items, ${out.findings.length} findings, ${(out.notes || []).length} notes`);
+          '
+      # #20: start every user-scope pack MCP server exactly as its `windows` step registers it (cmd /c ...) and
+      # complete an MCP initialize. Needs the network (npx downloads, npm i -g), so it runs once, on Windows only.
+      - name: Windows MCP smoke (cmd /c step shapes)
+        if: runner.os == 'Windows' && matrix.node == '22'
+        timeout-minutes: 25
+        run: node --test "plugins/kktestdev-pack/skills/kk-onboard/scripts/windows.test.mjs"
+        env:
+          KK_MCP_SMOKE: '1'
       - name: Package contents
         run: npm pack --dry-run

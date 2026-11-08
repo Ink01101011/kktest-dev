@@ -9,8 +9,30 @@ acting, **reflect** a lesson after, and periodically **compress** recurring less
 pattern. It adds no new store format — every lesson is a `memory-keeper` topic file (`type: feedback`),
 so the index/archive/budget machinery you already have applies unchanged.
 
+> **Folded into bantamkit.** For publishing, reflexion was folded into
+> [bantamkit](https://github.com/Ink01101011/bantamkit) (npm `bantamkit-mcp`): `memory_recall` with
+> `outcome: error|success`, `memory_save`, and `bantamkit-memory list` / `merge` cover recall, reflect,
+> library and compress. The team pack (`/kk-onboard`) installs bantamkit. This plugin still works.
+
 Requires the `memory-keeper` plugin installed alongside (its `memctl.py` is the single source of truth
 for index/archive/compact — `reflexion` never reimplements the store).
+
+## Install
+
+Inside Claude Code (2.1.275+):
+
+```
+/plugin install reflexion --marketplace Ink01101011/kktest-dev
+```
+
+or from a shell:
+
+```sh
+claude plugin marketplace add Ink01101011/kktest-dev
+claude plugin install reflexion@kktest-dev
+```
+
+Install `memory-keeper` the same way: reflexion needs it.
 
 ## Components
 
@@ -58,8 +80,10 @@ python3 scripts/reflexionctl.py compress --names lesson-a lesson-b --pattern "..
 ## Safety
 
 `reflect` de-dupes against existing lessons before writing (skips with exit code 1 unless `--force`).
-`compress` defaults to a dry run — always preview before applying. Everything is plain `memory-keeper`
+`compress` previews by default in the MCP tool (`dry_run` defaults to true) and in
+`/reflexion:reflexion-compress`; the CLI applies unless you pass `--dry-run`, so preview first. Everything is plain `memory-keeper`
 topic files under git, so every change is diffable and revertible.
 
-See `../../docs/proposals/REFLEXION_SPEC.md` for the formal spec and its place in the
-[self-improvement chain](../../docs/proposals/SELF-IMPROVEMENT-CHAIN_SPEC.md).
+Docs: [concepts](../../docs/reflexion/CONCEPTS.md), [specification](../../docs/reflexion/SPEC.md). The
+pre-release proposal ([REFLEXION_SPEC.md](../../docs/proposals/REFLEXION_SPEC.md)) and the
+[self-improvement chain](../../docs/proposals/SELF-IMPROVEMENT-CHAIN_SPEC.md) note are historical.

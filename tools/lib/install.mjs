@@ -5,10 +5,9 @@ import { UsageError, claudeOnlyParts, portableSkillPlugins, selectPlugins } from
 import { buildSkill } from './skills.mjs';
 import { serverRuntimeFiles } from './export.mjs';
 import { CONFIG_KEY, codexTableState, codexToml, hasJsonComments, jsonEntry } from './mcp.mjs';
-import { INSTALL_TARGETS, targetPaths } from './paths.mjs';
+import { targetPaths } from './paths.mjs';
+import { INSTALL_MCP_TARGETS, INSTALL_TARGETS, orList } from './providers.mjs';
 import { ApplyError, acquireLock, atomicWrite, backupFile, checkTarget, freshPath, lexists, modeOf, moveDir, rand, renameRetry, sha256 } from './safefs.mjs';
-
-const CONFIG_TARGET = { 'gemini-json': 'gemini', 'cursor-json': 'cursor', 'vscode-json': 'vscode', 'claude-desktop-json': 'claude-desktop' };
 
 export function timestamp(d = new Date()) {
   return d.toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
@@ -99,7 +98,7 @@ export function planInstall(catalog, target, opts) {
   } else if (only === 'skills' && !tp.skillsDir) {
     notes.push(`${target} has no documented local skills folder; use export --target claude-ai for zip upload`);
   }
-  if (only === 'mcp' && !tp.format) notes.push(`${target} has no MCP config; pick codex, gemini, cursor, vscode or claude-desktop`);
+  if (only === 'mcp' && !tp.format) notes.push(`${target} has no MCP config; pick ${orList(INSTALL_MCP_TARGETS)}`);
 
   // MCP servers
   const servers = [];
@@ -138,7 +137,7 @@ export function planInstall(catalog, target, opts) {
         } else manual.push(`code --add-mcp '${json.replace(/'/g, "'\\''")}'`);
       }
       notes.push('VS Code user scope: the user mcp.json path is not documented, so run the printed `code --add-mcp` command(s) yourself (or use --scope project).');
-    } else planJson(tp.mcpConfig, CONFIG_TARGET[tp.format], servers, { refusals, actions, notes, force, root: tp.configRoot, scope, platform });
+    } else planJson(tp.mcpConfig, target, servers, { refusals, actions, notes, force, root: tp.configRoot, scope, platform });
     if (scope === 'project' && tp.mcpConfig) notes.push(`${tp.mcpConfig} will hold absolute paths under ${tp.serversDir}; do not commit it for a team`);
     if (platform === 'win32' && servers.some(({ srv }) => srv.command === 'python3')) {
       notes.push('Windows: if `python3` opens the Microsoft Store, change the server command to `py` with "-3" as the first argument (or to `python`).');

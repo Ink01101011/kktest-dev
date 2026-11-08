@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Ink01101011/kktest-dev/plugins/kktestdev-pack/skills/kk-onboard/pack.schema.json",
+  "title": "kktestdev-pack catalog (pack.json)",
+  "description": "The team pack read by scripts/inventory.mjs and scripts/options.mjs. Checked by scripts/pack-schema.test.mjs (stdlib only); validatePack() in inventory.mjs checks the same rules at run time.",
+  "type": "object",
+  "required": ["name", "items"],
+  "additionalProperties": false,
+  "properties": {
+    "name": { "type": "string", "minLength": 1 },
+    "policy": { "type": "string" },
+    "keys": { "type": "string", "description": "Which keys the scripts read (prose for humans)." },
+    "windowsNote": { "type": "string" },
+    "optionsNote": { "type": "string" },
+    "marketplaces": {
+      "type": "object",
+      "description": "Marketplace name -> how to add it (or builtin).",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "builtin": { "const": true },
+          "add": { "type": "string", "minLength": 1 }
+        },
+        "minProperties": 1
+      }
+    },
+    "items": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/item" }
+    },
+    "overlapGroups": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/overlapGroup" }
+    }
+  },
+  "$defs": {
+    "nonEmptyString": { "type": "string", "minLength": 1 },
+    "stringList": { "type": "array", "items": { "$ref": "#/$defs/nonEmptyString" } },
+    "matchKeys": {
+      "type": "object",
+      "description": "Detect/match keys; an unknown key never matches anything (KNOWN_DETECT_KEYS in inventory.mjs).",
+      "additionalProperties": false,
+      "properties": {
+        "plugins": { "$ref": "#/$defs/stringList" },
+        "mcpName": { "$ref": "#/$defs/stringList" },
+        "mcpNameExact": { "$ref": "#/$defs/stringList" },
+        "mcpUrl": { "$ref": "#/$defs/stringList" },
+        "mcpCommand": { "$ref": "#/$defs/stringList" },
+        "mcpArgs": { "$ref": "#/$defs/stringList" },
+        "skills": { "$ref": "#/$defs/stringList" }
+      }
+    },
+    "item": {
+      "type": "object",
+      "required": ["id", "kind", "profile", "what", "detect"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+        "kind": { "enum": ["plugin", "mcp", "docs"] },
+        "profile": { "enum": ["core", "frontend", "investigate", "docs"] },
+        "what": { "$ref": "#/$defs/nonEmptyString" },
+        "publisher": { "$ref": "#/$defs/nonEmptyString" },
+        "detect": { "$ref": "#/$defs/matchKeys" },
+        "plugin": { "type": "string", "pattern": "^[^@\\s]+@[^@\\s]+$" },
+        "steps": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/nonEmptyString" } },
+        "windows": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/nonEmptyString" } },
+        "scope": { "enum": ["user", "project"] },
+        "doc": { "$ref": "#/$defs/nonEmptyString" },
+        "requires": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["bin", "install"],
+            "additionalProperties": false,
+            "properties": {
+              "bin": { "$ref": "#/$defs/nonEmptyString" },
+              "install": { "$ref": "#/$defs/nonEmptyString" },
+              "java": { "type": "integer", "description": "The bin needs Java N+ to start. inventory.mjs runs only `java -version` of the Java the bin will use ($JAVA_HOME, else a wrapper script's default JAVA_HOME, else java on PATH) and adds a requiresNotes entry when it is older or unknown." }
+            }
+          }
+        },
+        "options": {
+          "type": "object",
+          "description": "Identity hints only (OPTION_HINT_KEYS in common.mjs); the options themselves are read from the installed docs.",
+          "additionalProperties": false,
+          "properties": {
+            "package": { "$ref": "#/$defs/nonEmptyString" },
+            "bin": { "$ref": "#/$defs/nonEmptyString" },
+            "envPrefix": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*_$" }
+          }
+        }
+      },
+      "allOf": [
+        { "if": { "properties": { "kind": { "const": "plugin" } } }, "then": { "required": ["plugin"] } },
+        { "if": { "properties": { "kind": { "const": "mcp" } } }, "then": { "required": ["steps"] } },
+        { "if": { "properties": { "kind": { "const": "docs" } } }, "then": { "required": ["doc"] } }
+      ]
+    },
+    "overlapGroup": {
+      "type": "object",
+      "required": ["id", "label", "match", "note"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+        "label": { "$ref": "#/$defs/nonEmptyString" },
+        "match": { "$ref": "#/$defs/matchKeys" },
+        "with": { "$ref": "#/$defs/matchKeys" },
+        "note": { "$ref": "#/$defs/nonEmptyString" }
+      }
+    }
+  }
+}

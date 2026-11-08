@@ -1,5 +1,10 @@
 # self-improvement-chain — Specification
 
+> **Historical (2026-11-08).** This is the proposal written before the chain's plugins shipped. It is
+> kept as a design record and is not updated. The pieces it composes now ship as plugins: loop-ledger,
+> memory-keeper, reflexion, critique-gate, prompt-evolve and agent-loops (see the root
+> [README](../../README.md)). memory-keeper and reflexion are also folded into bantamkit.
+
 Status: 0.1.0 (proposal) · Date: 2026-07-02 · Author: Ink
 
 > Proposal spec. Not a new plugin — an **orchestration** that chains the marketplace's existing pieces

@@ -67,19 +67,22 @@ loop_end { loop_id }             // if not already closed by the last tick
 - **Memory category → [bantamkit](https://github.com/Ink01101011/bantamkit).** Its `memory_recall` / `memory_save` / `memory_compact` MCP tools are
   the working store for Reflexion, Memory Update and Error Library. Read `memory-loops`'s SKILL.md for
   the pattern shapes and the brake to wire; use bantamkit's tools for the actual memory operations
-  rather than reimplementing them. An error/success library view ([#219](https://github.com/Ink01101011/bantamkit/issues/219)) and multi-lesson merge
-  ([#220](https://github.com/Ink01101011/bantamkit/issues/220)) are not served yet.
+  rather than reimplementing them. Since bantamkit 0.36.2 the error/success library view
+  ([#219](https://github.com/Ink01101011/bantamkit/issues/219): `memory_recall` with `outcome: error|success`,
+  `bantamkit-memory list --outcome`) and multi-lesson merge
+  ([#220](https://github.com/Ink01101011/bantamkit/issues/220): `bantamkit-memory merge`) are served too.
 - **Quality category → `critique-gate`** (companion plugin, built alongside this one). It turns the
   Quality-loop patterns (Score-and-Retry, Multi-Critic, Adversarial, Judge Ensemble) into an enforced
   Stop-hook gate on a quality threshold, riding on `loop-ledger`'s retry-count backstop the same way
   this plugin's skills describe.
-- **System Optimization category → `prompt-evolve`** (see `docs/proposals/PROMPT-EVOLVE_SPEC.md`), a
+- **System Optimization category → `prompt-evolve`** (see [docs/prompt-evolve](../../docs/prompt-evolve/CONCEPTS.md)), a
   turnkey implementation of Prompt Optimization loops.
 
 You can install just `agent-loops` (+ `loop-ledger`) for the full playbook + brake, or add a sibling for
 a turnkey implementation of one category.
 
-See `../../docs/proposals/AGENT-LOOPS_SPEC.md` for the formal spec.
+Docs: [concepts](../../docs/agent-loops/CONCEPTS.md), [specification](../../docs/agent-loops/SPEC.md). The
+pre-release proposal ([AGENT-LOOPS_SPEC.md](../../docs/proposals/AGENT-LOOPS_SPEC.md)) is historical.
 
 ## Design decisions
 

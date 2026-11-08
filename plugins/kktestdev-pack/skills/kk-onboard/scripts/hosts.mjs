@@ -5,9 +5,9 @@
 // Codex CLI keeps MCP servers in TOML (config.toml); a minimal read-only reader for that subset is below.
 // Codex does not expand ${VAR}: there `ref` = a name in env_vars / env_http_headers / bearer_token_env_var, and any
 // non-empty env value is `literal`.
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import nodePath from 'node:path';
-import { CONFIG_MAX_BYTES, canonicalFile, decodeText, isObject, readJsonText, samePath, valueState } from './common.mjs';
+import { CONFIG_MAX_BYTES, canonicalFile, decodeText, isInside, isObject, readJsonText, samePath, valueState } from './common.mjs';
 
 export { canonicalFile, valueState }; // defined in common.mjs (single source with inventory.mjs)
 
@@ -26,32 +26,55 @@ export function appDataDir({ home, env = process.env, platform = process.platfor
  * where each host keeps MCP config; `key` is the property that holds the server map, `jsonc` marks editors whose
  * files may carry comments and trailing commas (VS Code, Cursor). Claude Code's user file follows
  * CLAUDE_CONFIG_DIR like inventory.mjs does.
- * Codex CLI (.shiftwork/reports-xp/P0-providers.md section 2, learn.chatgpt.com/docs/extend/mcp?surface=cli): user
+ * Codex CLI (learn.chatgpt.com/docs/extend/mcp?surface=cli): user
  * `$CODEX_HOME/config.toml` (default `~/.codex/config.toml`), project `.codex/config.toml` (trusted projects only),
- * tables `[mcp_servers.<name>]`. Gemini CLI (P0 section 3, geminicli.com/docs/tools/mcp-server/): user
+ * tables `[mcp_servers.<name>]`. Gemini CLI (geminicli.com/docs/tools/mcp-server/): user
  * `~/.gemini/settings.json`, project `.gemini/settings.json`, key `mcpServers`, `url` (SSE) or `httpUrl`.
  */
-export function hostDefinitions({ home, cwd, env = process.env, platform = process.platform }) {
+export function hostDefinitions({ home, cwd, env = process.env, platform = process.platform, managedFile = null }) {
   const p = platform === 'win32' ? nodePath.win32 : nodePath.posix;
   const app = appDataDir({ home, env, platform });
   const claudeDir = env.CLAUDE_CONFIG_DIR || p.join(home, '.claude');
   const claudeJson = env.CLAUDE_CONFIG_DIR ? p.join(env.CLAUDE_CONFIG_DIR, '.claude.json') : p.join(home, '.claude.json');
+  const vsUser = vscodeUserDirs({ home, app, platform, p });
   return [
     {
       id: 'claude-code', label: 'Claude Code', appDir: claudeDir,
       files: [
         { file: claudeJson, key: 'mcpServers', scope: 'user', projectKey: cwd },
         { file: p.join(cwd, '.mcp.json'), key: 'mcpServers', scope: 'project' },
+        // admin-deployed; read when it exists, never a write target
+        { file: managedFile ?? managedMcpPath({ env, platform }), key: 'mcpServers', scope: 'managed', optional: true },
       ],
       settings: [
         { file: p.join(claudeDir, 'settings.json'), scope: 'user' },
         { file: p.join(cwd, '.claude', 'settings.json'), scope: 'project' },
         { file: p.join(cwd, '.claude', 'settings.local.json'), scope: 'local' },
       ],
+      // code.claude.com/docs/en/plugins/loading: the plugins root is ~/.claude/plugins unless CLAUDE_CODE_PLUGIN_CACHE_DIR
+      // is set; installed_plugins.json is the install record, enabledPlugins in settings turns a plugin on per scope
+      pluginRoot: env.CLAUDE_CODE_PLUGIN_CACHE_DIR && p.isAbsolute(env.CLAUDE_CODE_PLUGIN_CACHE_DIR) ? env.CLAUDE_CODE_PLUGIN_CACHE_DIR : p.join(claudeDir, 'plugins'),
     },
-    { id: 'claude-desktop', label: 'Claude Desktop', appDir: p.join(app, 'Claude'), files: [{ file: p.join(app, 'Claude', 'claude_desktop_config.json'), key: 'mcpServers', scope: 'user' }] },
+    {
+      id: 'claude-desktop', label: 'Claude Desktop', appDir: p.join(app, 'Claude'),
+      files: [{ file: p.join(app, 'Claude', 'claude_desktop_config.json'), key: 'mcpServers', scope: 'user' }],
+      // Microsoft Store (MSIX) installs are redirected to %LOCALAPPDATA%\Packages\Claude_<publisher id>\LocalCache\Roaming\Claude.
+      // Not in Anthropic's docs (modelcontextprotocol.io/quickstart/user names %APPDATA% only): reasoned from the MSIX
+      // AppData redirection rule (learn.microsoft.com, "Understanding how packaged desktop apps run on Windows").
+      ...(platform === 'win32' ? { msixPackages: p.join(env.LOCALAPPDATA || p.join(home, 'AppData', 'Local'), 'Packages') } : {}),
+    },
     { id: 'cursor', label: 'Cursor', appDir: p.join(home, '.cursor'), files: [{ file: p.join(home, '.cursor', 'mcp.json'), key: 'mcpServers', scope: 'user', jsonc: true }, { file: p.join(cwd, '.cursor', 'mcp.json'), key: 'mcpServers', scope: 'project', jsonc: true }] },
-    { id: 'vscode', label: 'VS Code (GitHub Copilot)', appDir: p.join(app, 'Code', 'User'), files: [{ file: p.join(app, 'Code', 'User', 'mcp.json'), key: 'servers', scope: 'user', jsonc: true }, { file: p.join(cwd, '.vscode', 'mcp.json'), key: 'servers', scope: 'project', jsonc: true }] },
+    {
+      id: 'vscode', label: 'VS Code (GitHub Copilot)', appDir: vsUser[0].dir,
+      files: [
+        { file: p.join(vsUser[0].dir, 'mcp.json'), key: 'servers', scope: 'user', jsonc: true },
+        { file: p.join(cwd, '.vscode', 'mcp.json'), key: 'servers', scope: 'project', jsonc: true },
+        // Insiders, VSCodium, Flatpak/Snap builds: read only when the file exists (never offered as a write target)
+        ...vsUser.slice(1).map((u) => ({ file: p.join(u.dir, 'mcp.json'), key: 'servers', scope: 'user', jsonc: true, optional: true, variant: u.variant })),
+      ],
+      appDirs: vsUser.slice(1).map((u) => u.dir),
+      profileRoots: vsUser, // User/profiles/<id>/mcp.json, listed at read time
+    },
     { id: 'windsurf', label: 'Windsurf', appDir: p.join(home, '.codeium', 'windsurf'), files: [{ file: p.join(home, '.codeium', 'windsurf', 'mcp_config.json'), key: 'mcpServers', scope: 'user' }] },
     codexDefinition({ home, cwd, env, p }),
     {
@@ -60,8 +83,47 @@ export function hostDefinitions({ home, cwd, env = process.env, platform = proce
         { file: p.join(home, '.gemini', 'settings.json'), key: 'mcpServers', scope: 'user', urlKeys: GEMINI_URL_KEYS },
         { file: p.join(cwd, '.gemini', 'settings.json'), key: 'mcpServers', scope: 'project', urlKeys: GEMINI_URL_KEYS },
       ],
+      // geminicli.com/docs/extensions/reference: extensions load from ~/.gemini/extensions/<name>/gemini-extension.json,
+      // whose mcpServers map has the settings.json shape
+      extensionsDir: p.join(home, '.gemini', 'extensions'),
     },
   ];
+}
+
+/**
+ * Claude Code managed-mcp.json (system-wide, admin-deployed). code.claude.com/docs/en/managed-mcp, "Deploy
+ * managed-mcp.json": macOS /Library/Application Support/ClaudeCode, Linux and WSL /etc/claude-code, Windows
+ * C:\Program Files\ClaudeCode.
+ */
+export function managedMcpPath({ env = process.env, platform = process.platform } = {}) {
+  if (platform === 'darwin') return '/Library/Application Support/ClaudeCode/managed-mcp.json';
+  if (platform === 'win32') return nodePath.win32.join(env.ProgramFiles || 'C:\\Program Files', 'ClaudeCode', 'managed-mcp.json');
+  return '/etc/claude-code/managed-mcp.json';
+}
+
+/**
+ * VS Code user dirs: stable first (the write target), then Insiders and VSCodium in the same app-data dir
+ * (code.visualstudio.com/docs/configure/profiles, "Where are profiles kept?": Code / Code - Insiders under
+ * %APPDATA%, ~/Library/Application Support, ~/.config). Linux also: Flatpak keeps XDG config under
+ * ~/.var/app/<app id>/config (docs.flatpak.org, "Sandbox Permissions": XDG_CONFIG_HOME), and a strictly confined
+ * Snap under ~/snap/<name>/current/.config (snapcraft.io docs, "Data locations"; the official `code` snap is
+ * classic and uses ~/.config like a .deb install).
+ */
+function vscodeUserDirs({ home, app, platform, p }) {
+  const out = [
+    { dir: p.join(app, 'Code', 'User'), variant: 'VS Code' },
+    { dir: p.join(app, 'Code - Insiders', 'User'), variant: 'VS Code Insiders' },
+    { dir: p.join(app, 'VSCodium', 'User'), variant: 'VSCodium' },
+  ];
+  if (platform === 'linux') {
+    out.push(
+      { dir: p.join(home, '.var', 'app', 'com.visualstudio.code', 'config', 'Code', 'User'), variant: 'VS Code (Flatpak)' },
+      { dir: p.join(home, '.var', 'app', 'com.vscodium.codium', 'config', 'VSCodium', 'User'), variant: 'VSCodium (Flatpak)' },
+      { dir: p.join(home, 'snap', 'code', 'current', '.config', 'Code', 'User'), variant: 'VS Code (Snap)' },
+      { dir: p.join(home, 'snap', 'codium', 'current', '.config', 'VSCodium', 'User'), variant: 'VSCodium (Snap)' },
+    );
+  }
+  return out;
 }
 
 const GEMINI_URL_KEYS = Object.freeze(['url', 'httpUrl']);
@@ -81,7 +143,10 @@ function codexDefinition({ home, cwd, env, p }) {
 export function readConfig(file, { readFile = readFileSync, stat = statSync, exists = existsSync } = {}, { jsonc = false } = {}) {
   try {
     if (!exists(file)) return { ok: false, missing: true };
-    if (stat(file).size > CONFIG_MAX_BYTES) return { ok: false, error: 'over 50 MB, skipped' };
+    const st = stat(file);
+    // a FIFO or device would block the read forever (gate G2-L3): regular files only
+    if (typeof st.isFile === 'function' && !st.isFile()) return { ok: false, error: 'not a regular file, skipped' };
+    if (st.size > CONFIG_MAX_BYTES) return { ok: false, error: 'over 50 MB, skipped' };
     return { ok: true, value: readJsonText(readFile(file), { jsonc }) };
   } catch (e) {
     return { ok: false, error: e?.code || 'not valid JSON' };
@@ -92,7 +157,9 @@ export function readConfig(file, { readFile = readFileSync, stat = statSync, exi
 export function readTomlConfig(file, { readFile = readFileSync, stat = statSync, exists = existsSync } = {}) {
   try {
     if (!exists(file)) return { ok: false, missing: true };
-    if (stat(file).size > CONFIG_MAX_BYTES) return { ok: false, error: 'over 50 MB, skipped' };
+    const st = stat(file);
+    if (typeof st.isFile === 'function' && !st.isFile()) return { ok: false, error: 'not a regular file, skipped' };
+    if (st.size > CONFIG_MAX_BYTES) return { ok: false, error: 'over 50 MB, skipped' };
     return parseToml(decodeText(readFile(file)));
   } catch (e) {
     return { ok: false, error: e?.code || 'TOML not understood' };
@@ -323,17 +390,20 @@ function serversOf(json, def, platform) {
   const add = (map, scope) => {
     for (const [name, c] of Object.entries(isObject(map) ? map : {})) {
       if (!isObject(c)) continue;
+      if (def.flat && typeof c.command !== 'string' && typeof c.url !== 'string') continue; // flat .mcp.json: only server-shaped entries
       out.push({
         name, scope,
         command: typeof c.command === 'string' ? c.command : null,
         args: Array.isArray(c.args) ? c.args.filter((a) => typeof a === 'string') : [],
         url: (def.urlKeys ?? ['url', 'serverUrl']).map((k) => c[k]).find((u) => typeof u === 'string') ?? null,
         env: envState(c.env), headers: envState(c.headers),
+        ...(def.plugin ? { plugin: def.plugin } : {}),
       });
     }
   };
   if (!isObject(json)) return out;
-  add(json[def.key], def.scope);
+  // a plugin's .mcp.json is { mcpServers: {...} } or the flat server map itself (as inventory.mjs serversOfMcpJson)
+  add(def.flat && !isObject(json[def.key]) ? json : json[def.key], def.scope);
   if (def.projectKey && isObject(json.projects)) {
     // same rule as inventory.mjs projectEntry: / vs \, trailing slash, case only where the FS is case-insensitive
     for (const [k, v] of Object.entries(json.projects)) if (samePath(k, def.projectKey, platform)) add(v?.mcpServers, 'local');
@@ -341,48 +411,213 @@ function serversOf(json, def, platform) {
   return out;
 }
 
-/** WSL: Windows-side configs (/mnt/c/Users/...) are not read; say so instead of silently reporting "absent" */
+/** WSL: Windows-side configs live under /mnt/c/Users/<user>; detected so they can be read (or a note says why not) */
 function isWsl(env, platform, readFile) {
   if (platform !== 'linux') return false;
   if (env.WSL_DISTRO_NAME || env.WSL_INTEROP) return true;
   try { return /microsoft/i.test(String(readFile('/proc/version', 'utf8'))); } catch { return false; }
 }
 
+// ---------------------------------------------------------------- discovered config files (directory listings)
+// Every listing is one readdir of a known directory (never a tree walk), capped, and never follows a symlink or
+// junction; a config file found this way is refused when it is itself a link. Values stay inside the readers.
+export const DISCOVERY_LIMITS = Object.freeze({ dirEntries: 2000, profiles: 50, msix: 3, plugins: 200, extensions: 100, wslUsers: 100 });
+// Windows profile folders that are not a person's (WSL user lookup)
+const WIN_NON_USERS = new Set(['public', 'default', 'default user', 'all users', 'defaultuser0', 'wdagutilityaccount', 'desktop.ini']);
+
+function ioOf(fs) {
+  return {
+    exists: fs.exists ?? existsSync, readFile: fs.readFile ?? readFileSync, stat: fs.stat ?? statSync,
+    lstat: fs.lstat ?? lstatSync, readdir: fs.readdir ?? ((d) => readdirSync(d)),
+    realpath: fs.realpath ?? ((x) => realpathSync.native(x)),
+  };
+}
+
+/** real sub-directories of `dir` whose name passes `filter`: { dirs, more, linked } (links are counted, not followed) */
+function subDirs(io, p, dir, max, filter = () => true) {
+  let names;
+  try { names = io.readdir(dir).map(String).sort(); } catch { return { dirs: [], more: false, linked: 0 }; }
+  const dirs = []; let linked = 0; let more = names.length > DISCOVERY_LIMITS.dirEntries;
+  for (const n of names.slice(0, DISCOVERY_LIMITS.dirEntries)) {
+    if (!filter(n)) continue;
+    let st; try { st = io.lstat(p.join(dir, n)); } catch { continue; }
+    if (st.isSymbolicLink()) { linked++; continue; }
+    if (!st.isDirectory()) continue;
+    if (dirs.length >= max) { more = true; break; }
+    dirs.push(n);
+  }
+  return { dirs, more, linked };
+}
+
+/** read one config: a file found by a listing (`found`) must not be a link; same { ok, value, error, missing } contract */
+function readDef(def, io) {
+  if (def.found) {
+    let st; try { st = io.lstat(def.file); } catch { return { ok: false, missing: true }; }
+    if (st.isSymbolicLink()) return { ok: false, error: 'a link; not followed' };
+    if (typeof st.isFile === 'function' && !st.isFile()) return { ok: false, error: 'not a regular file, skipped' };
+  }
+  // a plugin file must really be inside the plugin: a linked folder on the way (`plugin/lnk -> /elsewhere`,
+  // a linked .claude-plugin) is not followed out of it (gate G2-L2). Real paths are compared; when either
+  // cannot be resolved the file does not exist and the read below reports it missing.
+  if (def.pluginRoot) {
+    let real = null; let root = null;
+    try { real = io.realpath(def.file); root = io.realpath(def.pluginRoot); } catch {}
+    if (real && root && !isInside(real, root)) return { ok: false, error: 'outside the plugin folder (through a link); not read' };
+  }
+  return def.format === 'codex-toml' ? readTomlConfig(def.file, io) : readConfig(def.file, io, { jsonc: def.jsonc });
+}
+
+/** VS Code profiles: <User>/profiles/<id>/mcp.json (per-profile resources sit beside the profile's settings.json) */
+function profileDefs(h, io, p, notes) {
+  const out = [];
+  for (const u of h.profileRoots ?? []) {
+    const root = p.join(u.dir, 'profiles');
+    const { dirs, more } = subDirs(io, p, root, DISCOVERY_LIMITS.profiles);
+    if (more) notes.push(`${h.label}: more than ${DISCOVERY_LIMITS.profiles} ${u.variant} profiles; the rest were not read`);
+    for (const d of dirs) out.push({ file: p.join(root, d, 'mcp.json'), key: 'servers', scope: 'user', jsonc: true, optional: true, found: true, variant: `${u.variant} profile` });
+  }
+  return out;
+}
+
+/** Claude Desktop from the Microsoft Store: %LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude */
+function msixDefs(h, io, p) {
+  if (!h.msixPackages) return [];
+  const { dirs } = subDirs(io, p, h.msixPackages, DISCOVERY_LIMITS.msix, (n) => /^Claude_/i.test(n));
+  return dirs.map((d) => ({ file: p.join(h.msixPackages, d, 'LocalCache', 'Roaming', 'Claude', 'claude_desktop_config.json'), key: 'mcpServers', scope: 'user', optional: true, found: true, variant: 'Microsoft Store' }));
+}
+
+/** Gemini CLI extensions: ~/.gemini/extensions/<name>/gemini-extension.json, mcpServers */
+function extensionDefs(h, io, p, notes) {
+  if (!h.extensionsDir) return [];
+  const { dirs, more, linked } = subDirs(io, p, h.extensionsDir, DISCOVERY_LIMITS.extensions);
+  if (more) notes.push(`${h.label}: more than ${DISCOVERY_LIMITS.extensions} extensions; the rest were not read`);
+  if (linked) notes.push(`${h.label}: ${linked} linked extension folder(s) were not followed`);
+  return dirs.map((d) => ({ file: p.join(h.extensionsDir, d, 'gemini-extension.json'), key: 'mcpServers', scope: 'plugin', plugin: d, optional: true, found: true, urlKeys: GEMINI_URL_KEYS }));
+}
+
+/**
+ * Claude Code plugin servers: plugins enabled in settings (enabledPlugins, user < project < local) and recorded in
+ * <plugins root>/installed_plugins.json ({ plugins: { "<name>@<marketplace>": [{ scope, installPath, projectPath? }] } }).
+ * Each plugin's .mcp.json and .claude-plugin/plugin.json mcpServers (inline map or a path inside the plugin).
+ */
+function pluginDefs(h, enabled, io, p, { cwd, platform, notes, short }) {
+  if (!h.pluginRoot) return [];
+  const recFile = p.join(h.pluginRoot, 'installed_plugins.json');
+  const rec = readConfig(recFile, io);
+  if (rec.missing) return [];
+  if (!rec.ok) { notes.push(`${h.label}: ${short(recFile)}: ${rec.error}`); return []; }
+  const plugins = isObject(rec.value?.plugins) ? rec.value.plugins : {};
+  const ids = Object.keys(plugins).filter((id) => enabled.get(id) === true);
+  if (ids.length > DISCOVERY_LIMITS.plugins) notes.push(`${h.label}: more than ${DISCOVERY_LIMITS.plugins} enabled plugins; the rest were not read`);
+  const out = [];
+  for (const id of ids.slice(0, DISCOVERY_LIMITS.plugins)) {
+    const rows = (Array.isArray(plugins[id]) ? plugins[id] : [plugins[id]]).filter(isObject);
+    // a project/local install counts only for the project it was installed in
+    const row = rows.find((r) => typeof r.installPath === 'string' && p.isAbsolute(r.installPath)
+      && (typeof r.projectPath !== 'string' || samePath(r.projectPath, cwd, platform)));
+    if (!row) continue;
+    out.push({ file: p.join(row.installPath, '.mcp.json'), key: 'mcpServers', flat: true, scope: 'plugin', plugin: id, optional: true, found: true, pluginRoot: row.installPath });
+    out.push({ file: p.join(row.installPath, '.claude-plugin', 'plugin.json'), key: 'mcpServers', scope: 'plugin', plugin: id, optional: true, found: true, manifestRoot: row.installPath, pluginRoot: row.installPath });
+  }
+  return out;
+}
+
+/** plugin.json mcpServers may be a path (or a list of paths) to a JSON file inside the plugin: read those too */
+function manifestRefs(def, json, p, platform) {
+  const v = json?.[def.key];
+  const refs = (Array.isArray(v) ? v : [v]).filter((x) => typeof x === 'string');
+  return refs.map((r) => ({ ...def, manifestRoot: undefined, flat: true, file: p.resolve(def.manifestRoot, r.replace(/^\$\{CLAUDE_PLUGIN_ROOT\}[\\/]?/, '')) }))
+    .filter((d) => isInside(d.file, def.manifestRoot, platform)); // never a file outside the plugin
+}
+
+/**
+ * WSL: the Windows user's folder under <mount>/Users. USERPROFILE (when WSLENV passes it) names it; otherwise the
+ * one real folder whose name is $USER / $LOGNAME, or the only person folder there. Junctions ("All Users",
+ * "Default User") are not followed. Returns { dir } or { reason }.
+ */
+function wslWindowsHome(io, env, mount) {
+  const p = nodePath.posix;
+  const users = p.join(mount, 'Users');
+  const fromProfile = String(env.USERPROFILE ?? '').match(/^[A-Za-z]:[\\/]Users[\\/]([^\\/]+)[\\/]?$/);
+  const { dirs, more } = subDirs(io, p, users, DISCOVERY_LIMITS.wslUsers, (n) => !WIN_NON_USERS.has(n.toLowerCase()));
+  if (!dirs.length) return { reason: `${users} has no user folder that could be read` };
+  const want = (fromProfile?.[1] ?? env.USER ?? env.LOGNAME ?? '').toLowerCase();
+  const hit = dirs.find((d) => d.toLowerCase() === want);
+  if (hit) return { dir: p.join(users, hit) };
+  if (dirs.length === 1 && !more) return { dir: p.join(users, dirs[0]) };
+  return { reason: `${dirs.length}${more ? '+' : ''} Windows user folders and none matches this user` };
+}
+
+/** Windows-side files of each host, seen from WSL (read-only; Windows paths inside them are not resolved) */
+function wslDefs(winHome) {
+  const p = nodePath.posix;
+  const roaming = p.join(winHome, 'AppData', 'Roaming');
+  // found: a file under a folder this script picked by listing, so a link there is not followed (gate G2-L6)
+  const w = (file, key, extra = {}) => ({ file, key, scope: 'user', optional: true, found: true, side: 'windows', variant: 'Windows side (WSL)', ...extra });
+  return {
+    'claude-code': [w(p.join(winHome, '.claude.json'), 'mcpServers')],
+    'claude-desktop': [w(p.join(roaming, 'Claude', 'claude_desktop_config.json'), 'mcpServers')],
+    cursor: [w(p.join(winHome, '.cursor', 'mcp.json'), 'mcpServers', { jsonc: true })],
+    vscode: ['Code', 'Code - Insiders', 'VSCodium'].map((v) => w(p.join(roaming, v, 'User', 'mcp.json'), 'servers', { jsonc: true })),
+    windsurf: [w(p.join(winHome, '.codeium', 'windsurf', 'mcp_config.json'), 'mcpServers')],
+  };
+}
+
 /**
  * every host: present?, config files (also the expected ones that do not exist yet: `exists: false`, so a write
- * target is known), servers (env key names + states), Claude Code settings env. `short` shortens paths in notes.
+ * target is known; `optional` files such as managed-mcp.json, other VS Code builds, profiles and the Windows side
+ * of WSL are listed only when they exist), servers (env key names + states), Claude Code settings env.
+ * `short` shortens paths in notes. `managedFile` and `wslMount` replace system paths (tests).
  */
-export function readHosts({ home, cwd, env = process.env, platform = process.platform, fs = {}, short = (p) => p } = {}) {
-  const exists = fs.exists ?? existsSync;
+export function readHosts({ home, cwd, env = process.env, platform = process.platform, fs = {}, short = (p) => p, managedFile = null, wslMount = '/mnt/c' } = {}) {
+  const io = ioOf(fs);
+  const p = platform === 'win32' ? nodePath.win32 : nodePath.posix;
   const notes = [];
   // a project file that IS the user file (cwd = home) is read once, under its user scope
   const seen = new Set();
   const firstTime = (file) => { const k = canonicalFile(file, platform); if (seen.has(k)) return false; seen.add(k); return true; };
-  const hosts = hostDefinitions({ home, cwd, env, platform }).map((h) => {
+  let windows = {};
+  if (isWsl(env, platform, io.readFile)) {
+    const wh = wslWindowsHome(io, env, wslMount);
+    if (wh.dir) { windows = wslDefs(wh.dir); notes.push(`WSL detected: Windows-side configs were also read (read-only) from ${wh.dir}; Windows paths inside them are not resolved`); }
+    else notes.push(`WSL detected: only the Linux-side configs were read; Windows-side configs (Claude Desktop, VS Code, Cursor under ${wslMount}/Users/...) are not included: ${wh.reason}`);
+  }
+  const hosts = hostDefinitions({ home, cwd, env, platform, managedFile }).map((h) => {
     const files = [];
     const servers = [];
     for (const n of h.notes ?? []) notes.push(`${h.label}: ${n}`);
-    for (const def of h.files) {
-      if (!firstTime(def.file)) continue;
-      const toml = def.format === 'codex-toml';
-      const r = toml ? readTomlConfig(def.file, fs) : readConfig(def.file, fs, { jsonc: def.jsonc });
-      if (r.missing) { files.push({ file: def.file, scope: def.scope, exists: false }); continue; }
-      files.push({ file: def.file, scope: def.scope, exists: true, ok: r.ok, ...(r.error ? { error: r.error } : {}) });
-      if (r.ok) servers.push(...(toml ? codexServersOf(r.value, def, notes, h.label, short) : serversOf(r.value, def, platform)).map((s) => ({ ...s, file: def.file })));
-      else notes.push(`${h.label}: ${short(def.file)}: ${r.error}`);
-    }
+    // settings first: enabledPlugins decides which plugin servers are read
     const settingsEnv = [];
+    const enabled = new Map();
     for (const s of h.settings ?? []) {
       if (!firstTime(s.file)) continue;
-      const r = readConfig(s.file, fs);
+      const r = readConfig(s.file, io);
       if (r.missing) continue;
-      if (r.ok) settingsEnv.push(...envState(r.value?.env).map((e) => ({ ...e, scope: s.scope, file: s.file })));
-      else notes.push(`${h.label}: ${short(s.file)}: ${r.error}`);
+      if (r.ok) {
+        settingsEnv.push(...envState(r.value?.env).map((e) => ({ ...e, scope: s.scope, file: s.file })));
+        for (const [id, on] of Object.entries(isObject(r.value?.enabledPlugins) ? r.value.enabledPlugins : {})) enabled.set(id, on === true);
+      } else notes.push(`${h.label}: ${short(s.file)}: ${r.error}`);
     }
-    const present = files.some((f) => f.exists) || (!!h.appDir && exists(h.appDir));
+    const queue = [...h.files, ...msixDefs(h, io, p), ...profileDefs(h, io, p, notes), ...(windows[h.id] ?? []),
+      ...extensionDefs(h, io, p, notes), ...pluginDefs(h, enabled, io, p, { cwd, platform, notes, short })];
+    for (let i = 0; i < queue.length; i++) {
+      const def = queue[i];
+      if (!firstTime(def.file)) continue;
+      const toml = def.format === 'codex-toml';
+      const r = readDef(def, io);
+      // optional files (managed-mcp.json, plugin files, other VS Code builds and profiles, the WSL Windows side) are read,
+      // never offered as a write target: readOnly says so to the skill
+      const meta = { ...(def.variant ? { variant: def.variant } : {}), ...(def.plugin ? { plugin: def.plugin } : {}), ...(def.side ? { side: def.side } : {}), ...(def.optional ? { readOnly: true } : {}) };
+      if (r.missing) { if (!def.optional) files.push({ file: def.file, scope: def.scope, exists: false }); continue; }
+      files.push({ file: def.file, scope: def.scope, exists: true, ok: r.ok, ...meta, ...(r.error ? { error: r.error } : {}) });
+      if (r.ok) {
+        servers.push(...(toml ? codexServersOf(r.value, def, notes, h.label, short) : serversOf(r.value, def, platform)).map((s) => ({ ...s, file: def.file })));
+        if (def.manifestRoot) queue.push(...manifestRefs(def, r.value, p, platform));
+      } else notes.push(`${h.label}: ${short(def.file)}: ${r.error}`);
+    }
+    const present = files.some((f) => f.exists && f.scope !== 'managed') || [h.appDir, ...(h.appDirs ?? [])].some((d) => !!d && io.exists(d));
     return { id: h.id, label: h.label, present, files, servers, settingsEnv };
   });
-  if (isWsl(env, platform, fs.readFile ?? readFileSync)) notes.push('WSL detected: only the Linux-side configs were read; Windows-side configs (Claude Desktop, VS Code, Cursor under /mnt/c/Users/...) are not included');
   return { hosts, notes };
 }
 

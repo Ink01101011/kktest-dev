@@ -31,8 +31,8 @@ import { closeSync, copyFileSync, existsSync, lstatSync, mkdirSync, openSync, re
 import { homedir } from 'node:os';
 import nodePath from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { cap, findBinDefault, packageSpecOf, parseJsonOutput, redactText, runClaudeDefault, runCommand, secretKey, shortPath } from './inventory.mjs';
-import { asArray, canonical, decodeText, isInside, isMain, isObject, readJsonText, samePath } from './common.mjs';
+import { cap, execClaudeDefault, findBinDefault, findGlobalPackage, globalPackageDirs, packageSpecOf, parseJsonOutput, redactText, runCommand, secretKey, shortPath } from './inventory.mjs';
+import { asArray, canonical, decodeText, isInside, isMain, isObject, projectRootOf, readJsonText, refuseOldRunnerNames, samePath } from './common.mjs';
 import { detectProviders, readHosts } from './hosts.mjs';
 
 export const OPT_LIMITS = Object.freeze({
@@ -182,6 +182,10 @@ const optList = (x) => asArray(x).map((o) => (typeof o === 'string' ? { name: o,
 /** what changed between a recorded snapshot entry and a fresh snapshot of the same item */
 export function diffItem(before, now) {
   const out = { versionBefore: before ? cap(String(before.version ?? ''), OPT_LIMITS.versionChars) || null : null, versionNow: now?.version ?? null, firstSeen: !before };
+  if (before?.pluginVersion || now?.pluginVersion) {
+    out.pluginVersionBefore = before?.pluginVersion ? cap(String(before.pluginVersion), OPT_LIMITS.versionChars) : null;
+    out.pluginVersionNow = now?.pluginVersion ?? null;
+  }
   const pending = asArray(before?.pending).map((n) => cap(String(n), OPT_LIMITS.nameChars));
   if (pending.length) out.pending = pending;
   // a snapshot taken when nothing could be read is not a baseline (every option would read "added")
@@ -247,39 +251,32 @@ export function npxRoots({ home, env = {}, platform = process.platform, npmCache
  * every copy of `pkg` on this machine and the one the host most likely runs.
  * configPaths: [{ path, trusted, where }] from the MCP configs of servers that run this item.
  * Order of choice among TRUSTED copies: a user-scope config path, then (preferNpx: the item's servers launch
- * through npx) the newest npx copy before the npm global copy, otherwise npm global before npx.
+ * through npx) the newest npx copy before the global copies, otherwise global copies before npx. Global copies are
+ * npm's (`npmRoot`) and those of pnpm, yarn, bun, Volta and mise (`globalDirs`, from globalPackageDirs()).
  * Untrusted (found only through a project config, or whose real path is inside the current project) copies are
  * reported but never chosen.
  */
-/**
- * the top of the project that contains `dir`: the highest ancestor that holds .git, .npmrc, package.json or
- * .mcp.json (a project marker), else `dir` itself. The walk stops at HOME and at the filesystem root, so the
- * result is never HOME or above, also for a repo outside HOME (e.g. /work/repo).
- */
-export function projectRootOf(dir, home) {
-  let root = dir; let cur = dir;
-  // no depth cap: the walk ends at HOME or the filesystem root (a cap let a very deep cwd escape, O7 I1)
-  while (cur && cur !== home && cur !== nodePath.parse(cur).root) {
-    if (['.git', '.npmrc', 'package.json', '.mcp.json'].some((m) => existsSync(nodePath.join(cur, m)))) root = cur;
-    const up = nodePath.dirname(cur);
-    if (up === cur) break;
-    cur = up;
-  }
-  return root;
-}
+// projectRootOf moved to common.mjs (inventory.mjs's Java probe uses the same guard); re-exported for importers
+export { projectRootOf };
 
-export function locatePackage(pkg, { home, cwd, env = process.env, platform = process.platform, configPaths = [], npmRoot = null, npmCache = null, preferNpx = false } = {}) {
+export function locatePackage(pkg, { home, cwd, env = process.env, platform = process.platform, configPaths = [], npmRoot = null, npmCache = null, preferNpx = false, globalDirs = null } = {}) {
   const cands = [];
   // The guard covers the whole PROJECT the cwd belongs to, not just the cwd: from repo/sub, a repo's .npmrc
   // (cache=../../x) can point npm at a copy planted elsewhere in the same repo (O5 N1).
   const cwdReal = projectRootOf(canonical(cwd ?? process.cwd()), canonical(home));
   // when the project root is HOME (or above it) every install is "inside" it: the guard then does not apply
   const guardCwd = !isInside(canonical(home), cwdReal);
-  const add = (dir, via, trusted) => {
+  const add = (dir, via, trusted, within = null) => {
     if (!dir) return;
     const j = readPkgJson(dir);
     if (j?.name !== pkg) return;
     let real; try { real = realpathSync.native(dir); } catch { return; }
+    // a package-manager global copy that is a link leading OUT of its node_modules folder (`bun link`, a planted
+    // link to a download) is not that manager's install: listed, never read or run (gate G2-L5)
+    if (within) {
+      let base = null; try { base = realpathSync.native(within); } catch {}
+      if (base && !isInside(real, base)) { trusted = false; via = `${via} (a link out of its folder)`; }
+    }
     const underCwd = guardCwd && isInside(real, cwdReal);
     const known = cands.find((c) => c.real === real);
     if (known) {
@@ -291,12 +288,19 @@ export function locatePackage(pkg, { home, cwd, env = process.env, platform = pr
   };
   for (const c of configPaths) add(pkgRootFrom(c.path, pkg, cwd ?? process.cwd()), `${c.where} config path`, !!c.trusted);
   if (npmRoot) add(nodePath.join(npmRoot, ...pkg.split('/')), 'npm global', true);
+  // the other package managers' global folders: as trusted as npm's (the cwd guard in add() still applies)
+  // pnpm's global entries are links into its own store (<pnpm home>/global/5/.pnpm/...): the containment check
+  // there is the version folder (two levels up from node_modules), for the others the node_modules folder itself.
+  for (const g of findGlobalPackage(pkg, globalDirs ?? globalPackageDirs({ home, env, platform }), { platform })) {
+    const modules = pkg.split('/').reduce((d) => nodePath.dirname(d), g.dir);
+    add(g.dir, `${g.manager} global`, true, g.manager === 'pnpm' ? nodePath.dirname(modules) : modules);
+  }
   for (const root of npxRoots({ home, env, platform, npmCache })) {
     let entries = [];
     try { entries = readdirSync(root).slice(0, OPT_LIMITS.npxDirs); } catch { /* no npx cache: nothing to add */ }
     for (const e of entries) add(nodePath.join(root, e, 'node_modules', ...pkg.split('/')), 'npx cache', true);
   }
-  const rank = (c) => (/config path$/.test(c.via) ? 0 : c.via === 'npm global' ? (preferNpx ? 2 : 1) : (preferNpx ? 1 : 2));
+  const rank = (c) => (/config path$/.test(c.via) ? 0 : / global$/.test(c.via) ? (preferNpx ? 2 : 1) : (preferNpx ? 1 : 2));
   const trusted = cands.filter((c) => c.trusted).sort((a, b) => rank(a) - rank(b) || compareVersions(b.rawVersion, a.rawVersion));
   return { chosen: trusted[0] ?? null, candidates: cands };
 }
@@ -386,7 +390,7 @@ async function packageHelp(found, binName, ctx) {
   // real paths on both sides: a symlinked bin that leaves the package is refused (O2-2)
   if (samePath(real, found.real) || !isInside(real, found.real)) return { skipped: 'bin resolves outside the package; not run' };
   if (!isJsEntry(real, found.real)) return { skipped: 'bin is not a JavaScript file; not run' };
-  const r = await ctx.run(process.execPath, [real, '--help'], OPT_LIMITS.helpTimeoutMs,
+  const r = await ctx.exec(process.execPath, [real, '--help'], OPT_LIMITS.helpTimeoutMs,
     { shell: false, cwd: found.real, env: helpEnv(ctx.env, ctx.platform), maxStdout: OPT_LIMITS.helpStdout, killTree: true });
   return { ok: r.ok, truncated: !!r.truncated, text: String(r.stdout ?? ''), error: r.ok ? null : cap(redactText(r.error ?? '').text, 160) };
 }
@@ -395,7 +399,7 @@ async function packageHelp(found, binName, ctx) {
 function fetchLatest(pkg, ctx) {
   ctx.latest ??= new Map();
   if (!ctx.latest.has(pkg)) {
-    ctx.latest.set(pkg, ctx.run('npm', ['view', `${pkg}@latest`, 'version', 'readme', '--json'], OPT_LIMITS.networkTimeoutMs, { shell: ctx.platform === 'win32' }).then((r) => {
+    ctx.latest.set(pkg, ctx.exec('npm', ['view', `${pkg}@latest`, 'version', 'readme', '--json'], OPT_LIMITS.networkTimeoutMs, { shell: ctx.platform === 'win32' }).then((r) => {
       const p = r.ok ? parseJsonOutput(r.stdout) : { ok: false };
       if (!p.ok || !isObject(p.value)) return { ok: false };
       return { ok: true, version: cleanVersion(p.value.version), readme: String(p.value.readme ?? '').slice(0, OPT_LIMITS.docBytes) };
@@ -451,7 +455,8 @@ async function discoverPluginConfig(it, ctx, out) {
         : 'plugin not installed: nothing to configure yet');
     return;
   }
-  const r = await ctx.runClaude(['plugin', 'configure', it.plugin, '--json'], OPT_LIMITS.pluginConfigTimeoutMs);
+  if (ctx.pluginVersions?.get(it.plugin)) out.pluginVersion = ctx.pluginVersions.get(it.plugin);
+  const r = await ctx.execClaude(['plugin', 'configure', it.plugin, '--json'], OPT_LIMITS.pluginConfigTimeoutMs);
   const parsed = r.ok ? parseJsonOutput(r.stdout) : { ok: false };
   if (parsed.ok) {
     out.sources.push({ kind: 'claude plugin configure --json', ref: it.plugin });
@@ -473,7 +478,7 @@ async function discoverPackage(it, ctx, prefix, out) {
     }
   }
   const npm = await ctx.npmInfo();
-  const loc = locatePackage(o.package, { home: ctx.home, cwd: ctx.cwd, env: ctx.env, platform: ctx.platform, configPaths, npmRoot: npm.root, npmCache: npm.cache, preferNpx });
+  const loc = locatePackage(o.package, { home: ctx.home, cwd: ctx.cwd, env: ctx.env, platform: ctx.platform, configPaths, npmRoot: npm.root, npmCache: npm.cache, preferNpx, globalDirs: ctx.globalDirs() });
   const found = loc.chosen;
   if (loc.candidates.length) {
     // brief: one entry per (version, place, trust), the copy read first, at most `candidates` entries
@@ -489,7 +494,9 @@ async function discoverPackage(it, ctx, prefix, out) {
   for (const c of loc.candidates.filter((x) => !x.trusted)) {
     out.notes.push(c.reason === 'cwd'
       ? `a copy of ${o.package} (${c.version}) lies inside the current project: it could be planted by a cloned repo, so nothing was read from it`
-      : `a copy of ${o.package} (${c.version}) was found via a project config: it could be planted by a cloned repo, so nothing was read from it`);
+      : /a link out of its folder\)$/.test(c.via)
+        ? `a copy of ${o.package} (${c.version}) in ${c.via.replace(/ \(a link out of its folder\)$/, '')} is a link to a folder outside it (a linked checkout or a planted link), so nothing was read from it`
+        : `a copy of ${o.package} (${c.version}) was found via a project config: it could be planted by a cloned repo, so nothing was read from it`);
   }
   if (new Set(loc.candidates.map((c) => c.version)).size > 1 && found) out.notes.push(`several copies with different versions are installed; read: ${found.version} (${found.via})`);
 
@@ -615,6 +622,7 @@ export function readState(file) {
 export function snapshotOf(item) {
   return {
     version: item.version ?? null,
+    ...(item.pluginVersion ? { pluginVersion: item.pluginVersion } : {}),
     optionsKnown: item.sources.length > 0,
     ...(item.docsOnly ? { docsOnly: true } : {}),
     options: item.options.map((o) => ({ name: o.name, hash: o.hash, ...(o.docs === false ? { docs: false } : {}) })),
@@ -710,6 +718,7 @@ export function fitBudget(out, budget, detail) {
 
 // ---------------------------------------------------------------- run
 export async function run(argv = [], opts = {}) {
+  refuseOldRunnerNames(opts);
   const here = nodePath.dirname(fileURLToPath(import.meta.url));
   const home = opts.home ?? homedir();
   const cwd = opts.cwd ?? process.cwd();
@@ -731,24 +740,29 @@ export async function run(argv = [], opts = {}) {
     const hostsInfo = readHosts({ home, cwd, env, platform, fs: opts.fs, short });
     notes.push(...hostsInfo.notes.map((n) => redactText(n).text));
     const findBin = opts.findBin ?? ((b) => findBinDefault(b, { env, platform }));
-    const runClaude = opts.runClaude ?? runClaudeDefault;
-    const runFn = opts.run ?? runCommand;
-    const pl = await runClaude(['plugin', 'list', '--json'], OPT_LIMITS.pluginListTimeoutMs);
+    const execClaude = opts.execClaude ?? execClaudeDefault;
+    const exec = opts.exec ?? runCommand;
+    const pl = await execClaude(['plugin', 'list', '--json'], OPT_LIMITS.pluginListTimeoutMs);
     const plParsed = pl.ok ? parseJsonOutput(pl.stdout) : { ok: false };
     const pluginRows = plParsed.ok ? asArray(plParsed.value).filter(isObject) : [];
     const installedPlugins = new Set(pluginRows.filter((p) => p.enabled !== false).map((p) => String(p.id)));
     const disabledPlugins = new Set(pluginRows.filter((p) => p.enabled === false).map((p) => String(p.id)));
+    // the plugin's own version (claude plugin list), kept apart from `version` (the npm package an item may also have)
+    const pluginVersions = new Map(pluginRows.filter((p) => p.enabled !== false && p.version != null).map((p) => [String(p.id), cleanVersion(p.version)]));
     if (!plParsed.ok) notes.push(`claude plugin list --json: ${cap(redactText(pl.error ?? 'no JSON').text, 160)}`);
     let npmP = null;
+    let globalDirs = null;
     const ctx = {
-      installedPlugins, disabledPlugins, pluginListOk: plParsed.ok,
+      installedPlugins, disabledPlugins, pluginVersions, pluginListOk: plParsed.ok,
       home, cwd, env, platform, hostsInfo, network: has('--network'), runHelp: has('--run-help'),
-      run: runFn, runClaude, short,
+      exec, execClaude, short,
+      // pnpm / yarn / bun / Volta / mise global folders: listed once per run, shared by every item
+      globalDirs: () => (globalDirs ??= opts.globalDirs ?? globalPackageDirs({ home, env, platform })),
       // `npm root -g` and the npm cache dir: asked once per run, shared by every item
       npmInfo: () => (npmP ??= Promise.all([
         // from HOME, never the project: a project .npmrc must not steer the npm cache / global root (O5 N1)
-        runFn('npm', ['root', '-g'], OPT_LIMITS.npmTimeoutMs, { shell: platform === 'win32', cwd: home }),
-        runFn('npm', ['config', 'get', 'cache'], OPT_LIMITS.npmTimeoutMs, { shell: platform === 'win32', cwd: home }),
+        exec('npm', ['root', '-g'], OPT_LIMITS.npmTimeoutMs, { shell: platform === 'win32', cwd: home }),
+        exec('npm', ['config', 'get', 'cache'], OPT_LIMITS.npmTimeoutMs, { shell: platform === 'win32', cwd: home }),
       ]).then(([r, c]) => {
         let root = r.ok ? String(r.stdout).trim() : null;
         if (root && platform !== 'win32' && /^[A-Za-z]:[\\/]/.test(root)) {
@@ -773,7 +787,7 @@ export async function run(argv = [], opts = {}) {
         const mine = h.servers.filter((s) => items.some((it) => serverIsItem(s, it)));
         return {
           id: h.id, label: h.label, present: h.present,
-          files: h.files.map((f) => ({ file: short(f.file), scope: f.scope, exists: f.exists, ...(f.exists ? { ok: f.ok } : {}), ...(f.error ? { error: f.error } : {}) })),
+          files: h.files.map((f) => ({ file: short(f.file), scope: f.scope, exists: f.exists, ...(f.exists ? { ok: f.ok } : {}), ...(f.error ? { error: f.error } : {}), ...(f.variant ? { variant: f.variant } : {}), ...(f.side ? { side: f.side } : {}), ...(f.plugin ? { plugin: name(f.plugin) } : {}), ...(f.readOnly ? { readOnly: true } : {}) })),
           serverCount: h.servers.length,
           // only the servers that run a pack item in this view; the rest are counted
           servers: mine.map((s) => ({ name: name(s.name), scope: s.scope, env: s.env.map((e) => ({ name: name(e.name), state: e.state })), headers: s.headers.map((e) => ({ name: name(e.name), state: e.state })) })),
@@ -790,7 +804,7 @@ export async function run(argv = [], opts = {}) {
     if (st?.corrupt) { out.stateCorrupt = true; notes.push(`state file ${short(file)} could not be read (${st.error}); the recorded history is unknown`); }
     if (has('--diff')) {
       out.stateFile = short(file);
-      out.diff = discovered.map((d) => ({ id: d.id, against: d.docsOnly ? 'registry @latest README' : d.version ? `installed ${d.version}` : 'nothing installed', ...diffItem(st.state.items[d.id], snapshotOf(d)) }));
+      out.diff = discovered.map((d) => ({ id: d.id, against: d.docsOnly ? 'registry @latest README' : d.version ? `installed ${d.version}` : d.pluginVersion ? `plugin ${d.pluginVersion}` : 'nothing installed', ...diffItem(st.state.items[d.id], snapshotOf(d)) }));
       if (ctx.network) {
         // compare the recorded snapshot against @latest too, even when an (older) local copy exists
         for (const e of out.diff) {

@@ -1,6 +1,6 @@
 // Small helpers shared by inventory.mjs, hosts.mjs and options.mjs (single source: a change to what counts as
 // "a reference" or "the same path" is made here once). Node stdlib only, no I/O at import time.
-import { realpathSync } from 'node:fs';
+import { existsSync, realpathSync } from 'node:fs';
 import nodePath from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -60,6 +60,23 @@ export function isInside(child, parent, platform = process.platform) {
   return !!p && (c === p || c.startsWith(p + '/'));
 }
 
+/**
+ * the top of the project that contains `dir`: the highest ancestor that holds .git, .npmrc, package.json or
+ * .mcp.json (a project marker), else `dir` itself. The walk stops at HOME and at the filesystem root, so the
+ * result is never HOME or above, also for a repo outside HOME (e.g. /work/repo).
+ */
+export function projectRootOf(dir, home) {
+  let root = dir; let cur = dir;
+  // no depth cap: the walk ends at HOME or the filesystem root (a cap let a very deep cwd escape, O7 I1)
+  while (cur && cur !== home && cur !== nodePath.parse(cur).root) {
+    if (['.git', '.npmrc', 'package.json', '.mcp.json'].some((m) => existsSync(nodePath.join(cur, m)))) root = cur;
+    const up = nodePath.dirname(cur);
+    if (up === cur) break;
+    cur = up;
+  }
+  return root;
+}
+
 // ---------------------------------------------------------------- JSON / JSONC text
 /** bytes or text -> string: UTF-8 (BOM stripped), UTF-16 LE/BE with BOM (PowerShell 5.1 `Out-File`) */
 export function decodeText(input) {
@@ -103,4 +120,14 @@ export function readJsonText(input, { jsonc = false } = {}) {
 /** true when the module with this import.meta.url is the script node was started with */
 export function isMain(importMetaUrl) {
   try { return !!process.argv[1] && importMetaUrl === pathToFileURL(realpathSync(process.argv[1])).href; } catch { return false; }
+}
+
+/**
+ * The injected process runners are opts.exec (any command) and opts.execClaude (the claude CLI); they were called
+ * run / runClaude before issue #23. An old name would be ignored and the REAL command run, so it is refused.
+ */
+export function refuseOldRunnerNames(opts) {
+  for (const [old, now] of [['run', 'exec'], ['runClaude', 'execClaude']]) {
+    if (opts && Object.hasOwn(opts, old)) throw new TypeError(`opts.${old} was renamed to opts.${now}`);
+  }
 }

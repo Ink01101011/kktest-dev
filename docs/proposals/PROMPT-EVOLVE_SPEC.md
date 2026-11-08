@@ -1,5 +1,9 @@
 # prompt-evolve — Specification
 
+> **Historical (2026-11-08).** This is the proposal written before `prompt-evolve` shipped. It is kept as a
+> design record and is not updated. What ships now: [plugins/prompt-evolve](../../plugins/prompt-evolve/README.md),
+> [docs/prompt-evolve/SPEC.md](../prompt-evolve/SPEC.md).
+
 Status: 0.1.0 (proposal) · Date: 2026-07-02 · Author: Ink
 
 > Proposal spec. A dependency-light eval-harness for Loop Category 5 (System Optimization): run a prompt

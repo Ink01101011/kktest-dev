@@ -57,8 +57,8 @@ Several skills here cross-link siblings with `[[skill-name]]`, and some of those
 That is 10 link instances across 7 skill pairs, measured.
 
 `[[…]]` is a prose pointer, not a resolved link — nothing dereferences it, so nothing errors. Install
-both plugins together and every pointer names an available skill; run this one alone and those four
-name skills Claude cannot load. Each skill is self-contained regardless.
+both plugins together and every pointer names an available skill; run this one alone and those five
+skills name siblings Claude cannot load. Each skill is self-contained regardless.
 
 ## Format
 

@@ -10,20 +10,27 @@
 // secret-like key, Bearer/Basic credentials and well-known token prefixes become "***".
 //
 // usage: node inventory.mjs [--fast] [--full] [--pretty]
+// Processes it may start besides `claude`: for a pack.json requires[] entry with `java` whose bin is on PATH, one
+// `<java> -version` (and on macOS, when java is the /usr/bin/java stub, /usr/libexec/java_home), 10 s timeout each,
+// only when the JDK has no `release` file to read the version from, and never a java given by a relative path or
+// lying inside the current project (a cloned repo can set JAVA_HOME and ship bin/java).
 //   --fast    skip `claude mcp list` (the slow health check; claude.ai connectors are then not seen)
 //   --full    also print the installed lists (plugins, marketplaces, mcp, skills, hooks)
 //   --pretty  indent the JSON
 //
 // Single file, Node stdlib only. The pure helpers are exported for inventory.test.mjs.
 import { spawn } from 'node:child_process';
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import nodePath from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CONFIG_MAX_BYTES, OPTION_HINT_KEYS, asArray, canonical, caseInsensitive, isEnvRef, isMain, isObject, readJsonText, samePath } from './common.mjs';
+import { CONFIG_MAX_BYTES, OPTION_HINT_KEYS, asArray, canonical, caseInsensitive, isEnvRef, isInside, isMain, isObject, projectRootOf, readJsonText, refuseOldRunnerNames, samePath } from './common.mjs';
 import { detectProviders, readHosts } from './hosts.mjs';
+import { REDACT_CHARS, inlineSecretKeys, redactArgs, redactText, redactUrl } from './redact.mjs';
 
 export { isEnvRef, isObject, samePath }; // moved to common.mjs; re-exported for existing importers and tests
+// moved to redact.mjs (#19); re-exported for existing importers and tests
+export { cutAtWhitespace, inlineSecretKeys, redactArgs, redactText, redactUrl, replaceKeyValues, secretKey, splitShell } from './redact.mjs';
 
 export const LIMITS = {
   skillDepth: 3,          // nesting below a skills root
@@ -34,68 +41,14 @@ export const LIMITS = {
   list: 200,              // entries per installed list in --full
   str: 300,               // characters per string in the output
   claudeJsonBytes: CONFIG_MAX_BYTES,
-  redactChars: 20000,     // longer text is cut before redaction (keeps every regex pass bounded)
+  redactChars: REDACT_CHARS, // longer text is cut before redaction (keeps every regex pass bounded)
   cliTimeoutMs: 60000,
   mcpListTimeoutMs: 45000,
 };
 
 // ---------------------------------------------------------------- named patterns
-// Key segments that make an env/header/flag/query name secret-like. Matched on whole segments of the
-// snake_cased name, so AUTHOR_NAME does not match "auth" but OAUTH_TOKEN matches "token".
-const SECRET_SEGMENTS = 'token|secret|password|passwd|pwd|pw|pass|api_?key|apikey|access_?key|private_?key|client_?secret|auth|authorization|bearer|cookie|credentials?|pat|signature|sig';
-const SECRET_KEY = new RegExp(`(^|_)(${SECRET_SEGMENTS})(_|$)`);
-// Query parameter names that carry a credential even though the word alone is generic (?key=, ?sig=).
-const QUERY_SECRET = /^(key|sig|code|access_token|apikey)$/i;
-// Well-known credential prefixes (OpenAI/Anthropic sk-, Stripe, GitHub, GitLab, Slack, AWS, Google, JWT).
-const TOKEN_PREFIX = /\b(?:sk-[A-Za-z0-9_-]{8,}|sk_(?:live|test)_[A-Za-z0-9]{8,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{16,}|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]+)/g;
-// URL_IN_TEXT and KEY_RUN match a WHOLE run of key/scheme characters (the lookbehind allows one start per
-// run, so a long run is scanned once: linear, G7-4), then the callback drops leading digits, dots and dashes
-// to find the key or scheme the old unanchored forms found (G8-M3: `1api_key=`, `-https://`) with no length
-// cap (G9-M-B/M-C: keys over 64 and schemes over 32 chars).
-const URL_IN_TEXT = /(?<![a-z0-9+.-])([a-z0-9+.-]+)(:\/\/[^\s'"<>`]+)/gi;
-const AUTH_SCHEME = /\b(Bearer|Basic|Token)(\s+)([^\s'"]+)/gi;
-const KEY_RUN = /(?<![\w.-])([\w.-]+)(=|:[ \t]*)/g;
-const PAIR_VALUE = /"[^"]*"|'[^']*'|[^\s'"&]+/y;
-const FLAG = /^--?[A-Za-z][\w.-]*$/;
-// `-u user:password` / `--user user:password`: the part after the first colon is a password.
-const USER_FLAG = /^(-u|--user|--proxy-user)$/;
-// Commands whose -u takes user:password and whose short flags combine/glue (`-vu bob:pw`, `-ubob:pw`).
-const CRED_U_CMDS = new Set(['curl', 'wget', 'lftp', 'aria2c', 'ftp', 'sftp', 'mongo', 'mongosh', 'mongodump', 'mongorestore', 'mongoexport', 'mongoimport', 'redis-cli', 'influx', 'rabbitmqadmin']);
-// MySQL-family clients take the password glued to -p (`mysql -pSECRET`); a separate `-p X` is a prompt + db name.
-const MYSQL_CMDS = new Set(['mysql', 'mariadb', 'mysqldump', 'mysqladmin', 'mysqlimport', 'mysqlshow']);
-
-const uidPair = (user, pw) => /^\d+$/.test(user) && /^\d+$/.test(pw);
-
-/** split a command line on ; & | && || and newlines that are OUTSIDE quotes; linear. Returns [seg, sep, seg, ...] */
-export function splitShell(t) {
-  const out = []; let cur = ''; let q = '';
-  for (let i = 0; i < t.length; i++) {
-    const c = t[i];
-    if (q) { cur += c; if (c === q) q = ''; else if (c === '\\' && q === '"' && i + 1 < t.length) cur += t[++i]; continue; }
-    if (c === '"' || c === "'") { q = c; cur += c; continue; }
-    if (c === '\\' && i + 1 < t.length) { cur += c + t[++i]; continue; }
-    if (c === ';' || c === '&' || c === '|' || c === '\n') {
-      let sep = c; while (i + 1 < t.length && (t[i + 1] === '&' || t[i + 1] === '|') && sep.length < 2) sep += t[++i];
-      out.push(cur, sep); cur = ''; continue;
-    }
-    cur += c;
-  }
-  out.push(cur);
-  return out;
-}
-
-/** what a segment's commands imply for -u and -p: a credential client present, a MySQL client present */
-// Word-boundary tests over the whole text: fail-safe (any mention counts, as the pre-gate code did), linear.
-const CRED_U_WORD = new RegExp(`\\b(${[...CRED_U_CMDS].map((c) => c.replace(/-/g, '\\-')).join('|')})(\\.exe)?\\b`, 'i');
-const MYSQL_WORD = new RegExp(`\\b(${[...MYSQL_CMDS].join('|')})(\\.exe)?\\b`, 'i');
-function credContext(words) {
-  const text = words.map((w) => String(w ?? '')).join(' ');
-  const credU = CRED_U_WORD.test(text);
-  const mysql = MYSQL_WORD.test(text);
-  return { credU: credU || mysql, mysql };
-}
 // Directories under HOME that belong to a package manager or version manager (not "a local checkout").
-const TOOLCHAIN_DIRS = /\/(node_modules|\.nvm|nvm|\.volta|\.asdf|\.fnm|\.bun\/bin|\.cargo\/bin|\.npm-global|\.npm\/_npx|\.local\/bin|\.local\/share\/(mise|pnpm|uv)|mise|homebrew|linuxbrew|\.claude\/plugins|appdata\/roaming\/npm|appdata\/local\/(mise|pnpm|volta)|scoop\/(shims|apps)|go\/bin|library\/pnpm)(\/|$)/;
+const TOOLCHAIN_DIRS = /\/(node_modules|\.nvm|nvm|\.volta|\.asdf|\.fnm|\.bun\/(bin|install)|\.yarn\/bin|\.config\/yarn\/global|appdata\/local\/yarn|\.cargo\/bin|\.npm-global|\.npm\/_npx|\.local\/bin|\.local\/share\/(mise|pnpm|uv)|mise|homebrew|linuxbrew|\.claude\/plugins|appdata\/roaming\/npm|appdata\/local\/(mise|pnpm|volta)|scoop\/(shims|apps)|go\/bin|library\/pnpm)(\/|$)/;
 const BROAD_PERMISSION = /^Bash(\(\*\))?$|^Bash\(\*|bypassPermissions|^mcp__[^_]+$|^\*$/;
 // Commands that fetch a package from a registry and run it.
 const DIRECT_RUNNERS = new Set(['npx', 'bunx', 'uvx', 'pipx']);
@@ -106,7 +59,7 @@ const REMOTE_PROXIES = new Set(['mcp-remote', 'supergateway', '@modelcontextprot
 const EVERY_TOOL_MATCHERS = new Set(['', '*', '.*']);
 const SKIP_DIRS = new Set(['node_modules', '.git']);
 const SCRIPT_EXT = /\.(sh|bash|zsh|py|mjs|cjs|js|ts|cmd|bat|ps1|rb|pl)$/i;
-const KNOWN_DETECT_KEYS = new Set(['plugins', 'mcpName', 'mcpNameExact', 'mcpUrl', 'mcpCommand', 'mcpArgs', 'skills']);
+export const KNOWN_DETECT_KEYS = new Set(['plugins', 'mcpName', 'mcpNameExact', 'mcpUrl', 'mcpCommand', 'mcpArgs', 'skills']);
 const RAW = Symbol('raw'); // raw config on server objects; Symbol keys never reach JSON.stringify
 
 // ---------------------------------------------------------------- small pure helpers
@@ -121,186 +74,6 @@ export function groupBy(items, keyFn) {
 }
 export function capList(list, n = LIMITS.evidence) {
   return list.length > n ? [...list.slice(0, n), `… ${list.length - n} more`] : list;
-}
-
-// ---------------------------------------------------------------- secrets: detection + redaction
-const snake = (k) => String(k).replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
-export const secretKey = (k) => SECRET_KEY.test(snake(String(k).replace(/^-+/, '')));
-
-/** redact one URL; returns { text, hits } where hits name what looked like a credential */
-export function redactUrl(u) {
-  const hits = [];
-  let url;
-  try { url = new URL(u); } catch { url = null; }
-  if (!url || !url.host) {
-    const text = String(u).replace(/\/\/[^/@\s]+@/, () => { hits.push('url userinfo'); return '//***@'; })
-      .replace(/([?&][^=&#\s]+=)[^&#\s]*/g, '$1***');
-    return { text, hits };
-  }
-  if (url.password || (url.username && new RegExp(TOKEN_PREFIX.source).test(decodeURIComponent(url.username)))) hits.push('url userinfo');
-  let text = `${url.protocol}//${url.username || url.password ? '***@' : ''}${url.host}${url.pathname === '/' ? '' : url.pathname}`;
-  const keys = [];
-  for (const [k, v] of url.searchParams) {
-    keys.push(`${k}=${v === '' ? '' : '***'}`);
-    if (v && (secretKey(k) || QUERY_SECRET.test(k)) && !isEnvRef(v)) hits.push(`url query "${k}"`);
-  }
-  if (keys.length) text += '?' + keys.join('&');
-  text = text.replace(TOKEN_PREFIX, () => { hits.push('token in url'); return '***'; });
-  return { text, hits };
-}
-
-/** mask the password half of user:password; returns null when it is not one (or must not be masked) */
-function maskUserPass(value, ctx) {
-  const q = /^["']/.test(value) ? value[0] : '';
-  const inner = q ? value.slice(1, value.endsWith(q) ? -1 : undefined) : value;
-  const i = inner.indexOf(':');
-  if (i <= 0 || i === inner.length - 1) return null;
-  const user = inner.slice(0, i); const pw = inner.slice(i + 1);
-  // Fail-safe (G9-M-A): every -u x:y is masked except a numeric uid:gid. `docker run -u bob:staff` is
-  // over-masked to bob:*** (display only) rather than letting `docker run img tool -u bob:pw` leak.
-  if (pw === '***' || isEnvRef(pw) || uidPair(user, pw)) return null;
-  return `${q}${user}:***${q}`;
-}
-
-/** -u/--user/--proxy-user user:password and mysql -pX inside ONE shell segment */
-function redactSegment(seg, hits) {
-  const ctx = credContext([seg]);
-  const VALUE = `("[^"]*"|'[^']*'|[^\\s'"]+)`;
-  // exact flags, spaced or with =: masked unless the segment's only commands give -u another meaning
-  seg = seg.replace(new RegExp(`(^|\\s)(-u|--user|--proxy-user)(\\s+|=)${VALUE}`, 'g'), (m, pre, flag, sp, val) => {
-    const masked = maskUserPass(val, ctx); if (!masked) return m;
-    hits.push(`"${flag}" password`); return `${pre}${flag}${sp}${masked}`;
-  });
-  // combined (-vu bob:pw) and glued (-ubob:pw, -vubob:pw): only when a credential client is in the segment
-  if (ctx.credU) {
-    seg = seg.replace(new RegExp(`(^|\\s)(-[A-Za-z]*u)(\\s+|)${VALUE}`, 'g'), (m, pre, flag, sp, val) => {
-      if (flag === '-u' && sp) return m; // already handled above
-      const masked = maskUserPass(val, ctx); if (!masked) return m;
-      hits.push(`"${flag}" password`); return `${pre}${flag}${sp}${masked}`;
-    });
-  }
-  if (ctx.mysql) {
-    seg = seg.replace(/(^|\s)-p(?!\s)("[^"]*"|'[^']*'|[^\s'"]+)/g, (m, pre, val) => {
-      if (val === '***' || isEnvRef(val.replace(/^["']|["']$/g, ''))) return m;
-      hits.push('"-p" password'); return `${pre}-p***`;
-    });
-  }
-  return seg;
-}
-
-/**
- * KEY=value / key: value with a secret-like key. A match whose key is NOT secret must not swallow its value:
- * in `Example: TOKEN=abc` the value of `Example:` is `TOKEN=abc`, which is itself a pair to check.
- * Linear: KEY_RUN finds each maximal key run once (the lookbehind allows one start per run, and runs do not
- * overlap), so the key scan is O(n) in total. The value is matched (sticky, at the separator's end) only for a
- * secret key; a masked value is consumed and never scanned again, and after a non-secret key the scan simply
- * continues at the value's start without reading the value. Each character is therefore read a bounded number
- * of times. A quoted value with no closing quote reads to the end once per quote character at most (any later
- * opening quote would have closed it).
- */
-export function replaceKeyValues(t, hits = []) {
-  const re = new RegExp(KEY_RUN.source, 'g');
-  const val = new RegExp(PAIR_VALUE.source, 'y');
-  let out = ''; let last = 0; let m;
-  while ((m = re.exec(t)) !== null) {
-    const [whole, run, sep] = m;
-    const key = run.replace(/^[^A-Za-z_]+/, '');
-    if (!key || !secretKey(key)) continue; // lastIndex is already at the value's start
-    val.lastIndex = m.index + whole.length;
-    const v = val.exec(t);
-    if (!v || v[0] === '***' || isEnvRef(v[0].replace(/^["']|["']$/g, ''))) continue;
-    hits.push(`"${run}"`);
-    out += t.slice(last, m.index) + `${run}${sep}***`;
-    last = val.lastIndex;
-    re.lastIndex = last;
-  }
-  return out + t.slice(last);
-}
-
-/** drop the trailing non-whitespace run (same as .replace(/\S*$/, '') but one backwards pass: linear) */
-export function cutAtWhitespace(s) {
-  let i = s.length;
-  while (i > 0 && !/\s/.test(s[i - 1])) i--;
-  return s.slice(0, i);
-}
-
-/** redact free text (hook commands, args, CLI output); returns { text, hits } */
-export function redactText(s) {
-  const hits = [];
-  let t = String(s ?? '');
-  // cut at the last whitespace before the limit so no secret straddles the cut as a fragment (G9 minor)
-  if (t.length > LIMITS.redactChars) t = `${cutAtWhitespace(t.slice(0, LIMITS.redactChars))}…[truncated]`;
-  t = t.replace(URL_IN_TEXT, (m, run, rest) => {
-    const lead = run.match(/^[^a-z]*/i)[0];
-    if (lead === run) return m;
-    const r = redactUrl(run.slice(lead.length) + rest); hits.push(...r.hits); return lead + r.text;
-  });
-  t = t.replace(AUTH_SCHEME, (m, scheme, sp, val) => {
-    if (val === '***' || isEnvRef(val)) return m;
-    hits.push(`${scheme} credential`); return `${scheme}${sp}***`;
-  });
-  // "key": "value" (JSON / YAML-ish quoted pairs); the key length is capped so each match is bounded
-  t = t.replace(/"([^"\\\n]{1,200})"(\s*:\s*)"((?:[^"\\\n]|\\.)*)"/g, (m, key, sep, val) => {
-    if (!secretKey(key) || val === '***' || val === '' || isEnvRef(val)) return m;
-    hits.push(`"${key}"`); return `"${key}"${sep}"***"`;
-  });
-  t = replaceKeyValues(t, hits);
-  // --token VALUE (space separated) inside a command line
-  t = t.replace(/(^|\s)(--?[A-Za-z][\w.-]*)(\s+)("[^"]*"|'[^']*'|[^\s'"-][^\s'"]*)/g, (m, pre, flag, sp, val) => {
-    if (!secretKey(flag) || val === '***' || isEnvRef(val.replace(/^["']|["']$/g, ''))) return m;
-    hits.push(`"${flag}"`); return `${pre}${flag}${sp}***`;
-  });
-  // -u user:password and mysql -pSECRET, judged per shell segment (split outside quotes) by its commands
-  t = splitShell(t).map((seg, i) => (i % 2 ? seg : redactSegment(seg, hits))).join('');
-  t = t.replace(TOKEN_PREFIX, () => { hits.push('token-like value'); return '***'; });
-  return { text: t, hits };
-}
-
-/** redact an argv array: also masks the value that follows a secret-like flag */
-export function redactArgs(args, command = '') {
-  const hits = [];
-  const out = [];
-  const list = strArray(args);
-  // commands anywhere in the command + argv count (npx x mysql, cmd /c mysql, docker exec db mysql, ssh h curl)
-  const ctx = credContext([command, ...list]);
-  const { mysql, credU } = ctx;
-  for (let i = 0; i < list.length; i++) {
-    const a = list[i];
-    const prev = list[i - 1];
-    const userPass = (flag, val, rebuild) => {
-      const masked = maskUserPass(val, ctx); if (!masked) return false;
-      hits.push(`"${flag}" password`); out.push(rebuild(masked)); return true;
-    };
-    if (prev !== undefined && (USER_FLAG.test(prev) || (credU && /^-[A-Za-z]*u$/.test(prev))) && userPass(prev, a, (m) => m)) continue;
-    const eq = a.match(/^(-u|--user|--proxy-user)=(.+)$/);
-    if (eq && userPass(eq[1], eq[2], (m) => `${eq[1]}=${m}`)) continue;
-    const glued = credU && a.match(/^(-[A-Za-z]*u)([^\s-].*)$/);
-    if (glued && userPass(glued[1], glued[2], (m) => `${glued[1]}${m}`)) continue;
-    if (mysql && /^-p.+/.test(a)) {
-      if (isEnvRef(a.slice(2))) out.push(a); else { hits.push('"-p" password'); out.push('-p***'); }
-      continue;
-    }
-    if (prev !== undefined && FLAG.test(prev) && secretKey(prev) && !a.startsWith('-')) {
-      if (isEnvRef(a)) out.push(a); else { hits.push(`"${prev}"`); out.push('***'); }
-      continue;
-    }
-    const r = redactText(a);
-    hits.push(...r.hits);
-    out.push(r.text);
-  }
-  return { args: out, hits };
-}
-
-/** secret-like keys of an env/headers map whose value is a literal (or a URL carrying credentials) */
-export function inlineSecretKeys(map) {
-  const keys = [];
-  for (const [k, v] of Object.entries(asObject(map))) {
-    if (v == null || v === '' || typeof v === 'object') continue;
-    const val = String(v);
-    if (isEnvRef(val)) continue;
-    if (secretKey(k) || /^(bearer|basic)\s/i.test(val) || redactText(val).hits.length) keys.push(k);
-  }
-  return keys;
 }
 
 // ---------------------------------------------------------------- paths (OS-aware, testable with platform/home)
@@ -503,11 +276,11 @@ export function runCommand(cmd, args, timeoutMs, { shell = false, cwd, env, maxS
     });
     child.stderr.on('data', (d) => { if (stderr.length < 1e5) stderr += d; });
     child.on('error', (e) => finish({ ok: false, code: e.code, error: e.message }));
-    child.on('close', (code) => finish(code === 0 ? { ok: true, stdout } : { ok: false, code, error: stderr.trim() || `exit ${code}`, stdout }));
+    child.on('close', (code) => finish(code === 0 ? { ok: true, stdout, stderr } : { ok: false, code, error: stderr.trim() || `exit ${code}`, stdout }));
   });
 }
 // claude is a .cmd shim on Windows, so it needs the shell there; args are always fixed literals.
-export const runClaudeDefault = (args, timeoutMs) => runCommand('claude', args, timeoutMs, { shell: process.platform === 'win32' });
+export const execClaudeDefault = (args, timeoutMs) => runCommand('claude', args, timeoutMs, { shell: process.platform === 'win32' });
 /** find an executable on PATH in-process (no `which`/`where`; never the current directory) */
 export function findBinDefault(bin, { env = process.env, platform = process.platform } = {}) {
   const dirs = String(env.PATH ?? env.Path ?? '').split(platform === 'win32' ? ';' : ':').filter((d) => d && d !== '.');
@@ -521,11 +294,301 @@ export function findBinDefault(bin, { env = process.env, platform = process.plat
         if (!st.isFile()) continue;
         if (platform !== 'win32' && !(st.mode & 0o111)) continue;
         if (platform === 'linux' && /^\/mnt\/[a-z]\//.test(dir)) { windowsOnly = true; continue; } // WSL: Windows install
-        return { found: true };
+        return { found: true, path: f };
       } catch {}
     }
   }
   return { found: false, windowsOnly };
+}
+
+// ---------------------------------------------------------------- global package dirs of other package managers
+// Probed from env vars and default folders only: no package manager is spawned. Each listing is one readdir of a
+// known folder, capped, links not followed. Sources (defaults per OS):
+//  pnpm  pnpm.io/settings/other (globalDir, globalBinDir): $PNPM_HOME/global, $XDG_DATA_HOME/pnpm/global,
+//        ~/Library/pnpm/global (macOS), ~/.local/share/pnpm/global (Linux), ~/AppData/Local/pnpm/global (Windows);
+//        packages under global/<layout version>/node_modules (pnpm <= 10) or global/v11/<hash>/node_modules
+//        (pnpm.io/global-packages); bins in globalBinDir, or PNPM_HOME itself on older pnpm.
+//  yarn  classic.yarnpkg.com/en/docs/cli/global: global folder ~/.config/yarn/global, bins ~/.yarn/bin; Windows
+//        %LOCALAPPDATA%\Yarn\Data\global and %LOCALAPPDATA%\Yarn\bin (reasoned: yarn classic's Windows defaults).
+//  bun   $BUN_INSTALL_GLOBAL_DIR or $BUN_INSTALL/install/global (default ~/.bun), bins $BUN_INSTALL_BIN or
+//        $BUN_INSTALL/bin (reasoned: bun's install defaults; bun.sh/docs documents only the cache dir).
+//  volta docs.volta.sh/advanced/installers: VOLTA_HOME = ~/.volta (Unix), %LOCALAPPDATA%\Volta (Windows), shims in
+//        $VOLTA_HOME/bin; packages in tools/image/packages/<pkg>/{lib/node_modules,node_modules} (reasoned).
+//  mise  mise.jdx.dev/directories.html: MISE_DATA_DIR, else $XDG_DATA_HOME/mise, ~/.local/share/mise,
+//        %LOCALAPPDATA%\mise; MISE_INSTALLS_DIR moves installs/; `mise install node@24` -> installs/node/24.0.0, so
+//        npm -g under a mise node lands in installs/node/<v>/lib/node_modules (Windows: installs\node\<v>\node_modules);
+//        shims in <data>/shims.
+export const PM_LIMITS = Object.freeze({ entries: 200, versions: 20 });
+const PM_MANAGERS = ['pnpm', 'yarn', 'bun', 'volta', 'mise'];
+
+function realSubDirs(dir, readdir, lstat, max) {
+  let names; try { names = readdir(dir).map(String).sort(); } catch { return []; }
+  const out = [];
+  for (const n of names.slice(0, PM_LIMITS.entries)) {
+    try { const st = lstat(nodePath.join(dir, n)); if (st.isDirectory() && !st.isSymbolicLink()) out.push(n); } catch {}
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+/**
+ * global package folders of pnpm, yarn, bun, Volta and mise that exist on this machine:
+ * [{ manager, modules: [node_modules dirs], bins: [bin dirs] }]. `fs` replaces readdir/lstat/exists (tests).
+ */
+export function globalPackageDirs({ home, env = process.env, platform = process.platform, fs = {} } = {}) {
+  const p = platform === 'win32' ? nodePath.win32 : nodePath.posix;
+  const readdir = fs.readdir ?? ((d) => readdirSync(d));
+  const lstat = fs.lstat ?? lstatSync;
+  const isDir = (d) => { try { const st = lstat(d); return st.isDirectory() && !st.isSymbolicLink(); } catch { return false; } };
+  const abs = (v) => (typeof v === 'string' && v && p.isAbsolute(v) ? v : null);
+  const win = platform === 'win32';
+  const local = abs(env.LOCALAPPDATA) ?? p.join(home, 'AppData', 'Local');
+  const xdgData = platform === 'linux' || platform === 'darwin' ? abs(env.XDG_DATA_HOME) : null;
+  const subs = (d, max = PM_LIMITS.versions) => realSubDirs(d, readdir, lstat, max).map((n) => p.join(d, n));
+  const found = [];
+  const add = (manager, modules, bins) => {
+    const m = [...new Set(modules)].filter(isDir); const b = [...new Set(bins)].filter(isDir);
+    if (m.length || b.length) found.push({ manager, modules: m, bins: b });
+  };
+  // pnpm
+  const pnpmHome = abs(env.PNPM_HOME) ?? (xdgData ? p.join(xdgData, 'pnpm') : win ? p.join(local, 'pnpm') : platform === 'darwin' ? p.join(home, 'Library', 'pnpm') : p.join(home, '.local', 'share', 'pnpm'));
+  const pnpmGlobal = p.join(pnpmHome, 'global');
+  const pnpmModules = [];
+  for (const v of subs(pnpmGlobal)) {
+    pnpmModules.push(p.join(v, 'node_modules'));
+    for (const h of subs(v)) pnpmModules.push(p.join(h, 'node_modules'));
+  }
+  add('pnpm', pnpmModules, [p.join(pnpmHome, 'bin'), pnpmHome]);
+  // yarn classic
+  add('yarn', win ? [p.join(local, 'Yarn', 'Data', 'global', 'node_modules')] : [p.join(abs(env.XDG_CONFIG_HOME) ?? p.join(home, '.config'), 'yarn', 'global', 'node_modules')],
+    win ? [p.join(local, 'Yarn', 'bin')] : [p.join(home, '.yarn', 'bin')]);
+  // bun
+  const bunHome = abs(env.BUN_INSTALL) ?? p.join(home, '.bun');
+  add('bun', [p.join(abs(env.BUN_INSTALL_GLOBAL_DIR) ?? p.join(bunHome, 'install', 'global'), 'node_modules')], [abs(env.BUN_INSTALL_BIN) ?? p.join(bunHome, 'bin')]);
+  // Volta
+  const volta = abs(env.VOLTA_HOME) ?? (win ? p.join(local, 'Volta') : p.join(home, '.volta'));
+  const voltaModules = [];
+  const pkgs = p.join(volta, 'tools', 'image', 'packages');
+  for (const d of subs(pkgs, PM_LIMITS.entries)) {
+    const pkgDirs = p.basename(d).startsWith('@') ? subs(d, PM_LIMITS.entries) : [d]; // @scope/name
+    for (const x of pkgDirs) voltaModules.push(p.join(x, 'lib', 'node_modules'), p.join(x, 'node_modules'));
+  }
+  add('volta', voltaModules, [p.join(volta, 'bin')]);
+  // mise
+  const miseData = abs(env.MISE_DATA_DIR) ?? (xdgData ? p.join(xdgData, 'mise') : win ? p.join(local, 'mise') : p.join(home, '.local', 'share', 'mise'));
+  const installs = abs(env.MISE_INSTALLS_DIR) ?? p.join(miseData, 'installs');
+  const miseModules = []; const miseBins = [p.join(miseData, 'shims')];
+  for (const v of subs(p.join(installs, 'node'))) {
+    miseModules.push(win ? p.join(v, 'node_modules') : p.join(v, 'lib', 'node_modules'));
+    miseBins.push(win ? v : p.join(v, 'bin'));
+  }
+  add('mise', miseModules, miseBins);
+  return found.sort((a, b) => PM_MANAGERS.indexOf(a.manager) - PM_MANAGERS.indexOf(b.manager));
+}
+
+/** the global copies of package `pkg` in those folders: [{ manager, dir }] (a package.json must be there) */
+export function findGlobalPackage(pkg, dirs, { platform = process.platform, exists = existsSync } = {}) {
+  const p = platform === 'win32' ? nodePath.win32 : nodePath.posix;
+  const out = [];
+  for (const d of dirs) for (const m of d.modules) {
+    const dir = p.join(m, ...String(pkg).split('/'));
+    if (exists(p.join(dir, 'package.json'))) out.push({ manager: d.manager, dir });
+  }
+  return out;
+}
+
+/** a bin that is in a package manager's bin folder that is NOT on PATH: { manager, dir } or null */
+export function findBinOffPath(bin, dirs, { env = process.env, platform = process.platform, stat = statSync } = {}) {
+  const p = platform === 'win32' ? nodePath.win32 : nodePath.posix;
+  const onPath = String(env.PATH ?? env.Path ?? '').split(platform === 'win32' ? ';' : ':').filter(Boolean);
+  const exts = platform === 'win32' ? ['', ...String(env.PATHEXT || '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean)] : [''];
+  for (const d of dirs) for (const b of d.bins) {
+    if (onPath.some((x) => samePath(x, b, platform))) continue; // on PATH: findBin already looked there
+    for (const ext of exts) {
+      try {
+        const st = stat(p.join(b, bin + ext));
+        if (st.isFile() && (platform === 'win32' || st.mode & 0o111)) return { manager: d.manager, dir: b };
+      } catch {}
+    }
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------- the Java a required bin will run on (#21)
+// pack.json `requires[].java: N` means the bin needs Java N+ to start (jdtls 1.63+ needs 25: on 17/21 it fails with
+// "Unresolved requirement ... osgi.ee ... version=25"). The bin itself is never run. The Java it will use, in order:
+//   1. $JAVA_HOME (mise, sdkman and asdf set it; the brew jdtls wrapper and the jdtls launcher both honour it),
+//   2. the default a wrapper script writes as JAVA_HOME="${JAVA_HOME:-<dir>}" (Homebrew's jdtls wrapper: its openjdk),
+//   3. `java` on PATH; on macOS /usr/bin/java is a stub, so the JDK it would pick is asked from /usr/libexec/java_home.
+// The version is read from <JDK>/release (JAVA_VERSION="25.0.1") with no process at all; only when that file is
+// missing does `<java> -version` run, with a timeout (fixed args, no shell; the version is read from stderr + stdout).
+// Trust (F1, gate G1-M1/G2-L4): a repo can set JAVA_HOME (its .claude/settings.json env, a direnv .envrc) and ship
+// bin/java, so a JAVA_HOME / wrapper default / PATH java that is relative, or whose real path is inside the current
+// project, is never run (and a relative one is not even read): the note says so instead.
+export const JAVA_TIMEOUT_MS = 10000;
+const WRAPPER_MAX_BYTES = 4096;
+
+/** feature version from `java -version` text: 'openjdk version "21.0.2"' -> 21, 'java version "1.8.0_391"' -> 8, else null */
+export function parseJavaVersion(text) {
+  const m = String(text ?? '').match(/\bversion\s+"(\d+)(?:\.(\d+))?[^"]*"/i) ?? String(text ?? '').match(/^(?:openjdk|java)\s+(\d+)(?:\.(\d+))?/im);
+  if (!m) return null;
+  const major = Number(m[1]);
+  return major === 1 && m[2] != null ? Number(m[2]) : major;
+}
+
+/** JAVA_HOME default written into a small wrapper script (brew's `JAVA_HOME="${JAVA_HOME:-/opt/.../Home}" exec ...`), else null */
+export function wrapperJavaHome(text) {
+  const m = String(text ?? '').match(/JAVA_HOME="?\$\{JAVA_HOME:-([^}"]+)\}/);
+  return m ? m[1].trim() : null;
+}
+
+function readHead(file) {
+  try {
+    const st = statSync(file);
+    if (!st.isFile() || st.size > 64 * 1024) return '';
+    return readFileSync(file).subarray(0, WRAPPER_MAX_BYTES).toString('utf8');
+  } catch { return ''; }
+}
+
+/** real path of x, also when x does not exist yet: the deepest existing ancestor is resolved, the rest appended */
+export function realPathOf(x) {
+  const want = nodePath.resolve(String(x));
+  const rest = []; let cur = want;
+  for (;;) {
+    try { return nodePath.join(realpathSync.native(cur), ...rest.reverse()); } catch {}
+    const up = nodePath.dirname(cur);
+    if (up === cur) return want;
+    rest.push(nodePath.basename(cur)); cur = up;
+  }
+}
+
+/** feature version from a JDK's `release` file (JAVA_VERSION="25.0.1"), else null */
+export function releaseJavaVersion(text) {
+  const m = String(text ?? '').match(/^JAVA_VERSION="?([^"\r\n]+)"?/m);
+  return m ? parseJavaVersion(`version "${m[1].trim()}"`) : null;
+}
+
+/**
+ * which Java `bin` (found at binPath) will start on, and its feature version. Resolves
+ * { java: <path or null>, from: <where that choice came from>, version: <int or null>, error?: <why unknown> }.
+ * io: exec (runCommand-shaped), findBin (returns { found, path }), readHead (first bytes of a file), exists,
+ * realpath (canonical path), cwd + home (the project guard: nothing whose real path is inside the project runs).
+ */
+export async function javaForBin(binPath, { env = process.env, platform = process.platform, exec = runCommand, findBin, readHead: head = readHead, exists = existsSync, realpath = realPathOf, cwd = process.cwd(), home = homedir() } = {}) {
+  const p = platform === 'win32' ? nodePath.win32 : nodePath.posix;
+  const javaIn = (h) => p.join(h, 'bin', platform === 'win32' ? 'java.exe' : 'java');
+  // the project the cwd belongs to (as options.mjs guards --run-help); none when the cwd is HOME or above it
+  // (and, in any case, the cwd itself unless the cwd is HOME or above it: a HOME that sits inside a repo turns the
+  // project guard off, the cwd guard still holds)
+  const realCwd = realpath(cwd); const realHome = realpath(home);
+  const root = projectRootOf(realCwd, realHome);
+  const guard = !isInside(realHome, root, platform);
+  const cwdGuard = !isInside(realHome, realCwd, platform);
+  const inProject = (x) => { const r = realpath(x); return (guard && isInside(r, root, platform)) || (cwdGuard && isInside(r, realCwd, platform)); };
+  let java = null; let from = null; let jdkHome = null;
+  const untrusted = (what, why) => ({ java: null, from: what, version: null, error: why });
+  const fromHome = (h, label) => {
+    if (!p.isAbsolute(h)) return untrusted(label, `${label} is not an absolute path, so it was not used (a relative one resolves inside whatever folder jdtls starts in)`);
+    jdkHome = h; java = javaIn(h); from = label; return null;
+  };
+  const jh = typeof env.JAVA_HOME === 'string' ? env.JAVA_HOME.trim() : '';
+  if (jh) { const bad = fromHome(jh, `$JAVA_HOME (${jh})`); if (bad) return bad; }
+  if (!java && binPath) {
+    const d = wrapperJavaHome(head(binPath));
+    if (d) { const bad = fromHome(d, `the default JAVA_HOME in its wrapper script (${d})`); if (bad) return bad; }
+  }
+  if (!java) {
+    const f = (findBin ?? ((b) => findBinDefault(b, { env, platform })))('java');
+    if (f?.found && f.path) {
+      if (platform === 'darwin' && f.path === '/usr/bin/java') {
+        const r = await exec('/usr/libexec/java_home', [], JAVA_TIMEOUT_MS, { env });
+        const h = r.ok ? String(r.stdout ?? '').trim().split(/\r?\n/)[0] : '';
+        if (!h) return { java: null, from: '/usr/bin/java (the macOS stub)', version: null, error: 'no JDK is installed (/usr/libexec/java_home found none)' };
+        const bad = fromHome(h, `java on PATH (/usr/bin/java, the macOS stub; /usr/libexec/java_home picks ${h})`); if (bad) return bad;
+      } else {
+        if (!p.isAbsolute(f.path)) return untrusted(`java on PATH (${f.path})`, `java on PATH (${f.path}) is not an absolute path, so it was not run`);
+        java = f.path; from = `java on PATH (${f.path})`;
+        jdkHome = p.dirname(p.dirname(realpath(f.path))); // <jdk>/bin/java -> <jdk> (through the /usr/bin/java-style links)
+      }
+    }
+  }
+  if (!java) return { java: null, from: 'nothing', version: null, error: 'no Java found: $JAVA_HOME is not set and java is not on PATH' };
+  if (inProject(java) || (jdkHome && inProject(jdkHome))) return { java, from, version: null, error: 'that Java is inside the current project, so it was not run (a cloned repo can ship its own bin/java)' };
+  // 1. the JDK's release file: no process at all
+  const rv = jdkHome ? releaseJavaVersion(head(p.join(jdkHome, 'release'))) : null;
+  if (rv != null) return { java, from, version: rv };
+  // 2. `<java> -version`
+  if (!exists(java)) return { java, from, version: null, error: `${java} does not exist` };
+  const r = await exec(java, ['-version'], JAVA_TIMEOUT_MS, { env });
+  const text = `${r.stderr ?? ''}\n${r.stdout ?? ''}\n${r.ok ? '' : r.error ?? ''}`;
+  const version = parseJavaVersion(text);
+  if (version == null) return { java, from, version: null, error: r.ok ? 'could not read a version from `java -version`' : `\`java -version\` failed: ${cap(r.error, 120)}` };
+  return { java, from, version };
+}
+
+/**
+ * runtime checks for pack.json requires[] entries that carry `java`: { [itemId]: [{ bin, note, java?, needs }] }.
+ * Only for a bin that is on PATH (a missing bin is already in missingBins). One Java probe per distinct bin.
+ */
+export async function requiresRuntimeNotes(pack, { findBin, env = process.env, platform = process.platform, exec = runCommand, readHead: head, exists, cwd, home, short = (x) => x } = {}) {
+  const out = {};
+  const cache = new Map();
+  for (const it of asArray(pack?.items)) {
+    for (const r of asArray(it?.requires)) {
+      if (!isObject(r) || typeof r.bin !== 'string' || !Number.isInteger(r.java)) continue;
+      const f = findBin(r.bin);
+      if (!f?.found) continue;
+      if (!cache.has(r.bin)) cache.set(r.bin, await javaForBin(f.path ?? null, { env, platform, exec, findBin, readHead: head, exists, ...(cwd ? { cwd } : {}), ...(home ? { home } : {}) }));
+      const j = cache.get(r.bin);
+      let note = null;
+      if (j.version == null) note = `could not tell which Java ${r.bin} will use (${j.error}; looked at ${short(j.from)}). ${r.bin} needs Java ${r.java}+.`;
+      else if (j.version < r.java) note = `${r.bin} will start on Java ${j.version} from ${short(j.from)}, but needs Java ${r.java}+ (it fails at start). Make that a JDK ${r.java}+ (JAVA_HOME is usually set by mise, sdkman or asdf: switch it there), then restart Claude Code.`;
+      if (note) (out[it.id] ??= []).push({ bin: r.bin, needs: r.java, ...(j.version != null ? { java: j.version } : {}), note });
+    }
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------- absolute paths into a version manager's node (#21)
+// An MCP command or a hook command written as an absolute path into one node version's install dir (an npm -g bin,
+// or the command `bantamkit-mcp --install-hooks` writes) breaks when that version is removed by an upgrade, and runs
+// an old copy while it is still there. Layouts (the version is the segment after the prefix):
+//   mise  <data>/installs/node/<v>/      nvm   $NVM_DIR/versions/node/v<v>/      fnm  <fnm dir>/node-versions/v<v>/
+//   asdf  ~/.asdf/installs/nodejs/<v>/   volta $VOLTA_HOME/tools/image/node/<v>/
+const NODE_VM_LAYOUTS = [
+  { manager: 'mise', re: /^(.*\/mise\/installs\/node)\/([^/]+)(?:\/|$)/i },
+  { manager: 'nvm', re: /^(.*\/(?:\.nvm|nvm)\/versions\/node)\/([^/]+)(?:\/|$)/i },
+  { manager: 'fnm', re: /^(.*\/(?:\.fnm|fnm)\/node-versions)\/([^/]+)(?:\/|$)/i },
+  { manager: 'asdf', re: /^(.*\/(?:\.asdf|asdf)\/installs\/nodejs)\/([^/]+)(?:\/|$)/i },
+  { manager: 'volta', re: /^(.*\/(?:\.volta|volta)\/tools\/image\/node)\/([^/]+)(?:\/|$)/i },
+];
+const SEMVER_DIR = /^v?\d+\.\d+\.\d+$/;
+
+/**
+ * if `p` is an absolute path into a version manager's node install: { manager, versionDir, version } (versionDir in
+ * the path's own spelling, separators as given), else null.
+ */
+export function nodeVersionPathOf(p) {
+  const s = String(p ?? '');
+  if (!/^(\/|[a-zA-Z]:[\\/]|~[\\/])/.test(s)) return null;
+  const fwd = s.replace(/\\/g, '/');
+  for (const { manager, re } of NODE_VM_LAYOUTS) {
+    const m = fwd.match(re);
+    if (m) return { manager, versionDir: s.slice(0, m[1].length + 1 + m[2].length), version: m[2] };
+  }
+  return null;
+}
+
+/**
+ * what is wrong with a version-manager node path: 'gone' (the version dir does not exist), 'not-active' (a concrete
+ * version that is not the node running now), or null (fine, or an alias dir such as mise's `latest` / `26`).
+ */
+export function nodeVersionPathState(hit, { activeVersion = process.versions.node, home, lstat = lstatSync } = {}) {
+  const dir = hit.versionDir.replace(/^~(?=[\\/])/, home ?? '~');
+  let st;
+  try { st = lstat(dir); } catch { return 'gone'; }
+  if (!st || !SEMVER_DIR.test(hit.version)) return null; // an alias dir (mise `latest`, `26`): the manager moves it on upgrade
+  return hit.version.replace(/^v/, '') === String(activeVersion).replace(/^v/, '') ? null : 'not-active';
 }
 
 // ---------------------------------------------------------------- collect (all I/O)
@@ -535,6 +598,7 @@ function makeCtx(opts) {
   const platform = opts.platform ?? process.platform;
   return {
     home, cwd: opts.cwd, platform, notes,
+    nodeVersion: opts.nodeVersion ?? process.versions.node, // the node running now: "the active version" for node-version-path
     note: (n) => { const t = redactText(n).text; if (!notes.includes(t)) notes.push(cap(t, 400)); },
     short: (p) => shortPath(p, home, platform),
     /** replace HOME inside free text (hook commands) with ~ */
@@ -687,7 +751,7 @@ export async function collect(opts) {
   const ctx = makeCtx(opts);
   const { home, cwd, platform } = ctx;
   const env = opts.env ?? process.env;
-  const runClaude = opts.runClaude ?? runClaudeDefault;
+  const execClaude = opts.execClaude ?? execClaudeDefault;
   const data = {
     ctx, plugins: [], marketplaces: [], mcp: [], health: [], skills: [], hooks: [], permissions: [],
     seenSkillDirs: new Set(), seenSettings: new Set(), claudeAvailable: true, pluginListOk: true, healthChecked: !opts.fast,
@@ -698,9 +762,9 @@ export async function collect(opts) {
   };
   // the three CLI calls run in parallel; mcp list (health check) is the slow one
   const [pl, ml, hl] = await Promise.all([
-    runClaude(['plugin', 'list', '--json'], LIMITS.cliTimeoutMs),
-    runClaude(['plugin', 'marketplace', 'list', '--json'], LIMITS.cliTimeoutMs),
-    opts.fast ? Promise.resolve(null) : runClaude(['mcp', 'list'], LIMITS.mcpListTimeoutMs),
+    execClaude(['plugin', 'list', '--json'], LIMITS.cliTimeoutMs),
+    execClaude(['plugin', 'marketplace', 'list', '--json'], LIMITS.cliTimeoutMs),
+    opts.fast ? Promise.resolve(null) : execClaude(['mcp', 'list'], LIMITS.mcpListTimeoutMs),
   ]);
 
   // plugins (one row per scope; the same installPath may appear twice)
@@ -748,7 +812,8 @@ export async function collect(opts) {
   // MCP health (+ claude.ai connectors, which only the CLI sees)
   if (hl) {
     if (hl.ok || hl.stdout) {
-      const lines = String(hl.stdout ?? '').split(/\r?\n/).filter((l) => l.trim());
+      // a fresh account prints "No MCP servers configured. Use `claude mcp add` ...": an empty list, not an unknown format
+      const lines = String(hl.stdout ?? '').split(/\r?\n/).filter((l) => l.trim() && !/^\s*No MCP servers configured\b/i.test(l));
       for (const l of lines) { const h = parseMcpListLine(l); if (h) data.health.push({ ...h, target: redactText(h.target).text }); }
       if (lines.length && !data.health.length) ctx.note('claude mcp list printed output in an unknown format; health not parsed');
     }
@@ -803,7 +868,10 @@ export function validatePack(pack) {
     if (!need) problems.push(`pack.json item ${it.id}: unknown kind "${it.kind}"`);
     else if (it[need] == null) problems.push(`pack.json item ${it.id}: kind ${it.kind} needs "${need}"`);
   }
-  for (const g of asArray(pack.overlapGroups)) for (const k of Object.keys(asObject(g?.match))) if (!KNOWN_DETECT_KEYS.has(k)) problems.push(`pack.json overlap group ${g.id}: unknown match key "${k}"`);
+  for (const g of asArray(pack.overlapGroups)) {
+    for (const part of ['match', 'with']) for (const k of Object.keys(asObject(g?.[part]))) if (!KNOWN_DETECT_KEYS.has(k)) problems.push(`pack.json overlap group ${g.id}: unknown ${part} key "${k}"`);
+    if (g?.with !== undefined && !isObject(g.with)) problems.push(`pack.json overlap group ${g.id}: "with" must be an object of match keys`);
+  }
   return problems;
 }
 
@@ -816,7 +884,7 @@ function pluginServerHealth(data, plugin) {
   if (!list.length) return null;
   return list.some((h) => isConnected(h.status)) ? true : list[0].status;
 }
-export function packStatus(data, pack, findBin = findBinDefault) {
+export function packStatus(data, pack, findBin = findBinDefault, offPath = null) {
   return asArray(pack.items).map((it) => {
     const viaPlugins = [...groupBy(data.plugins.filter((p) => matches(it.detect, { plugin: p })), (p) => p.id).values()]
       .map((list) => ({ id: list[0].id, enabled: list.some((p) => p.enabled), scopes: list.map((p) => p.scope) }));
@@ -843,7 +911,11 @@ export function packStatus(data, pack, findBin = findBinDefault) {
     for (const r of asArray(it.requires)) {
       if (!isObject(r) || typeof r.bin !== 'string') continue;
       const f = findBin(r.bin);
-      if (!f.found) missingBins.push({ bin: r.bin, install: r.install, ...(f.windowsOnly ? { note: 'found only on the Windows side of WSL; install it inside Linux' } : {}) });
+      if (f.found) continue;
+      const off = offPath ? offPath(r.bin) : null;
+      const note = f.windowsOnly ? 'found only on the Windows side of WSL; install it inside Linux'
+        : off ? `installed by ${off.manager} in ${data.ctx.short(off.dir)}, which is not on PATH: add that folder to PATH (or start Claude Code from a shell that has it)` : null;
+      missingBins.push({ bin: r.bin, install: r.install, ...(note ? { note } : {}) });
     }
     const out = { id: it.id, profile: it.profile, kind: it.kind, status, foundAs: capList(locations.map((l) => l.label)), missingBins };
     if (status !== 'present') out.what = it.what;
@@ -891,19 +963,32 @@ const DETECTORS = {
     }
     return out;
   },
+  /**
+   * overlap groups. A tool is counted once: a plugin, the MCP servers it starts and the skills it ships are one
+   * tool (each is still listed). Without `with`: fires at 2+ tools matching `match`. With `with`: fires when a tool
+   * matching `match` and a different tool matching `with` are both on (serena + an LSP plugin), so neither side
+   * alone reports anything.
+   */
   overlap(data, pack) {
     const out = [];
+    const pluginTool = (source) => { const m = String(source).match(/^plugin (.+)$/); return m ? `plugin:${m[1]}` : null; };
+    const entriesOf = (rule) => [
+      ...[...groupBy(data.plugins.filter((p) => p.enabled && matches(rule, { plugin: p })), (p) => p.id).values()].map(([p]) => ({ tool: `plugin:${p.id}`, label: `plugin ${p.id}`, pack: isPackPlugin(pack, p) })),
+      ...data.mcp.filter((s) => matches(rule, { server: s })).map((s) => ({ tool: pluginTool(s.source) ?? `mcp:${s.source}:${s.name}`, label: `mcp ${s.name} (${s.source})`, pack: isPackServer(pack, s) })),
+      ...data.skills.filter((s) => matches(rule, { skill: s })).map((s) => ({ tool: pluginTool(s.source) ?? `skill:${s.source}:${s.name}`, label: `skill ${s.name} (${s.source})`, pack: isPackSkill(pack, data, s) })),
+    ];
     for (const g of asArray(pack.overlapGroups)) {
-      const members = [
-        ...[...groupBy(data.plugins.filter((p) => p.enabled && matches(g.match, { plugin: p })), (p) => p.id).values()].map(([p]) => ({ label: `plugin ${p.id}`, pack: isPackPlugin(pack, p) })),
-        ...data.mcp.filter((s) => matches(g.match, { server: s })).map((s) => ({ label: `mcp ${s.name} (${s.source})`, pack: isPackServer(pack, s) })),
-        ...data.skills.filter((s) => matches(g.match, { skill: s })).map((s) => ({ label: `skill ${s.name} (${s.source})`, pack: isPackSkill(pack, data, s) })),
-      ];
-      if (members.length > 1) {
-        const f = ['redundancy', `overlap:${g.id}`, `${g.label}: ${members.length} tools cover the same job`, [...members.map((m) => m.label + (m.pack ? ' [pack item]' : '')), `note: ${g.note}`]];
-        if (members.every((m) => m.pack)) f.push({ packManaged: true });
-        out.push(f);
-      }
+      const x = entriesOf(g.match);
+      const y = g.with ? entriesOf(g.with) : [];
+      const members = [...new Map([...x, ...y].map((m) => [m.label, m])).values()];
+      const tools = new Set(members.map((m) => m.tool));
+      const fires = g.with
+        ? x.some((a) => y.some((b) => a.tool !== b.tool))
+        : tools.size > 1;
+      if (!fires) continue;
+      const f = ['redundancy', `overlap:${g.id}`, `${g.label}: ${tools.size} tools cover the same job`, [...members.map((m) => m.label + (m.pack ? ' [pack item]' : '')), `note: ${g.note}`]];
+      if (members.every((m) => m.pack)) f.push({ packManaged: true });
+      out.push(f);
     }
     return out;
   },
@@ -981,11 +1066,36 @@ const DETECTORS = {
     return [...scripted].map(([source, list]) => ['risk', 'skill-with-scripts', `${list.length} skill(s) from ${source} ship executable scripts`,
       list.map((s) => `${s.name} (${s.scripts.length}${s.scripts.length >= LIMITS.scriptHits ? '+' : ''} scripts, ${s.path})`)]);
   },
+  /** MCP or hook commands that point into one node version of mise/nvm/fnm/asdf/volta that is gone or not active (#21) */
+  nodeVersionPath(data) {
+    const { home, short, nodeVersion, platform } = data.ctx;
+    const firstHit = (words) => {
+      for (const w of words) {
+        const hit = nodeVersionPathOf(w);
+        if (hit) return { hit, state: nodeVersionPathState(hit, { activeVersion: nodeVersion, home }) };
+      }
+      return null;
+    };
+    const why = (r) => (r.state === 'gone' ? 'which is no longer installed' : `which is not the node running now (${nodeVersion})`);
+    const where = (r) => `path: ${redactText(short(r.hit.versionDir)).text}${platform === 'win32' ? '\\' : '/'}...`;
+    const out = [];
+    for (const s of data.mcp) {
+      const { command, args } = unwrapCommand(s[RAW].command, s[RAW].args);
+      const r = firstHit([command, ...args]);
+      if (r?.state) out.push(['risk', 'node-version-path', `MCP "${s.name}" runs from ${r.hit.manager} node ${r.hit.version}, ${why(r)}`, [`source: ${s.source}`, where(r)]]);
+    }
+    const hooks = data.hooks.map((h) => ({ h, r: firstHit(tokenizeCommand(h[RAW])) })).filter((x) => x.r?.state);
+    for (const [, list] of groupBy(hooks, (x) => `${x.r.hit.versionDir}\u0000${x.h.source}`)) {
+      const { r, h } = list[0];
+      out.push(['risk', 'node-version-path', `hooks run from ${r.hit.manager} node ${r.hit.version}, ${why(r)}`, [`source: ${h.source}`, where(r), `events: ${[...new Set(list.map((x) => x.h.event))].join(', ')}`]]);
+    }
+    return out;
+  },
   broadPermission(data) {
     return data.permissions.filter((p) => BROAD_PERMISSION.test(p.rule)).map((p) => ['risk', 'broad-permission', `broad permission rule: ${cap(p.rule, 120)}`, [`source: ${p.source}`]]);
   },
 };
-export const FINDING_CATEGORIES = ['same-endpoint', 'same-package', 'same-skill-name', 'overlap:<group>', 'disabled-installed', 'inline-secret', 'local-path-mcp', 'local-path-hook', 'hook-every-tool', 'runs-latest-from-registry', 'mcp-unhealthy', 'third-party-marketplace', 'skill-with-scripts', 'broad-permission'];
+export const FINDING_CATEGORIES = ['same-endpoint', 'same-package', 'same-skill-name', 'overlap:<group>', 'disabled-installed', 'inline-secret', 'local-path-mcp', 'local-path-hook', 'hook-every-tool', 'runs-latest-from-registry', 'mcp-unhealthy', 'third-party-marketplace', 'skill-with-scripts', 'broad-permission', 'node-version-path'];
 
 export function audit(data, pack) {
   const findings = [];
@@ -1027,24 +1137,39 @@ export function buildOutput(data, pack, findings, { full = false, now = new Date
 }
 
 export async function run(argv = [], opts = {}) {
+  refuseOldRunnerNames(opts);
   const full = argv.includes('--full') || argv.includes('--detail');
   const fast = argv.includes('--fast');
   const here = nodePath.dirname(fileURLToPath(import.meta.url));
   const notes = [];
   try {
     const pack = opts.pack ?? JSON.parse(readFileSync(nodePath.join(here, '..', 'pack.json'), 'utf8'));
-    const data = await collect({ home: opts.home ?? homedir(), cwd: opts.cwd ?? process.cwd(), platform: opts.platform, env: opts.env, runClaude: opts.runClaude, fast });
+    const data = await collect({ home: opts.home ?? homedir(), cwd: opts.cwd ?? process.cwd(), platform: opts.platform, env: opts.env, execClaude: opts.execClaude, fast, nodeVersion: opts.nodeVersion });
     for (const p of validatePack(pack)) data.ctx.note(p);
     const major = Number(process.versions.node.split('.')[0]);
     if (major < 22) data.ctx.note(`Node ${process.versions.node}: some pack servers need Node 22.22+ (typescript-language-server) or 20.19+ (chrome-devtools-mcp, shadcn, bantamkit-mcp)`);
     const findBin = opts.findBin ?? ((b) => findBinDefault(b, { env: opts.env ?? process.env, platform: opts.platform ?? process.platform }));
-    const pk = packStatus(data, pack, findBin);
+    const env = opts.env ?? process.env;
+    const pmDirs = opts.globalDirs ?? globalPackageDirs({ home: data.ctx.home, env, platform: data.ctx.platform });
+    const pk = packStatus(data, pack, findBin, (bin) => findBinOffPath(bin, pmDirs, { env, platform: data.ctx.platform }));
+    // requires[].java: the Java a found bin will start on (runs only `java -version` / java_home, with a timeout)
+    const runtime = await requiresRuntimeNotes(pack, { findBin, env, platform: data.ctx.platform, exec: opts.exec ?? runCommand, cwd: data.ctx.cwd, home: data.ctx.home, short: data.ctx.shortText });
+    for (const item of pk) if (runtime[item.id]) item.requiresNotes = runtime[item.id];
     const out = buildOutput(data, pk, audit(data, pack), { full });
     // AI hosts and model-provider signals (names only) for the options step; options.mjs has the per-item detail
     // (options.mjs reads the same files again for its per-item detail: two parses per skill run, by design, so each
     // script stays usable on its own; this summary has a different shape from options.mjs hosts[] on purpose)
     const hostsInfo = readHosts({ home: data.ctx.home, cwd: data.ctx.cwd, env: opts.env ?? process.env, platform: data.ctx.platform, short: data.ctx.short });
-    out.hosts = hostsInfo.hosts.map((h) => ({ id: h.id, label: h.label, present: h.present, mcpServers: h.servers.length, configFiles: h.files.filter((f) => f.exists).map((f) => data.ctx.short(f.file)) }));
+    out.hosts = hostsInfo.hosts.map((h) => {
+      const plugins = new Set(h.files.filter((f) => f.exists && f.scope === 'plugin').map((f) => f.plugin));
+      return {
+        id: h.id, label: h.label, present: h.present, mcpServers: h.servers.length,
+        configFiles: h.files.filter((f) => f.exists && f.scope !== 'plugin').map((f) => data.ctx.short(f.file) + (f.variant ? ` (${f.variant})` : '')),
+        ...(plugins.size ? { pluginsWithServers: plugins.size } : {}),
+      };
+    });
+    // global package folders of other package managers (names and folder counts; npm itself is asked by options.mjs)
+    out.packageManagers = pmDirs.map((d) => ({ manager: d.manager, packageDirs: d.modules.length, binDirs: d.bins.map((b) => data.ctx.short(b)) }));
     out.providers = detectProviders({ env: opts.env ?? process.env, hosts: hostsInfo.hosts, findBin }).filter((p) => p.signals.length);
     for (const n of hostsInfo.notes) data.ctx.note(n); // ctx.note redacts
     return out;

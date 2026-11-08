@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseFrontmatter } from './frontmatter.mjs';
+import { SKILL_TARGETS } from './providers.mjs';
 
 export const PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -37,8 +38,8 @@ export const TIERS = {
   'kktestdev-pack': { tier: 'Claude-only', note: 'Claude Code onboarding pack (installs Claude Code plugins)' },
 };
 
-export const SKILL_TARGETS = ['agents', 'claude-ai', 'chatgpt', 'gemini-extension'];
-export const MCP_TARGETS = ['codex', 'cursor', 'vscode', 'claude-desktop', 'windsurf', 'gemini-extension'];
+// Target lists live in providers.mjs; re-exported here for existing importers.
+export { MCP_TARGETS, SKILL_TARGETS } from './providers.mjs';
 
 const readJson = (p) => JSON.parse(fs.readFileSync(p, 'utf8'));
 

@@ -1,12 +1,12 @@
 {
   "name": "prompt-evolve",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Evolve a prompt against a test set: run/score it, find where it fails, rewrite from those failures, repeat. Deterministic scorers (exact-match/regex/schema), saved agent rubric grades, plus a fully offline verification loop; stdlib CLI + skill, no model calls of its own.",
   "author": {
     "name": "Ink",
     "email": "supakit.kitj@gmail.com"
   },
-  "homepage": "https://github.com/Ink01101011/kktest-dev/tree/main/plugins/prompt-evolve",
+  "homepage": "https://github.com/Ink01101011/kktest-dev/tree/master/plugins/prompt-evolve",
   "repository": "https://github.com/Ink01101011/kktest-dev",
   "license": "MIT",
   "keywords": ["prompt-optimization", "eval", "scoring", "prompt-engineering", "test-set", "self-improving", "cli"]

@@ -11,7 +11,7 @@ import {
   run, redactText, redactUrl, redactArgs, splitShell, secretKey, inlineSecretKeys, isEnvRef, packageSpecOf, splitSpec,
   normalizeEndpoint, nameMatches, unwrapCommand, isUnderHome, shortPath, isLocalPath, tokenizeCommand,
   projectEntry, parseJsonOutput, parseMcpListLine, findBinDefault, validatePack, FINDING_CATEGORIES, LIMITS,
-  cutAtWhitespace, replaceKeyValues,
+  cutAtWhitespace, replaceKeyValues, globalPackageDirs, findGlobalPackage, findBinOffPath,
 } from './inventory.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -39,7 +39,7 @@ function stubClaude({ plugins = [], marketplaces = [], mcpList = '', fail = {} }
     return { ok: false, error: 'unexpected' };
   };
 }
-const inv = (fx, argv = [], extra = {}) => run(argv, { home: fx.home, cwd: fx.cwd, env: {}, findBin: () => ({ found: true }), runClaude: stubClaude(), ...extra });
+const inv = (fx, argv = [], extra = {}) => run(argv, { home: fx.home, cwd: fx.cwd, env: {}, findBin: () => ({ found: true }), execClaude: stubClaude(), ...extra });
 const cats = (out) => out.findings.map((f) => f.category);
 const byCat = (out, c) => out.findings.filter((f) => f.category === c);
 const item = (out, id) => out.pack.find((p) => p.id === id);
@@ -60,7 +60,7 @@ function secretFixture(t) {
 
 test('G1-1/G2-1: no secret value from args, url, env, headers or hook commands appears in output (full mode)', async (t) => {
   const fx = secretFixture(t);
-  const out = await inv(fx, ['--full'], { runClaude: stubClaude({ mcpList: 'srv: https://x.example/mcp?token=HEALTHTOK1 (HTTP) - ✗ Failed to connect\n', fail: { 'plugin marketplace list --json': { ok: false, code: 1, error: 'boom --token=STDERRTOK2' } } }) });
+  const out = await inv(fx, ['--full'], { execClaude: stubClaude({ mcpList: 'srv: https://x.example/mcp?token=HEALTHTOK1 (HTTP) - ✗ Failed to connect\n', fail: { 'plugin marketplace list --json': { ok: false, code: 1, error: 'boom --token=STDERRTOK2' } } }) });
   const text = JSON.stringify(out);
   for (const c of CANARIES) assert.ok(!text.includes(c), `leaked ${c}`);
   assert.ok(out.installed.mcp.length >= 2, 'servers still listed');
@@ -134,7 +134,7 @@ test('G1-8/G2-6/G3-12: malformed shapes and non-JSON claude output give JSON wit
   write(join(fx.home, '.claude.json'), { mcpServers: { x: null, y: 'str', z: { command: 'node', args: 'notalist', env: 'nope' } }, projects: 'bad' });
   write(join(fx.home, '.claude', 'settings.json'), { hooks: { PreToolUse: 'x', PostToolUse: [null, { hooks: 'y' }] }, permissions: { allow: 'Bash' } });
   write(join(fx.cwd, '.mcp.json'), '{bad');
-  const out = await inv(fx, ['--full'], { runClaude: stubClaude({ plugins: 'Update available: 9.9\n[{"id":"p@m","enabled":true}]\n', marketplaces: 'Loading plugins...' }) });
+  const out = await inv(fx, ['--full'], { execClaude: stubClaude({ plugins: 'Update available: 9.9\n[{"id":"p@m","enabled":true}]\n', marketplaces: 'Loading plugins...' }) });
   assert.ok(!out.error, JSON.stringify(out.notes));
   assert.deepEqual(out.installed.plugins.map((p) => p.id), ['p@m'], 'JSON array extracted after a banner line');
   assert.ok(out.notes.some((n) => /marketplace list.*no JSON/.test(n)));
@@ -154,20 +154,31 @@ test('G3-6: settings.json with a UTF-8 BOM is read', async (t) => {
 
 test('G3-5: CRLF `claude mcp list` output is parsed', async (t) => {
   const fx = fakeHome(t);
-  const out = await inv(fx, ['--full'], { runClaude: stubClaude({ mcpList: 'Checking MCP server health...\r\n\r\nfoo: npx foo - ✓ Connected\r\nbar: https://b.example/mcp (HTTP) - ! Needs authentication\r\n' }) });
+  const out = await inv(fx, ['--full'], { execClaude: stubClaude({ mcpList: 'Checking MCP server health...\r\n\r\nfoo: npx foo - ✓ Connected\r\nbar: https://b.example/mcp (HTTP) - ! Needs authentication\r\n' }) });
   assert.equal(out.installed.mcpHealth.length, 2);
   assert.ok(byCat(out, 'mcp-unhealthy')[0].evidence[0].startsWith('bar: Needs authentication'));
   assert.deepEqual(parseMcpListLine('x: C:\\Users\\a\\npx.cmd y - ✓ Connected'), { name: 'x', target: 'C:\\Users\\a\\npx.cmd y', status: 'Connected' });
 });
 
+test('I7 (#21): a fresh account (`No MCP servers configured`) is a parsed, empty health list, not an unknown format', async (t) => {
+  const fx = fakeHome(t);
+  const out = await inv(fx, [], { execClaude: stubClaude({ mcpList: 'No MCP servers configured. Use `claude mcp add` to add a server.\n' }) });
+  assert.equal(out.healthChecked, true);
+  assert.equal(out.counts.mcpHealth, 0);
+  assert.deepEqual(out.notes, [], 'no "unknown format" note on a fresh account');
+  // a really unknown format is still reported
+  const odd = await inv(fx, [], { execClaude: stubClaude({ mcpList: 'something new and unparsed\n' }) });
+  assert.ok(odd.notes.some((n) => /unknown format/.test(n)));
+});
+
 test('G3-13/G4-1: claude missing or mcp list timing out still yields JSON; plugin items read unknown', async (t) => {
   const fx = fakeHome(t);
   const enoent = { ok: false, code: 'ENOENT', error: 'spawn claude ENOENT' };
-  const out = await inv(fx, [], { runClaude: stubClaude({ fail: { 'plugin list --json': enoent, 'plugin marketplace list --json': enoent, 'mcp list': enoent } }) });
+  const out = await inv(fx, [], { execClaude: stubClaude({ fail: { 'plugin list --json': enoent, 'plugin marketplace list --json': enoent, 'mcp list': enoent } }) });
   assert.match(out.notes[0], /claude was not found on PATH/);
   assert.equal(item(out, 'superpowers').status, 'unknown');
   assert.equal(item(out, 'playwright').status, 'missing');
-  const out2 = await inv(fx, [], { runClaude: stubClaude({ fail: { 'mcp list': { ok: false, code: 'ETIMEDOUT', error: 'timed out' } } }) });
+  const out2 = await inv(fx, [], { execClaude: stubClaude({ fail: { 'mcp list': { ok: false, code: 'ETIMEDOUT', error: 'timed out' } } }) });
   assert.ok(out2.notes.some((n) => /did not finish within 45 s/.test(n)));
   assert.equal(LIMITS.mcpListTimeoutMs, 45000);
 });
@@ -241,7 +252,7 @@ test('G1-7: plugin mcpServers as a path string or array, and flat .mcp.json non-
   write(join(pb, 'a.json'), { arr: { command: 'node' } });
   write(join(pb, '.mcp.json'), { srvx: { command: 'node' }, note: 'readme' });
   const plugins = [{ id: 'pa@m', enabled: true, installPath: pa, scope: 'user' }, { id: 'pb@m', enabled: true, installPath: pb, scope: 'user' }];
-  const out = await inv(fx, ['--full'], { runClaude: stubClaude({ plugins }) });
+  const out = await inv(fx, ['--full'], { execClaude: stubClaude({ plugins }) });
   assert.deepEqual(out.installed.mcp.map((s) => s.name).sort(), ['arr', 'fromfile', 'inline', 'srvx']);
   assert.ok(out.notes.some((n) => /not an MCP server config \(note\)/.test(n)));
 });
@@ -253,7 +264,7 @@ test('G1-6: a plugin enabled in two scopes is scanned once', async (t) => {
   write(join(pa, 'skills', 'sk', 'SKILL.md'), 'x');
   const plugins = [{ id: 'pa@m', enabled: true, installPath: pa, scope: 'user' }, { id: 'pa@m', enabled: true, installPath: pa, scope: 'project' },
     { id: 'fd@m', enabled: false, scope: 'user' }, { id: 'fd@m', enabled: false, scope: 'project' }];
-  const out = await inv(fx, [], { runClaude: stubClaude({ plugins }) });
+  const out = await inv(fx, [], { execClaude: stubClaude({ plugins }) });
   assert.equal(out.counts.mcp, 1);
   assert.equal(out.counts.skills, 1);
   assert.ok(!cats(out).includes('same-endpoint'));
@@ -288,7 +299,7 @@ test('G1-13: pack item present only as an unauthenticated or project-disabled se
   const fx = fakeHome(t);
   write(join(fx.home, '.claude.json'), { mcpServers: { playwright: { command: 'npx', args: ['-y', '@playwright/mcp@latest'] } }, projects: { [fx.cwd]: { disabledMcpServers: ['playwright'] } } });
   const plugins = [{ id: 'figma@claude-plugins-official', enabled: true, scope: 'user' }];
-  const out = await inv(fx, [], { runClaude: stubClaude({ plugins, mcpList: 'plugin:figma:figma: https://mcp.figma.com/mcp (HTTP) - ! Needs authentication\n' }) });
+  const out = await inv(fx, [], { execClaude: stubClaude({ plugins, mcpList: 'plugin:figma:figma: https://mcp.figma.com/mcp (HTTP) - ! Needs authentication\n' }) });
   assert.equal(item(out, 'figma').status, 'needs-attention');
   assert.match(item(out, 'figma').foundAs[0], /Needs authentication/);
   assert.equal(item(out, 'playwright').status, 'disabled');
@@ -297,7 +308,7 @@ test('G1-13: pack item present only as an unauthenticated or project-disabled se
 test('G1-14: the pack\'s own marketplaces and all-pack overlap groups are marked packManaged', async (t) => {
   const fx = fakeHome(t);
   const marketplaces = [{ name: 'superpowers-dev', source: 'github', repo: 'obra/superpowers' }, { name: 'other', source: 'github', repo: 'x/y' }, { name: 'claude-plugins-official', source: 'github', repo: 'anthropics/claude-plugins-official' }];
-  const out = await inv(fx, [], { runClaude: stubClaude({ marketplaces }) });
+  const out = await inv(fx, [], { execClaude: stubClaude({ marketplaces }) });
   const f = byCat(out, 'third-party-marketplace');
   assert.equal(f.length, 2);
   assert.equal(f.find((x) => x.title.includes('superpowers-dev')).packManaged, true);
@@ -423,7 +434,7 @@ test('G5-N1: marketplace repo/url carrying a token is redacted in installed list
     { name: 'tok', source: 'git', repo: 'https://ghp_CANAN1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@github.com/o/r.git' },
     { name: 'u', source: 'git', url: 'https://bob:CANAN12@git.example/r.git' },
   ];
-  const out = await inv(fx, ['--full'], { runClaude: stubClaude({ marketplaces }) });
+  const out = await inv(fx, ['--full'], { execClaude: stubClaude({ marketplaces }) });
   const txt = JSON.stringify(out);
   assert.ok(!txt.includes('CANAN1aaaa') && !txt.includes('CANAN12'), 'token leaked');
   const ev = byCat(out, 'third-party-marketplace').flatMap((f) => f.evidence).join('\n');
@@ -481,7 +492,7 @@ test('G7-4: text over LIMITS.redactChars is cut before redaction and a secret pa
 
 test('G7-5: marketplace source is redacted too', async (t) => {
   const fx = fakeHome(t);
-  const out = await inv(fx, ['--full'], { runClaude: stubClaude({ marketplaces: [{ name: 's', source: 'https://bob:CANAG13@git.example/r.git' }] }) });
+  const out = await inv(fx, ['--full'], { execClaude: stubClaude({ marketplaces: [{ name: 's', source: 'https://bob:CANAG13@git.example/r.git' }] }) });
   assert.ok(!JSON.stringify(out).includes('CANAG13'));
 });
 
@@ -557,4 +568,128 @@ test('O4-F7/F9: the 20k cut and the key=value scan are linear (checked uncapped,
   t0 = process.hrtime.bigint();
   redactText('a:'.repeat(9999) + ' ' + 'z'.repeat(100000));
   assert.ok(Number(process.hrtime.bigint() - t0) / 1e6 < 2000);
+});
+
+// ------------------------------------------------------------------ #22 / I1 follow-up (I3)
+const LSP = { id: 'typescript-lsp@claude-plugins-official', enabled: true, scope: 'user' };
+const SERENA_MCP = { serena: { command: 'uvx', args: ['--from', 'git+https://github.com/oraios/serena', 'serena', 'start-mcp-server'] } };
+
+test('I3: code-nav fires for a hand-added serena MCP plus an LSP plugin; serena alone or an LSP plugin alone does not', async (t) => {
+  const fx = fakeHome(t);
+  write(join(fx.home, '.claude.json'), { mcpServers: SERENA_MCP });
+  const both = await inv(fx, [], { execClaude: stubClaude({ plugins: [LSP] }) });
+  const f = byCat(both, 'overlap:code-nav')[0];
+  assert.ok(f, 'serena MCP + typescript-lsp must report code-nav');
+  assert.match(f.title, /2 tools/);
+  assert.deepEqual(f.evidence.filter((l) => !l.startsWith('note: ')).sort(), ['mcp serena (user (~/.claude.json))', `plugin ${LSP.id} [pack item]`]);
+  assert.equal(f.packManaged, undefined);
+  const alone = await inv(fx);
+  assert.equal(byCat(alone, 'overlap:code-nav').length, 0, 'serena alone is not an overlap');
+  write(join(fx.home, '.claude.json'), {});
+  const lspOnly = await inv(fx, [], { execClaude: stubClaude({ plugins: [LSP] }) });
+  assert.equal(byCat(lspOnly, 'overlap:code-nav').length, 0, 'an LSP plugin alone is not an overlap (every core machine has one)');
+  const twoLsp = await inv(fx, [], { execClaude: stubClaude({ plugins: [LSP, { id: 'gopls-lsp@claude-plugins-official', enabled: true, scope: 'user' }] }) });
+  assert.equal(byCat(twoLsp, 'overlap:code-nav').length, 0, 'several LSP plugins and no serena: not code-nav');
+});
+
+test('I3: a plugin and the MCP server it starts count as one tool (serena plugin alone, playwright plugin alone: no overlap)', async (t) => {
+  const fx = fakeHome(t);
+  const serena = join(fx.home, 'serena-plugin');
+  write(join(serena, '.mcp.json'), { mcpServers: SERENA_MCP });
+  const pw = join(fx.home, 'pw-plugin');
+  write(join(pw, '.mcp.json'), { mcpServers: { playwright: { command: 'npx', args: ['@playwright/mcp@latest'] } } });
+  const plugins = [{ id: 'serena@claude-plugins-official', enabled: true, scope: 'user', installPath: serena }, { id: 'playwright@claude-plugins-official', enabled: true, scope: 'user', installPath: pw }];
+  const out = await inv(fx, [], { execClaude: stubClaude({ plugins }) });
+  assert.equal(byCat(out, 'overlap:code-nav').length, 0, cats(out).join());
+  assert.equal(byCat(out, 'overlap:browser').length, 0, cats(out).join());
+  // a second, different browser tool still fires, and the plugin's own server is listed but not counted
+  write(join(fx.home, '.claude.json'), { mcpServers: { 'chrome-devtools': { command: 'npx', args: ['chrome-devtools-mcp@latest'] } } });
+  const out2 = await inv(fx, [], { execClaude: stubClaude({ plugins }) });
+  const b = byCat(out2, 'overlap:browser')[0];
+  assert.ok(b);
+  assert.match(b.title, /2 tools/);
+  assert.equal(b.evidence.filter((l) => !l.startsWith('note: ')).length, 3);
+});
+
+test('I3: validatePack checks the keys of an overlap group\'s "with" rule', () => {
+  const pack = { items: [], overlapGroups: [{ id: 'g', match: { plugins: ['a@'] }, with: { plugin: ['b@'] } }, { id: 'h', match: {}, with: 'x' }] };
+  const p = validatePack(pack);
+  assert.ok(p.some((x) => /group g: unknown with key "plugin"/.test(x)), p.join());
+  assert.ok(p.some((x) => /group h: "with" must be an object/.test(x)), p.join());
+  assert.ok(PACK.overlapGroups.find((g) => g.id === 'code-nav').with, 'code-nav uses the with rule');
+});
+
+/** fake HOME with a global package of every manager (POSIX layouts) */
+function pmHome(t) {
+  const fx = fakeHome(t);
+  const h = fx.home;
+  const pkg = (dir, name) => write(join(dir, ...name.split('/'), 'package.json'), { name, version: '1.0.0' });
+  const bin = (dir, name) => { write(join(dir, name), '#!/bin/sh\n'); chmodSync(join(dir, name), 0o755); };
+  pkg(join(h, '.local', 'share', 'pnpm', 'global', '5', 'node_modules'), 'pn-old');
+  pkg(join(h, '.local', 'share', 'pnpm', 'global', 'v11', 'abc123', 'node_modules'), '@sc/pn-new');
+  bin(join(h, '.local', 'share', 'pnpm', 'bin'), 'pn-tool');
+  pkg(join(h, '.config', 'yarn', 'global', 'node_modules'), 'yn');
+  pkg(join(h, '.bun', 'install', 'global', 'node_modules'), 'bn');
+  pkg(join(h, '.volta', 'tools', 'image', 'packages', '@sc', 'vo', 'lib', 'node_modules'), '@sc/vo');
+  pkg(join(h, '.local', 'share', 'mise', 'installs', 'node', '22.1.0', 'lib', 'node_modules'), 'mi');
+  bin(join(h, '.local', 'share', 'mise', 'installs', 'node', '22.1.0', 'bin'), 'mi-tool');
+  return fx;
+}
+
+test('#22: global packages of pnpm (both layouts), yarn, bun, Volta (scoped) and mise are found from default folders', (t) => {
+  const fx = pmHome(t);
+  const dirs = globalPackageDirs({ home: fx.home, env: {}, platform: 'linux' });
+  assert.deepEqual(dirs.map((d) => d.manager), ['pnpm', 'yarn', 'bun', 'volta', 'mise']);
+  const where = (p) => findGlobalPackage(p, dirs, { platform: 'linux' }).map((x) => x.manager);
+  assert.deepEqual(where('pn-old'), ['pnpm']);
+  assert.deepEqual(where('@sc/pn-new'), ['pnpm']);
+  assert.deepEqual(where('yn'), ['yarn']);
+  assert.deepEqual(where('bn'), ['bun']);
+  assert.deepEqual(where('@sc/vo'), ['volta']);
+  assert.deepEqual(where('mi'), ['mise']);
+  assert.deepEqual(where('absent-pkg'), []);
+});
+
+test('#22: env vars move the folders (absolute only), and a linked version folder is not followed', (t) => {
+  const fx = fakeHome(t);
+  const pn = join(fx.home, 'custom-pnpm');
+  write(join(pn, 'global', '5', 'node_modules', 'envpkg', 'package.json'), { name: 'envpkg' });
+  const mise = join(fx.home, 'm');
+  write(join(fx.home, 'real-node', 'lib', 'node_modules', 'linked', 'package.json'), { name: 'linked' });
+  mkdirSync(join(mise, 'installs', 'node'), { recursive: true });
+  symlinkSync(join(fx.home, 'real-node'), join(mise, 'installs', 'node', 'latest'), 'junction');
+  write(join(fx.home, 'real-node', 'node_modules', 'linked', 'package.json'), { name: 'linked' }); // mise's Windows layout
+  for (const lib of [['lib', 'node_modules'], ['node_modules']]) write(join(mise, 'installs', 'node', '22.0.0', ...lib, 'realmise', 'package.json'), { name: 'realmise' });
+  // The fixture paths are host paths (D:\a\... on a Windows runner), so the platform must be the host's: under
+  // 'linux' rules a Windows absolute path is relative and the env var is ignored (the 1.1.0 Windows CI failure).
+  const platform = process.platform;
+  const dirs = globalPackageDirs({ home: fx.home, env: { PNPM_HOME: pn, MISE_DATA_DIR: mise }, platform });
+  assert.deepEqual(findGlobalPackage('envpkg', dirs, { platform }).map((x) => x.manager), ['pnpm']);
+  assert.deepEqual(findGlobalPackage('realmise', dirs, { platform }).map((x) => x.manager), ['mise'], 'MISE_DATA_DIR is used');
+  assert.deepEqual(findGlobalPackage('linked', dirs, { platform }), []);
+  const rel = globalPackageDirs({ home: fx.home, env: { PNPM_HOME: 'rel/pnpm' }, platform });
+  assert.deepEqual(findGlobalPackage('envpkg', rel, { platform }), [], 'a relative PNPM_HOME is not used');
+});
+
+test('#22: a required bin installed by a package manager but off PATH is named in missingBins (inventory, all OSes)', async (t) => {
+  const fx = fakeHome(t);
+  const pn = join(fx.home, 'pn'); // PNPM_HOME in the host's own path form, so this runs on every OS
+  const exe = process.platform === 'win32' ? 'pn-tool.cmd' : 'pn-tool';
+  write(join(pn, 'bin', exe), '#!/bin/sh\n');
+  if (posix) chmodSync(join(pn, 'bin', exe), 0o755);
+  write(join(pn, 'global', '5', 'node_modules', 'a', 'package.json'), { name: 'a' });
+  write(join(pn, 'global', '5', 'node_modules', 'b', 'package.json'), { name: 'b' });
+  const env = { PNPM_HOME: pn, PATHEXT: '.CMD' };
+  const dirs = globalPackageDirs({ home: fx.home, env });
+  assert.equal(findBinOffPath('pn-tool', dirs, { env: { ...env, PATH: '' } })?.manager, 'pnpm');
+  assert.equal(findBinOffPath('pn-tool', dirs, { env: { ...env, PATH: join(pn, 'bin') } }), null, 'on PATH: findBin covers it');
+  const pack = { items: [{ id: 'x', kind: 'mcp', steps: [], detect: { mcpName: ['x'] }, requires: [{ bin: 'pn-tool', install: 'pnpm add -g pn-tool' }] }] };
+  const out = await inv(fx, [], { pack, env, findBin: () => ({ found: false }) });
+  assert.match(item(out, 'x').missingBins[0].note, /installed by pnpm in ~\/pn\/bin, which is not on PATH/);
+  assert.ok(out.packageManagers.some((m) => m.manager === 'pnpm' && m.packageDirs === 1));
+});
+
+test('#22: yarn and bun global folders are package-manager dirs, not "local path" code', () => {
+  for (const p of ['~/.config/yarn/global/node_modules/x/cli.js', '~/.yarn/bin/x', '~/.bun/install/global/node_modules/x/i.js']) assert.equal(isLocalPath(p, '/home/u', 'linux'), false, p);
+  assert.equal(isLocalPath('~/code/x/i.js', '/home/u', 'linux'), true);
 });

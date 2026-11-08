@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "infographic-diagram",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Presentation-ready architecture, layer-stack and tech-stack diagrams as SVG (+ 2x PNG) from a JSON spec, in three looks: light system map, editorial numbered layer stack, dark neon category tree. A Python script owns layout, icons and arrow routing, with a lint pass for overlaps and overflow. Thai text supported.",
   "author": {
     "name": "Ink",
