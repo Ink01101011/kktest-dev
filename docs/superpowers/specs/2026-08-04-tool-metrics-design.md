@@ -47,7 +47,7 @@ Each aggregated event has:
 |-----------|-----------------------------------------------|----------------------------------|
 | `ts`      | transcript `timestamp` / hook wall clock (UTC ISO-8601) | `2026-08-04T09:12:33Z` |
 | `session` | `session_id`                                  | `b15bfc20-…`                     |
-| `project` | transcript dir name; hook `cwd` normalized to the same form (`/` and `.` → `-`) | `-Users-kktest-…-trader-platform`|
+| `project` | transcript dir name; hook `cwd` normalized to the same form (`/` and `.` → `-`) | `-Users-me-…-my-app`|
 | `tool`    | tool name                                     | `Bash`, `mcp__claude_ai_Figma__get_screenshot` |
 | `server`  | derived: `mcp__<server>__…` → server name, else `builtin` | `claude_ai_Figma`, `builtin` |
 | `detail`  | `input.skill` when tool=Skill; `input.subagent_type` when tool=Agent; else empty | `superpowers:brainstorming` |

@@ -33,7 +33,7 @@ def test_logs_builtin_tool():
             "tool_name": "Bash",
             "tool_input": {"command": "ls"},
             "session_id": "sess-1",
-            "cwd": "/Users/kktest/Projects/demo.app",
+            "cwd": "/Users/me/Projects/demo.app",
         }, td)
         assert proc.returncode == 0, proc.stderr
         events = read_events(td)
@@ -42,7 +42,7 @@ def test_logs_builtin_tool():
         assert ev["tool"] == "Bash"
         assert ev["server"] == "builtin"
         assert ev["session"] == "sess-1"
-        assert ev["project"] == "-Users-kktest-Projects-demo-app"
+        assert ev["project"] == "-Users-me-Projects-demo-app"
         assert ev["detail"] == ""
         assert ev["ts"].startswith("20")
 

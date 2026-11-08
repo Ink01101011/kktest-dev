@@ -333,9 +333,9 @@ test('G3-3: projects key lookup tolerates / vs \\ and case on win32', () => {
 });
 
 test('G3-8/G2-11/G1-26: home prefix is boundary-checked and case-insensitive on win32', () => {
-  assert.ok(!isUnderHome('/Users/kktest2/x', '/Users/kktest', 'linux'));
-  assert.equal(shortPath('/Users/kktest2/x', '/Users/kktest', 'linux'), '/Users/kktest2/x');
-  assert.equal(shortPath('/Users/kktest/x', '/Users/kktest', 'linux'), '~/x');
+  assert.ok(!isUnderHome('/Users/me2/x', '/Users/me', 'linux'));
+  assert.equal(shortPath('/Users/me2/x', '/Users/me', 'linux'), '/Users/me2/x');
+  assert.equal(shortPath('/Users/me/x', '/Users/me', 'linux'), '~/x');
   const H = 'C:\\Users\\kk';
   for (const p of ['c:\\users\\kk\\proj\\srv.js', 'C:/Users/kk/proj/srv.js', '/c/Users/kk/h.sh', '%USERPROFILE%\\h.cmd']) assert.ok(isLocalPath(p, H, 'win32'), p);
   assert.ok(!isLocalPath('C:\\Users\\kkim\\x.js', H, 'win32'));

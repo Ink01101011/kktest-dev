@@ -103,7 +103,7 @@
       "name": "kkskills-situational",
       "source": "./plugins/kkskills-situational",
       "description": "Situational working skills (10) — enable the plugin when the work calls for them: additive-first DB migrations, verify-with-real-data, clean-architecture, secret hygiene, concurrency/race-conditions, MCP server authoring, timezone handling, local-LLM selection, plan decomposition & orchestration (moved from kkskills-essentials in 0.2.0), and the meta-skill that folds new learnings back into a skill. Correct and maintained, just not everyday: every skill's description sits in context in every session, so these are kept behind one toggle. Skills-only.",
-      "version": "0.2.0",
+      "version": "0.2.1",
       "author": {
         "name": "Ink",
         "email": "supakit.kitj@gmail.com"
@@ -137,7 +137,7 @@
       "name": "kkskills-personal",
       "source": "./plugins/kkskills-personal",
       "description": "Personal / project-specific working skills split out from kkskills-essentials: a user-profile calibration skill and a versioned-filename (DDMMYYYY_NAME.md) reference convention. Encodes one person's preferences and one project's conventions — fork and replace the specifics. Skills-only.",
-      "version": "0.2.0",
+      "version": "0.2.1",
       "author": {
         "name": "Ink",
         "email": "supakit.kitj@gmail.com"

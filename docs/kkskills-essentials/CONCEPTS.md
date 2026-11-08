@@ -167,5 +167,5 @@ When this plugin was merged into `kktest-dev`, two parts of the source repo were
 
 - **The TypeScript MCP server** (`mcp-server/`, Docker + CI) — a separate deployable for serving
   skills over stdio/HTTP, not part of the plugin. `kktest-dev` stays a clean plugin marketplace.
-- **Project-specific skills** (e.g. `project-trader-platform`, `reference-trader-platform-layout`) —
+- **Project-specific skills** (e.g. `project-<name>`, `reference-<name>-layout`) —
   the plugin ships only the generic, reusable set.

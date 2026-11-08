@@ -1,8 +1,8 @@
 ---
 name: meta-skill-self-improve
 description: "Use when something should make an existing skill smarter — the user corrects you, a mistake a skill should have prevented, a missed edge case, or a technique that just proved out."
-version: "0.2.0"
-updated: "2026-06-19"
+version: "0.2.1"
+updated: "2026-11-08"
 ---
 
 ## When to use
@@ -150,10 +150,11 @@ Changelog + minor bump. (Behavioral correction that generalizes → skill, not m
 → Move the per-stack examples into `references/examples-by-stack.md` inside the folder; link from the
 body. Changelog: `0.3.0 — split stack examples into references/ to keep SKILL.md scannable`.
 
-**Scenario:** You discover the prod DB port for the trader-platform is 9091.
+**Scenario:** You discover which port a project's staging database listens on.
 → **Not** a skill change. That's a project fact → write it to memory. Skills stay generic.
 
 ## Changelog
 
+- 0.2.1 (2026-11-08) — the memory-vs-skill scenario uses a generic example instead of a named project and port.
 - 0.2.0 (2026-06-19) — added Step 8 "Pressure-test before done (TDD for skills)" + a rule — adapted from obra/superpowers' subagent skill-testing method.
 - 0.1.0 (2026-06-19) — initial version; defines the self-update discipline, skill SemVer, and Changelog format for kktest-dev/kkskills-essentials.
