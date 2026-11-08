@@ -1,8 +1,8 @@
 ---
 name: user-profile
 description: "Use when collaborating with the user and calibrating tone, depth, and delivery style — the first response in a session, mixed Thai-English, short imperatives like 'ทำต่อ' / 'เริ่ม' / 'ทำไม...', or any deliverable they will read."
-version: "0.1.0"
-updated: "2026-06-19"
+version: "0.1.1"
+updated: "2026-11-08"
 metadata:
   short-description: "Use when calibrating tone, depth and delivery style for this user: the first reply in a session, mixed Thai-English, short imperatives like 'ทำต่อ', or any deliverable they will read."
 ---
@@ -20,7 +20,7 @@ Use this skill whenever you're collaborating with the user and need to calibrate
 
 ## Overview
 
-The user is a senior full-stack engineer who builds and maintains the trader-platform project. Stack is TypeScript/React/Next.js and Python/FastAPI for that project, with broader experience in Go and Java/Spring Boot. They think about the full pipeline from architecture down to runtime, so explanations can stay technical.
+The user is a senior full-stack engineer. Main stack is TypeScript/React/Next.js and Python/FastAPI, with broader experience in Go and Java/Spring Boot. They think about the full pipeline from architecture down to runtime, so explanations can stay technical.
 
 ## When to Use
 
@@ -77,4 +77,5 @@ The user is a senior full-stack engineer who builds and maintains the trader-pla
 
 ## Changelog
 
+- 0.1.1 (2026-11-08) — Overview no longer names a specific project; keeps role and stack only.
 - 0.1.0 (2026-06-19) — initial version, vendored into kktest-dev/kkskills-essentials.

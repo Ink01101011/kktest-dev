@@ -85,7 +85,7 @@ function normPath(p, home, platform) {
   s = s.replace(/\\/g, '/').replace(/\/+$/, '');
   return caseInsensitive(platform) ? s.toLowerCase() : s;
 }
-/** p is HOME or below it (boundary-checked: /Users/kk does not contain /Users/kktest) */
+/** p is HOME or below it (boundary-checked: /Users/me2 is not under /Users/me) */
 export function isUnderHome(p, home, platform = process.platform) {
   const h = normPath(home, home, platform);
   const s = normPath(p, home, platform);

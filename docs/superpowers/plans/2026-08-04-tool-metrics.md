@@ -26,7 +26,7 @@
 - `detail` = `input.skill` when tool is `Skill`; `input.subagent_type` (default `general-purpose`) when tool is `Agent`; else `""`.
 - Aggregator skips malformed lines silently and reports `(N lines skipped)` in the footer.
 - Commit style: conventional commits, `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>` trailer.
-- All paths below are relative to repo root `/Users/kktest/Projects/kktest-dev`.
+- All paths below are relative to repo root `/Users/me/Projects/kktest-dev`.
 
 ---
 
@@ -105,13 +105,13 @@ In `.claude-plugin/marketplace.json`, append this object to the `plugins` array 
 
 - [ ] **Step 4: Validate JSON**
 
-Run: `python3 -m json.tool /Users/kktest/Projects/kktest-dev/.claude-plugin/marketplace.json > /dev/null && python3 -m json.tool /Users/kktest/Projects/kktest-dev/plugins/tool-metrics/.claude-plugin/plugin.json > /dev/null && echo OK`
+Run: `python3 -m json.tool /Users/me/Projects/kktest-dev/.claude-plugin/marketplace.json > /dev/null && python3 -m json.tool /Users/me/Projects/kktest-dev/plugins/tool-metrics/.claude-plugin/plugin.json > /dev/null && echo OK`
 Expected: `OK`
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /Users/kktest/Projects/kktest-dev
+cd /Users/me/Projects/kktest-dev
 git add plugins/tool-metrics .claude-plugin/marketplace.json
 git commit -m "feat(tool-metrics): scaffold plugin and register in marketplace
 
@@ -169,7 +169,7 @@ def test_logs_builtin_tool():
             "tool_name": "Bash",
             "tool_input": {"command": "ls"},
             "session_id": "sess-1",
-            "cwd": "/Users/kktest/Projects/demo.app",
+            "cwd": "/Users/me/Projects/demo.app",
         }, td)
         assert proc.returncode == 0, proc.stderr
         events = read_events(td)
@@ -178,7 +178,7 @@ def test_logs_builtin_tool():
         assert ev["tool"] == "Bash"
         assert ev["server"] == "builtin"
         assert ev["session"] == "sess-1"
-        assert ev["project"] == "-Users-kktest-Projects-demo-app"
+        assert ev["project"] == "-Users-me-Projects-demo-app"
         assert ev["detail"] == ""
         assert ev["ts"].startswith("20")
 
@@ -218,7 +218,7 @@ Write to `plugins/tool-metrics/tests/test_log_event.py`.
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /Users/kktest/Projects/kktest-dev/plugins/tool-metrics && python3 tests/test_log_event.py`
+Run: `cd /Users/me/Projects/kktest-dev/plugins/tool-metrics && python3 tests/test_log_event.py`
 Expected: FAIL — `AssertionError` (returncode 2, script not found) or FileNotFoundError.
 
 - [ ] **Step 3: Write log_event.py**
@@ -290,7 +290,7 @@ Write to `plugins/tool-metrics/hooks/scripts/log_event.py`.
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd /Users/kktest/Projects/kktest-dev/plugins/tool-metrics && python3 tests/test_log_event.py`
+Run: `cd /Users/me/Projects/kktest-dev/plugins/tool-metrics && python3 tests/test_log_event.py`
 Expected: `OK test_log_event`
 
 - [ ] **Step 5: Create hooks.json**
@@ -318,7 +318,7 @@ Write to `plugins/tool-metrics/hooks/hooks.json`. Validate: `python3 -m json.too
 - [ ] **Step 6: Commit**
 
 ```bash
-cd /Users/kktest/Projects/kktest-dev
+cd /Users/me/Projects/kktest-dev
 git add plugins/tool-metrics/hooks plugins/tool-metrics/tests
 git commit -m "feat(tool-metrics): add PostToolUse event logger hook
 
@@ -455,7 +455,7 @@ Note: `--since 2026-08-02` is interpreted as local midnight; fixture events on 2
 
 - [ ] **Step 3: Run test to verify it fails**
 
-Run: `cd /Users/kktest/Projects/kktest-dev/plugins/tool-metrics && python3 tests/test_metrics.py`
+Run: `cd /Users/me/Projects/kktest-dev/plugins/tool-metrics && python3 tests/test_metrics.py`
 Expected: FAIL — `AssertionError` in `run_stats` (script missing, returncode != 0).
 
 - [ ] **Step 4: Write metrics.py**
@@ -649,13 +649,13 @@ Write to `plugins/tool-metrics/scripts/metrics.py`.
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `cd /Users/kktest/Projects/kktest-dev/plugins/tool-metrics && python3 tests/test_metrics.py && python3 tests/test_log_event.py`
+Run: `cd /Users/me/Projects/kktest-dev/plugins/tool-metrics && python3 tests/test_metrics.py && python3 tests/test_log_event.py`
 Expected: `OK test_metrics` then `OK test_log_event`
 
 - [ ] **Step 6: Commit**
 
 ```bash
-cd /Users/kktest/Projects/kktest-dev
+cd /Users/me/Projects/kktest-dev
 git add plugins/tool-metrics/scripts plugins/tool-metrics/tests
 git commit -m "feat(tool-metrics): add aggregator with filters and grouping
 
@@ -725,7 +725,7 @@ if __name__ == "__main__":
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /Users/kktest/Projects/kktest-dev/plugins/tool-metrics && python3 tests/test_metrics.py`
+Run: `cd /Users/me/Projects/kktest-dev/plugins/tool-metrics && python3 tests/test_metrics.py`
 Expected: FAIL — `AssertionError` in `test_events_jsonl_dedupe` (`counts.get("Edit") == 1` is None: events.jsonl not read yet).
 
 - [ ] **Step 3: Implement merge + cache**
@@ -806,13 +806,13 @@ def collect():
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd /Users/kktest/Projects/kktest-dev/plugins/tool-metrics && python3 tests/test_metrics.py && python3 tests/test_log_event.py`
+Run: `cd /Users/me/Projects/kktest-dev/plugins/tool-metrics && python3 tests/test_metrics.py && python3 tests/test_log_event.py`
 Expected: `OK test_metrics` then `OK test_log_event`
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /Users/kktest/Projects/kktest-dev
+cd /Users/me/Projects/kktest-dev
 git add plugins/tool-metrics/scripts plugins/tool-metrics/tests
 git commit -m "feat(tool-metrics): merge live event log with session dedupe and cache
 
@@ -894,7 +894,7 @@ Write to `plugins/tool-metrics/commands/tool-stats-dashboard.md`.
 Check both files start with `---` frontmatter and reference `${CLAUDE_PLUGIN_ROOT}` (not a hard-coded path). Then:
 
 ```bash
-cd /Users/kktest/Projects/kktest-dev
+cd /Users/me/Projects/kktest-dev
 git add plugins/tool-metrics/commands
 git commit -m "feat(tool-metrics): add /tool-stats and /tool-stats-dashboard commands
 
@@ -906,7 +906,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ### Task 6: Enable plugin + end-to-end smoke test
 
 **Files:**
-- Modify: `/Users/kktest/.claude/settings.json` (add to `enabledPlugins`)
+- Modify: `/Users/me/.claude/settings.json` (add to `enabledPlugins`)
 - Modify: `docs/superpowers/specs/2026-08-04-tool-metrics-design.md` (status line)
 
 **Interfaces:**
@@ -915,7 +915,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 
 - [ ] **Step 1: Enable in settings.json**
 
-In `/Users/kktest/.claude/settings.json`, add to the `enabledPlugins` object:
+In `/Users/me/.claude/settings.json`, add to the `enabledPlugins` object:
 
 ```json
     "tool-metrics@kktest-dev": true
@@ -925,12 +925,12 @@ In `/Users/kktest/.claude/settings.json`, add to the `enabledPlugins` object:
 
 - [ ] **Step 2: Run full test suite once more**
 
-Run: `cd /Users/kktest/Projects/kktest-dev/plugins/tool-metrics && python3 tests/test_metrics.py && python3 tests/test_log_event.py`
+Run: `cd /Users/me/Projects/kktest-dev/plugins/tool-metrics && python3 tests/test_metrics.py && python3 tests/test_log_event.py`
 Expected: `OK test_metrics`, `OK test_log_event`
 
 - [ ] **Step 3: Smoke test against real data**
 
-Run: `python3 /Users/kktest/Projects/kktest-dev/plugins/tool-metrics/scripts/metrics.py stats | head -25`
+Run: `python3 /Users/me/Projects/kktest-dev/plugins/tool-metrics/scripts/metrics.py stats | head -25`
 Expected: a table with real counts (Bash/Read/Edit near the top, hundreds+ of calls across all local projects). Also run `... stats --group server` and confirm MCP servers appear.
 
 - [ ] **Step 4: Update spec status + commit**
@@ -938,7 +938,7 @@ Expected: a table with real counts (Bash/Read/Edit near the top, hundreds+ of ca
 Change the spec's `**Status:** Draft (pending user approval)` line to `**Status:** Approved — implemented 2026-08-04`. Then:
 
 ```bash
-cd /Users/kktest/Projects/kktest-dev
+cd /Users/me/Projects/kktest-dev
 git add docs/superpowers/specs/2026-08-04-tool-metrics-design.md
 git commit -m "docs(tool-metrics): mark spec implemented
 

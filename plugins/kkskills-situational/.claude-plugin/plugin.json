@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "kkskills-situational",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Situational working skills (10) — enable the plugin when the work calls for them: additive-first DB migrations, verify-with-real-data, clean-architecture, secret hygiene, concurrency/race-conditions, MCP server authoring, timezone handling, local-LLM selection, plan decomposition & orchestration (moved from kkskills-essentials in 0.2.0), and the meta-skill that folds new learnings back into a skill. Correct and maintained, just not everyday: every skill's description sits in context in every session, so these are kept behind one toggle. Skills-only.",
   "author": {
     "name": "Ink",
