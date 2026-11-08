@@ -235,6 +235,14 @@ test('#21 hooks: no file invents a flag bantamkit-mcp does not have, and pack.js
   for (const it of PACK.items) for (const s of [...(it.steps ?? []), ...(it.windows ?? [])]) assert.ok(!/--install-hooks/.test(s), `${it.id}: hooks are opt-in, never a pack step`);
 });
 
+test('kk-update: per-command timeout has a macOS fallback (no `timeout` there) that reports a missing command', () => {
+  const text = readFileSync(HOOK_DOCS['kk-update SKILL.md'], 'utf8');
+  assert.match(text, /macOS: there is no `timeout`/);
+  assert.ok(text.includes("`perl -e 'alarm shift; exec @ARGV or exit 127' 120 <cmd>`"), 'perl alarm fallback, with `or exit 127`');
+  assert.match(text, /Windows: `timeout` in cmd and PowerShell is a sleep/);
+  assert.match(text, /Exit 127 on every command means the wrapper itself is missing/);
+});
+
 test('#21 hooks: /kk-update re-runs the hook check after its updates (node upgrade moves the hook path)', () => {
   const text = readFileSync(HOOK_DOCS['kk-update SKILL.md'], 'utf8');
   const step = paragraphs(text).find((p) => /bantamkit hooks and a node upgrade/.test(p));
