@@ -1,6 +1,6 @@
 {
   "name": "kktest-dev",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Use the kktest-dev Claude Code skills and MCP servers from other AI tools: Codex, Gemini CLI, GitHub Copilot, Cursor, Claude Desktop, claude.ai, ChatGPT.",
   "type": "module",
   "bin": {

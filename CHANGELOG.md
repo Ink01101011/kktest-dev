@@ -1,8 +1,9 @@
 # Changelog
 
-## Unreleased
+## 1.2.1
 
-kktestdev-pack 0.2.3.
+Every commit since 1.2.0 (#36, closing #33 and #34). npm package `kktest-dev` 1.2.1; marketplace
+`kktest-dev` 1.2.1; kktestdev-pack 0.2.3.
 
 - **`/kk-update` perl timeout fallback fails loudly and really stops the command** (#34). The macOS
   one-liner now checks its number: a timeout that is `0`, not a whole number, or missing (so the
