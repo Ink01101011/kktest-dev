@@ -27,15 +27,19 @@ minutes: every step is network-bound.
     perl (ships with macOS), with the number first and then the command:
 
     ```
-    perl -e '$t=shift; $t=~/^[1-9][0-9]*$/ or do{warn "bad timeout: $t\n"; exit 2}; @ARGV or do{warn "no command\n"; exit 2}; defined($p=fork) or exit 127; if(!$p){setpgrp; exec @ARGV or exit 127} $SIG{ALRM}=sub{kill KILL=>-$p; exit 142}; alarm $t; waitpid $p,0; exit($?&127 ? 128+($?&127) : $?>>8)' 120 <cmd>
+    perl -e '$t=shift; $t=~/^[1-9][0-9]{0,5}\z/ or do{warn "bad timeout: $t\n"; exit 2}; @ARGV or do{warn "no command\n"; exit 2}; defined($p=fork) or exit 127; if(!$p){setpgrp; exec @ARGV or exit 127} $SIG{$_}=sub{kill KILL=>-$p; exit 143} for qw(INT TERM HUP); $SIG{ALRM}=sub{kill KILL=>-$p; exit 142}; alarm $t; waitpid $p,0; exit($?&127 ? 128+($?&127) : $?>>8)' 120 <cmd>
     ```
 
-    Exit 142 = timed out, 127 = command not found, 2 = the wrapper was called wrong (a timeout
-    that is `0`, not a whole number, or missing, so the command word was read as the number; or
-    no command) and it prints `bad timeout: ...` or `no command`. Copy it whole: the check stops
-    a bad number from meaning "no limit", and `exec ... or exit 127` stops a missing command from
-    exiting 0. The command runs in its own process group and gets SIGKILL when time is up, so a
-    command that ignores SIGALRM and the processes it started are stopped too.
+    Exit 142 = timed out, 127 = command not found, 143 = the wrapper itself was stopped (Ctrl-C,
+    TERM, HUP), 2 = the wrapper was called wrong (a timeout that is `0`, not a whole number from 1
+    to 999999 seconds, or missing, so the command word was read as the number; or no command) and it
+    prints `bad timeout: ...` or `no command`. Copy it whole: the check stops a bad or overflowing
+    number from meaning "no limit", and `exec ... or exit 127` stops a missing command from exiting 0.
+    The command runs in its own process group, which gets SIGKILL when time is up or when the wrapper
+    is stopped, so a command that ignores SIGALRM and the processes it started are stopped too. A
+    process that moves itself to a new session or group (`setsid`, a daemon) is not. For
+    non-interactive commands only: in its own group a command that reads the terminal stops instead
+    of prompting.
     Pass the command as separate words after the number, never as one quoted string: perl runs a
     single string with `;`, `|` or `$(...)` in it through `sh -c`.
   - Windows: `timeout` in cmd and PowerShell is a sleep, not a time limit. Use the Bash tool's

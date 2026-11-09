@@ -8,7 +8,7 @@ import nodePath from 'node:path';
 import { test } from 'node:test';
 import {
   OPT_LIMITS, cleanVersion, compareVersions, derivePrefix, diffItem, envMentions, exportStarFrom, exportedValueNames, hashLines, helpEnv, helpFlags, locatePackage, npxRoots,
-  parseArgs, run, sanitizePluginConfig, serverIsItem, stateFile, stripComments, writeState, projectRootOf
+  parseArgs, run, sanitizePluginConfig, serverIsItem, stateFile, stripComments, keepAsOption, writeState, projectRootOf
 } from './options.mjs';
 import { run as inventoryRun, runCommand, validatePack } from './inventory.mjs';
 import { canonical } from './common.mjs';
@@ -780,4 +780,48 @@ test('#33 run: `export * from` in the types entry is followed one level inside t
     fx.write(nodePath.join(dir, 'dist', 'index.d.ts'), "export * from './store.js';\n");
     assert.deepEqual((await run(['--item', 'demo'], opt(fx))).items[0].options.map((o) => o.name).sort(), ['DEMO_GITIGNORE_TEXT', 'DEMO_LEVEL']);
   }
+});
+
+// ------------------------------------------------------------------ 1.2.1 gate fixes (G1 / G2)
+test('G1-121 #1/#2: a declaration line that ends in a string ends there: the next export is read, no name is made up', () => {
+  assert.deepEqual([...exportedValueNames("export const a = 'x'\nexport const DEMO_B = 1, DEMO_C = 2")].sort(), ['DEMO_B', 'DEMO_C', 'a']);
+  assert.deepEqual([...exportedValueNames('export declare const a: "x"\nexport interface Foo extends Bar, DEMO_URL {}')], ['a']);
+  // a string that is followed by a continuation still continues
+  assert.deepEqual([...exportedValueNames("export const a = 'x' +\n  'y', DEMO_D = 1")].sort(), ['DEMO_D', 'a']);
+});
+
+test('G2-121 medium: many unclosed `export {` cost one scan, not 20000 chars each; a closed list still counts', () => {
+  // 1 MB each; with a `}` at the very end, finding it again from every `export {` took ~1 s (memchr), unclosed ~1.7 s per 512 KB
+  for (const src of [';export {'.repeat(120000), ';export {'.repeat(120000) + '}', `export { DEMO_A }\n${';export {'.repeat(120000)}`]) {
+    const t0 = performance.now();
+    const n = exportedValueNames(src);
+    const ms = performance.now() - t0;
+    assert.ok(ms < 300, `took ${Math.round(ms)} ms on ${src.length} chars`);
+    if (src.startsWith('export { DEMO_A }')) assert.deepEqual([...n], ['DEMO_A']);
+  }
+  // a list longer than 20000 chars is skipped, the next one is still read
+  assert.deepEqual([...exportedValueNames(`export { ${'x'.repeat(20001)} }\nexport { DEMO_E }`)], ['DEMO_E']);
+});
+
+test('G2-121 low: a credential-in-a-URL name (FOO_DSN, FOO_DATABASE_URL, ...) stays an option when the package exports it', async (t) => {
+  assert.ok(['DEMO_DSN', 'DEMO_DATABASE_URL', 'DEMO_CONNECTION_STRING', 'DEMO_WEBHOOK_URL', 'DSN'].every(keepAsOption));
+  assert.ok(!['DEMO_LEVEL', 'DEMO_GITIGNORE_TEXT', 'DEMO_URL', 'DEMO_DSN_TEXT'].some(keepAsOption));
+  const fx = fixture(t);
+  const dir = installDemo(fx, { readme: '| `DEMO_LEVEL` | level |\n| `DEMO_DATABASE_URL` | where the data lives |\n' });
+  fx.write(nodePath.join(dir, 'index.d.ts'), "export * from './c.js';\n");
+  fx.write(nodePath.join(dir, 'c.d.ts'), 'export declare const DEMO_LEVEL: string, DEMO_DATABASE_URL: string;\n');
+  const demo = (await run(['--item', 'demo'], opt(fx))).items[0];
+  assert.deepEqual(demo.options.map((o) => o.name), ['DEMO_DATABASE_URL']);
+  assert.deepEqual(demo.notEnv, ['DEMO_LEVEL']);
+});
+
+test('G1-121 nit: only the first 200 `export * from` specifiers are tried', async (t) => {
+  const fx = fixture(t);
+  const dir = installDemo(fx, { readme: API_TABLE });
+  const missing = Array.from({ length: 200 }, (_, i) => `export * from './missing${i}.js';`).join('\n');
+  fx.write(nodePath.join(dir, 'index.d.ts'), `${missing}\nexport * from './store.js';\n`);
+  fx.write(nodePath.join(dir, 'store.d.ts'), 'export declare const DEMO_GITIGNORE_TEXT: string;\n');
+  assert.deepEqual((await run(['--item', 'demo'], opt(fx))).items[0].options.map((o) => o.name).sort(), ['DEMO_GITIGNORE_TEXT', 'DEMO_LEVEL']);
+  fx.write(nodePath.join(dir, 'index.d.ts'), `${missing.split('\n').slice(1).join('\n')}\nexport * from './store.js';\n`); // 199 + 1: tried
+  assert.deepEqual((await run(['--item', 'demo'], opt(fx))).items[0].options.map((o) => o.name), ['DEMO_LEVEL']);
 });

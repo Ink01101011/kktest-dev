@@ -1,8 +1,9 @@
 # Changelog
 
-## Unreleased
+## 1.2.1
 
-kktestdev-pack 0.2.3.
+Every commit since 1.2.0 (#36, closing #33 and #34). npm package `kktest-dev` 1.2.1; marketplace
+`kktest-dev` 1.2.1; kktestdev-pack 0.2.3.
 
 - **`/kk-update` perl timeout fallback fails loudly and really stops the command** (#34). The macOS
   one-liner now checks its number: a timeout that is `0`, not a whole number, or missing (so the
@@ -20,6 +21,16 @@ kktestdev-pack 0.2.3.
   './x'` in the types entry is followed one level inside the package with the same in-package and
   no-link checks (at most 20 files). Each shape has a test that fails when its handling is removed;
   the blank-line time-bound tests stay green.
+- **Release-gate fixes to #33 and #34** (this release). A `const` line that ends in a string no longer
+  swallows the next line, which lost the next export and could make up a name from an `extends A, B`
+  list. Many unclosed `export {` in a hostile `.d.ts` cost one scan instead of 20000 characters each (a
+  512 KB file took ~1.7 s, and `export *` could read 21 of them). Only the first 200 `export * from`
+  specifiers are tried. A name that carries a credential in a URL or connection string (`FOO_DSN`,
+  `FOO_DATABASE_URL`, `FOO_CONNECTION_STRING`, `FOO_WEBHOOK_URL`) stays an option even when the package
+  exports it, like a `secretKey()` name. The perl timeout takes 1 to 999999 seconds only (2^31 and up
+  turned perl's alarm off: no limit); stopping the wrapper (Ctrl-C, TERM, HUP) kills the command's
+  group and exits 143; the skill says a process that starts its own session escapes, and that the
+  wrapper is for non-interactive commands.
 
 ## 1.2.0
 
