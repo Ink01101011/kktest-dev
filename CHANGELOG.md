@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased
+
+kktestdev-pack 0.2.3.
+
+- **`/kk-update` perl timeout fallback fails loudly and really stops the command** (#34). The macOS
+  one-liner now checks its number: a timeout that is `0`, not a whole number, or missing (so the
+  command word was read as the number), or no command at all, exits 2 with `bad timeout: ...` or
+  `no command` instead of running with no limit or exiting 127 (which the skill reads as "wrapper
+  missing"). The command runs in its own process group and gets SIGKILL when time is up, so a command
+  that ignores SIGALRM and the processes it started are stopped too. Exit 142 = timed out and 127 =
+  command not found as before; the command's own exit code passes through. A test runs the one-liner
+  from the SKILL text with `0`, `abc`, `1.5`, a missing number, no command, a SIGALRM-ignoring command
+  and a background child (macOS and Linux CI; skipped on Windows).
+- **options.mjs reads four more export shapes** (#33). `exportedValueNames()` blanks `//` and `/* */`
+  comments first (strings kept, one linear pass), so an `export {` line inside a block comment is not a
+  list and `A, // note` keeps `A`. `export const a = 1, B = 2` gives every declarator (nested types and
+  line breaks handled, scan bounded and linear). `export * as NS from` gives `NS`, and `export * from
+  './x'` in the types entry is followed one level inside the package with the same in-package and
+  no-link checks (at most 20 files). Each shape has a test that fails when its handling is removed;
+  the blank-line time-bound tests stay green.
+
 ## 1.2.0
 
 Every commit on `release/1.2.0` since 1.1.0 (#28-#31). npm package `kktest-dev` 1.2.0; marketplace
