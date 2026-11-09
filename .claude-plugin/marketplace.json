@@ -344,7 +344,7 @@
       "name": "kktestdev-pack",
       "source": "./plugins/kktestdev-pack",
       "description": "Team onboarding pack: /kk-onboard inventories what you already have installed or connected, skips what is already there, audits existing skills/MCP/plugins/hooks for redundancy and risk, and asks you item by item (neutral pros and cons) what to install, keep, or remove. /kk-update pulls the latest of everything the pack manages. Installs nothing by itself.",
-      "version": "0.2.2",
+      "version": "0.2.3",
       "author": {
         "name": "Ink",
         "email": "supakit.kitj@gmail.com"

@@ -364,15 +364,109 @@ function readPackageDocs(dir, visit) {
 }
 
 /**
- * value names a types file exports: `export { A, B as C } [from '...']` (C, not B) and
- * `export [declare] const|let|var|function|class|enum X`. `export type { ... }` and type-only names are not values.
+ * `text` with its `//` and `/* *\/` comments blanked out, string literals ('', "", ``) left as they are so a `//`
+ * inside a string is not a comment. A comment becomes one space, but its newlines are kept, so `^`/`\n` statement
+ * starts still line up. One linear pass; an unclosed comment or string runs to the end.
+ */
+export function stripComments(text) {
+  const src = String(text ?? '');
+  let out = '';
+  let i = 0;
+  let from = 0;
+  const n = src.length;
+  while (i < n) {
+    const c = src[i];
+    if (c === '"' || c === "'" || c === '`') {
+      i++;
+      while (i < n && src[i] !== c) {
+        if (src[i] === '\\') i++;
+        else if (src[i] === '\n' && c !== '`') break; // an unclosed '...' or "..." ends at its line
+        i++;
+      }
+      i++;
+      continue;
+    }
+    if (c === '/' && src[i + 1] === '/') {
+      out += src.slice(from, i) + ' ';
+      const nl = src.indexOf('\n', i);
+      i = nl === -1 ? n : nl;
+      from = i;
+      continue;
+    }
+    if (c === '/' && src[i + 1] === '*') {
+      out += src.slice(from, i) + ' ';
+      const close = src.indexOf('*/', i + 2);
+      const stop = close === -1 ? n : close + 2;
+      const body = src.slice(i, stop);
+      for (let k = body.indexOf('\n'); k !== -1; k = body.indexOf('\n', k + 1)) out += '\n';
+      i = stop;
+      from = i;
+      continue;
+    }
+    i++;
+  }
+  return out + src.slice(from);
+}
+
+const DECL_SCAN = 20000;
+
+/**
+ * the names after the first of `export [declare] const|let|var a: T = x, B: U` (B), from `at` (just past `a`) on: split on commas at
+ * depth 0 of ()[]{}<> (an arrow `=>` is not a bracket) and outside strings, up to a `;` at depth 0 or a line end at
+ * depth 0 that is not a continuation (the line ends in `,`, `=`, `:`, `|`, `&` or the next starts with `,`).
+ * Scans at most DECL_SCAN characters. Returns the names and where the scan stopped.
+ */
+function declaratorNames(src, at) {
+  const names = [];
+  let depth = 0;
+  let piece = '';
+  let last = '';
+  let first = true; // the first piece is the rest of the declarator the caller already named (`: T = x`)
+  const take = () => { const m = !first && piece.match(/^\s*([A-Za-z_$][\w$]*)/); if (m) names.push(m[1]); piece = ''; first = false; };
+  const limit = Math.min(src.length, at + DECL_SCAN);
+  let i = at;
+  for (; i < limit; i++) {
+    const c = src[i];
+    if (c === '"' || c === "'" || c === '`') {
+      const q = c; piece += c; i++;
+      while (i < limit && src[i] !== q && !(src[i] === '\n' && q !== '`')) { if (src[i] === '\\') { piece += src[i]; i++; } piece += src[i] ?? ''; i++; }
+      piece += src[i] ?? '';
+      continue;
+    }
+    if (c === '(' || c === '[' || c === '{' || c === '<') depth++;
+    else if (c === ')' || c === ']' || c === '}' || (c === '>' && src[i - 1] !== '=')) depth = Math.max(0, depth - 1);
+    else if (depth === 0 && c === ';') break;
+    else if (depth === 0 && c === ',') { take(); last = ','; continue; }
+    else if (depth === 0 && c === '\n') {
+      if (!/[,=:|&]/.test(last)) {
+        let k = i + 1;
+        while (k < limit && /[ \t\r\n]/.test(src[k])) k++;
+        if (src[k] !== ',') break;
+        i = k - 1; // skip the blank run once: looking ahead again from each of its newlines is quadratic
+        continue;
+      }
+    }
+    if (!/\s/.test(c)) last = c;
+    piece += c;
+  }
+  take();
+  return { names, end: i };
+}
+
+/**
+ * value names a types file exports: `export { A, B as C } [from '...']` (C, not B), `export * as NS from '...'`
+ * (NS), and `export [declare] const|let|var|function|class|enum X` (every declarator of `const a = 1, B = 2`).
+ * `export type { ... }` and type-only names are not values. Comments are blanked first (stripComments), so an
+ * `export {` line inside `/* *\/` is not a list and `A, // note` keeps A. `export * from` names live in another file:
+ * see exportStarFrom.
  * Pure and linear: the start of a statement is `^`, `;` or a newline plus spaces/tabs/CR on that line only (`\s*`
- * there re-scanned every following blank line from each newline: quadratic on a file of blank lines).
+ * there re-scanned every following blank line from each newline: quadratic on a file of blank lines), and the
+ * declarator scan resumes the search where it stopped.
  * `export [declare] const enum X` gives X. Used to tell a code constant that looks like an env var (FOO_DEFAULT_TEXT in an API table) from one.
  */
 export function exportedValueNames(text) {
   const names = new Set();
-  const src = String(text ?? '');
+  const src = stripComments(text);
   for (const m of src.matchAll(/(?:^|[;\n])[ \t\r]*export\s+\{([^}]{0,20000})\}/g)) {
     for (const part of m[1].split(',')) {
       const p = part.trim().replace(/^type\s+/, '');
@@ -382,8 +476,23 @@ export function exportedValueNames(text) {
       if (id) names.add(id);
     }
   }
-  for (const m of src.matchAll(/(?:^|[;\n])[ \t\r]*export\s+(?:declare\s+)?(?:const\s+enum|const|let|var|function\*?|class|enum|abstract\s+class)\s+([A-Za-z_$][\w$]*)/g)) names.add(m[1]);
+  for (const m of src.matchAll(/(?:^|[;\n])[ \t\r]*export\s+\*\s+as\s+([A-Za-z_$][\w$]*)\s+from\b/g)) names.add(m[1]);
+  const decl = /(?:^|[;\n])[ \t\r]*export\s+(?:declare\s+)?(const\s+enum|const|let|var|function\*?|class|enum|abstract\s+class)\s+([A-Za-z_$][\w$]*)/g;
+  for (let m; (m = decl.exec(src));) {
+    names.add(m[2]);
+    if (!/^(const|let|var)$/.test(m[1])) continue;
+    const more = declaratorNames(src, m.index + m[0].length);
+    for (const x of more.names) names.add(x);
+    decl.lastIndex = Math.max(decl.lastIndex, more.end);
+  }
   return names;
+}
+
+/** the relative specifiers of `export * from './x'` (not `export * as NS`, not a bare package name), comments blanked */
+export function exportStarFrom(text) {
+  const out = [];
+  for (const m of stripComments(text).matchAll(/(?:^|[;\n])[ \t\r]*export\s+\*\s+from\s+(['"])(\.{1,2}\/[^'"\n]{1,500})\1/g)) out.push(m[2]);
+  return out;
 }
 
 /**
@@ -398,10 +507,33 @@ function leaveOutExported(acc, exported) {
   return { notEnv, keptSecret };
 }
 
+/** the text of types file `f` if it is a plain file inside package `dir` (no link on the way out), else null */
+function readPackageFile(dir, f) {
+  if (!isInside(f, dir)) return null;
+  let st;
+  try { st = lstatSync(f); } catch { return null; }
+  if (!st.isFile()) return null;
+  // lstat sees only the last component: a linked folder on the way (lib -> elsewhere) must not lead out either
+  let real; try { real = realpathSync.native(f); } catch { return null; }
+  if (!isInside(real, dir)) return null;
+  try { return readBounded(f, OPT_LIMITS.docBytes); } catch { return null; }
+}
+
+/** files `export * from './x'` may mean, next to `from`: ./x.js -> ./x.d.ts (also .mjs/.cjs), ./x -> ./x.d.ts, ./x/index.d.ts */
+function starCandidates(from, spec) {
+  const base = nodePath.resolve(nodePath.dirname(from), spec);
+  const js = base.match(/^(.*)\.(c|m)?js$/i);
+  if (js) return [`${js[1]}.d.${js[2] ? `${js[2].toLowerCase()}ts` : 'ts'}`];
+  if (/\.d\.(c|m)?ts$/i.test(base)) return [base];
+  return [`${base}.d.ts`, nodePath.join(base, 'index.d.ts')];
+}
+
+const STAR_FILES = 20;
+
 /**
  * the package's own types entry (package.json types/typings, else index.d.ts or dist/index.d.ts), read bounded, as
- * text only (never run). A link (also a linked folder on the way), a path out of the package or a missing file
- * gives no names.
+ * text only (never run). `export * from './x'` in it is followed one level (at most STAR_FILES files), with the same
+ * checks. A link (also a linked folder on the way), a path out of the package or a missing file gives no names.
  */
 function packageExports(dir) {
   let pkg = {};
@@ -409,14 +541,22 @@ function packageExports(dir) {
   const rels = [pkg?.types, pkg?.typings].filter((r) => typeof r === 'string' && r).concat(['index.d.ts', 'dist/index.d.ts']);
   for (const rel of rels) {
     const f = nodePath.resolve(dir, rel);
-    if (!isInside(f, dir)) continue;
-    let st;
-    try { st = lstatSync(f); } catch { continue; }
-    if (!st.isFile()) continue;
-    // lstat sees only the last component: a linked folder on the way (lib -> elsewhere) must not lead out either
-    let real; try { real = realpathSync.native(f); } catch { continue; }
-    if (!isInside(real, dir)) continue;
-    try { return { file: nodePath.relative(dir, f), names: exportedValueNames(readBounded(f, OPT_LIMITS.docBytes)) }; } catch { continue; }
+    const text = readPackageFile(dir, f);
+    if (text == null) continue;
+    const names = exportedValueNames(text);
+    const seen = new Set([f]);
+    for (const spec of exportStarFrom(text)) {
+      if (seen.size > STAR_FILES) break;
+      for (const g of starCandidates(f, spec)) {
+        if (seen.has(g)) break;
+        const more = readPackageFile(dir, g);
+        if (more == null) continue;
+        seen.add(g);
+        for (const n of exportedValueNames(more)) names.add(n);
+        break;
+      }
+    }
+    return { file: nodePath.relative(dir, f), names };
   }
   return null;
 }

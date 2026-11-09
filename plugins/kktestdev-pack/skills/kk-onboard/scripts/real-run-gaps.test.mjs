@@ -6,6 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -16,6 +17,15 @@ import {
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PACK = JSON.parse(readFileSync(join(HERE, '..', 'pack.json'), 'utf8'));
 const PLUGIN = join(HERE, '..', '..', '..');
+
+// #34: the macOS perl timeout fallback from kk-update, exactly as the skill prints it (without `120 <cmd>`)
+const PERL_TIMEOUT = (() => {
+  const md = readFileSync(join(PLUGIN, 'skills', 'kk-update', 'SKILL.md'), 'utf8');
+  const m = md.match(/```\s*\n\s*(perl -e '.*') 120 <cmd>\s*\n\s*```/);
+  return m ? m[1] : null;
+})();
+const PERL_SCRIPT = PERL_TIMEOUT && PERL_TIMEOUT.slice("perl -e '".length, -1);
+const hasPerl = process.platform !== 'win32' && spawnSync('perl', ['-e', '1']).status === 0;
 
 function fakeHome(t) {
   const home = mkdtempSync(join(tmpdir(), 'kk-i7b-'));
@@ -238,12 +248,58 @@ test('#21 hooks: no file invents a flag bantamkit-mcp does not have, and pack.js
 test('kk-update: per-command timeout has a macOS fallback (no `timeout` there) that reports a missing command', () => {
   const text = readFileSync(HOOK_DOCS['kk-update SKILL.md'], 'utf8');
   assert.match(text, /macOS: there is no `timeout`/);
-  assert.ok(text.includes("`perl -e 'alarm shift; exec @ARGV or exit 127' 120 <cmd>`"), 'perl alarm fallback, with `or exit 127`');
+  assert.ok(PERL_TIMEOUT, 'the perl fallback is a fenced one-liner ending in `120 <cmd>`');
+  assert.ok(PERL_TIMEOUT.includes('exec @ARGV or exit 127'), 'perl fallback keeps `or exit 127`');
+  assert.ok(PERL_TIMEOUT.includes('$t=~/^[1-9][0-9]*$/'), '#34: the timeout must be a positive whole number');
+  assert.ok(PERL_TIMEOUT.includes('kill KILL=>-$p'), '#34: SIGKILL to the process group, not SIGALRM to one process');
+  assert.match(text, /2 = the wrapper was called wrong/);
   assert.match(text, /Windows: `timeout` in cmd and PowerShell is a sleep/);
   assert.match(text, /Exit 127 on every command means the wrapper itself is missing/);
   // G2-F6: perl `exec` of ONE string goes through sh -c (injection); G1#6: Git Bash on Windows has GNU timeout
   assert.match(text, /separate words after the number, never as one quoted string/);
   assert.match(text, /Git Bash, which usually\s+has GNU `timeout`/);
+});
+
+test('#34 kk-update perl timeout: a bad or missing number fails loudly; a timeout kills a SIGALRM-ignoring command and its children', { skip: !hasPerl && 'needs perl on macOS/Linux' }, () => {
+  assert.ok(PERL_SCRIPT);
+  const perl = (args, ms = 15000) => {
+    const t0 = Date.now();
+    const r = spawnSync('perl', ['-e', PERL_SCRIPT, ...args], { encoding: 'utf8', timeout: ms });
+    return { ...r, ms: Date.now() - t0 };
+  };
+  for (const [args, msg] of [[['0', 'true'], /bad timeout: 0/], [['abc', 'true'], /bad timeout: abc/],
+    [['1.5', 'true'], /bad timeout/], [['true'], /bad timeout: true/], [[], /bad timeout/], [['5'], /no command/]]) {
+    const r = perl(args);
+    assert.equal(r.status, 2, `${JSON.stringify(args)}: exit 2, not a run with no limit or a 127 that reads as "wrapper missing"`);
+    assert.match(r.stderr, msg);
+  }
+  // a negative number reaches perl's own switch parser first: still a non-zero exit, and the command never runs
+  const neg = perl(['-5', 'sh', '-c', 'echo ran']);
+  assert.notEqual(neg.status, 0);
+  assert.doesNotMatch(neg.stdout, /ran/);
+  assert.equal(perl(['5', 'true']).status, 0);
+  assert.equal(perl(['5', 'sh', '-c', 'exit 7']).status, 7, 'the command\'s own exit code passes through');
+  assert.equal(perl(['5', 'kk-no-such-command-34']).status, 127, 'missing command is 127, never 0');
+
+  const ignores = perl(['1', 'sh', '-c', 'trap "" ALRM; sleep 20']);
+  assert.equal(ignores.status, 142, 'timed out');
+  assert.ok(ignores.ms < 8000, `a command that ignores SIGALRM is still stopped (took ${ignores.ms} ms)`);
+
+  const marker = `kk34-${process.pid}-${Date.now()}`;
+  const dir = mkdtempSync(join(tmpdir(), 'kk-34-'));
+  try {
+    const pidFile = join(dir, 'child.pid');
+    const r = perl(['1', 'sh', '-c', `sleep 20 & echo $! > ${pidFile}; wait # ${marker}`]);
+    assert.equal(r.status, 142);
+    const child = Number(readFileSync(pidFile, 'utf8').trim());
+    assert.ok(child > 0);
+    let alive = true;
+    for (let i = 0; i < 50 && alive; i++) {
+      try { process.kill(child, 0); spawnSync('sleep', ['0.1']); } catch { alive = false; }
+    }
+    if (alive) { try { process.kill(child, 'SIGKILL'); } catch {} }
+    assert.equal(alive, false, 'the background child of the timed-out command was killed too');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
 test('#21 hooks: /kk-update re-runs the hook check after its updates (node upgrade moves the hook path)', () => {

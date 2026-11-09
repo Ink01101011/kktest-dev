@@ -7,8 +7,8 @@ import { tmpdir } from 'node:os';
 import nodePath from 'node:path';
 import { test } from 'node:test';
 import {
-  OPT_LIMITS, cleanVersion, compareVersions, derivePrefix, diffItem, envMentions, exportedValueNames, hashLines, helpEnv, helpFlags, locatePackage, npxRoots,
-  parseArgs, run, sanitizePluginConfig, serverIsItem, stateFile, writeState, projectRootOf
+  OPT_LIMITS, cleanVersion, compareVersions, derivePrefix, diffItem, envMentions, exportStarFrom, exportedValueNames, hashLines, helpEnv, helpFlags, locatePackage, npxRoots,
+  parseArgs, run, sanitizePluginConfig, serverIsItem, stateFile, stripComments, writeState, projectRootOf
 } from './options.mjs';
 import { run as inventoryRun, runCommand, validatePack } from './inventory.mjs';
 import { canonical } from './common.mjs';
@@ -716,4 +716,68 @@ test('G1#4: notEnv hides only a removed package option, not a removed plugin opt
     { options: [], notEnv: ['DEMO_X'], pluginOptions: [] });
   assert.deepEqual(d.removed, []);
   assert.deepEqual(d.pluginRemoved, ['DEMO_X']);
+});
+
+// ------------------------------------------------------------------ #33: shapes the two regexes read wrong
+test('#33 block comment: an `export {` line inside /* */ (no leading *) is not an export list', () => {
+  const n = exportedValueNames('/*\nexport { DEMO_IN_BLOCK }\n*/\nexport { DEMO_REAL };\n/* export const DEMO_ONE_LINE = 1 */');
+  assert.deepEqual([...n], ['DEMO_REAL']);
+});
+
+test('#33 comment inside a list: `A, // note` keeps A; a `//` or `/*` inside a string is not a comment', () => {
+  assert.deepEqual([...exportedValueNames('export {\n  DEMO_A, // note\n  DEMO_B /* why */, DEMO_C\n};')].sort(), ['DEMO_A', 'DEMO_B', 'DEMO_C']);
+  assert.deepEqual([...exportedValueNames("export declare const DEMO_S: 'a//b', DEMO_T: \"/*\";\nexport { DEMO_U };")].sort(), ['DEMO_S', 'DEMO_T', 'DEMO_U']);
+  assert.equal(stripComments('a // x\nb /* y\nz */ c'), 'a  \nb  \n c');
+});
+
+test('#33 export *: `export * as NS from` gives NS; `export * from` gives its relative specifiers only', () => {
+  assert.deepEqual([...exportedValueNames("export * as DEMO_NS from './ns.js';\nexport * from './store.js';")], ['DEMO_NS']);
+  assert.deepEqual(exportStarFrom("export * from './store.js';\n// export * from './commented'\nexport * from 'other-pkg';\n  export * from \"../up\";\nexport * as N from './n';"), ['./store.js', '../up']);
+});
+
+test('#33 multiple declarators: every name of `export [declare] const|let|var a, B` (nested types, line breaks)', () => {
+  const cases = [
+    ['export const demo_a = 1, DEMO_B = 2;', ['DEMO_B', 'demo_a']],
+    ['export declare const a: string, DEMO_B: { x: number, y: Map<string, number> }, DEMO_C: (p: number, q: string) => void;', ['DEMO_B', 'DEMO_C', 'a']],
+    ['export declare let a: string,\n  DEMO_B: number;\nexport var c = 1', ['DEMO_B', 'a', 'c']],
+    ['export declare const a: string\n  , DEMO_B: number', ['DEMO_B', 'a']],
+    // a line end at depth 0 with no continuation ends the statement: `foo, bar` on the next line is not a declarator
+    ['export const a = 1\nfoo, bar\n', ['a']],
+    ['export const enum DEMO_E { A, B }', ['DEMO_E']],
+  ];
+  for (const [src, want] of cases) assert.deepEqual([...exportedValueNames(src)].sort(), want, src);
+});
+
+test('#33 the comment pass and the declarator scan stay linear (unclosed comments/strings/brackets, long blank runs)', () => {
+  for (const src of ['/*'.repeat(200000), '"'.repeat(200000), '//\n'.repeat(100000), `export const a = (${'\n'.repeat(200000)}`,
+    `export const a = 1,${'\r\n'.repeat(256 * 1024)}DEMO_B = 2`, 'export const a = 1, b = {\n'.repeat(20000)]) {
+    const t0 = performance.now();
+    exportedValueNames(src);
+    exportStarFrom(src);
+    const ms = performance.now() - t0;
+    assert.ok(ms < 1500, `took ${Math.round(ms)} ms on ${src.length} chars`);
+  }
+});
+
+test('#33 run: `export * from` in the types entry is followed one level inside the package, never out of it', async (t) => {
+  const fx = fixture(t);
+  const dir = installDemo(fx, { readme: API_TABLE });
+  writeFileSync(nodePath.join(dir, 'package.json'), JSON.stringify({ name: 'demo-mcp', version: '1.2.3', bin: { 'demo-mcp': 'cli.js' }, types: 'dist/index.d.ts' }));
+  fx.write(nodePath.join(dir, 'dist', 'index.d.ts'), "export * from './store.js';\n");
+  fx.write(nodePath.join(dir, 'dist', 'store.d.ts'), "export * from './deeper.js';\nexport declare const DEMO_GITIGNORE_TEXT: string;\n");
+  fx.write(nodePath.join(dir, 'dist', 'deeper.d.ts'), 'export declare const DEMO_LEVEL: string;\n'); // two levels down: not read
+  const demo = (await run(['--item', 'demo'], opt(fx))).items[0];
+  assert.deepEqual(demo.options.map((o) => o.name), ['DEMO_LEVEL']);
+  assert.deepEqual(demo.notEnv, ['DEMO_GITIGNORE_TEXT']);
+
+  // a specifier out of the package is not followed
+  fx.write(nodePath.join(fx.root, 'outside.d.ts'), 'export declare const DEMO_GITIGNORE_TEXT: string;\n');
+  fx.write(nodePath.join(dir, 'dist', 'index.d.ts'), `export * from '${nodePath.relative(nodePath.join(dir, 'dist'), nodePath.join(fx.root, 'outside')).split(nodePath.sep).join('/')}';\n`);
+  assert.deepEqual((await run(['--item', 'demo'], opt(fx))).items[0].options.map((o) => o.name).sort(), ['DEMO_GITIGNORE_TEXT', 'DEMO_LEVEL']);
+  if (posix) { // nor a linked file inside it
+    rmSync(nodePath.join(dir, 'dist', 'store.d.ts'));
+    symlinkSync(nodePath.join(fx.root, 'outside.d.ts'), nodePath.join(dir, 'dist', 'store.d.ts'));
+    fx.write(nodePath.join(dir, 'dist', 'index.d.ts'), "export * from './store.js';\n");
+    assert.deepEqual((await run(['--item', 'demo'], opt(fx))).items[0].options.map((o) => o.name).sort(), ['DEMO_GITIGNORE_TEXT', 'DEMO_LEVEL']);
+  }
 });

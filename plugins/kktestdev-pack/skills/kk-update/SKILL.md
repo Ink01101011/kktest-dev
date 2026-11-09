@@ -24,9 +24,18 @@ minutes: every step is network-bound.
   the tool's own `timeout` parameter. In a shell loop, wrap each command:
   - Linux: `timeout 120 <cmd>` (GNU coreutils). Exit 124 = timed out.
   - macOS: there is no `timeout`. Use `gtimeout` if Homebrew coreutils is installed, otherwise
-    perl (ships with macOS): `perl -e 'alarm shift; exec @ARGV or exit 127' 120 <cmd>`.
-    Exit 142 = timed out, 127 = command not found. Keep `or exit 127`: without it a missing
-    command exits 0 and looks like a success. The alarm kills only that process, not its children.
+    perl (ships with macOS), with the number first and then the command:
+
+    ```
+    perl -e '$t=shift; $t=~/^[1-9][0-9]*$/ or do{warn "bad timeout: $t\n"; exit 2}; @ARGV or do{warn "no command\n"; exit 2}; defined($p=fork) or exit 127; if(!$p){setpgrp; exec @ARGV or exit 127} $SIG{ALRM}=sub{kill KILL=>-$p; exit 142}; alarm $t; waitpid $p,0; exit($?&127 ? 128+($?&127) : $?>>8)' 120 <cmd>
+    ```
+
+    Exit 142 = timed out, 127 = command not found, 2 = the wrapper was called wrong (a timeout
+    that is `0`, not a whole number, or missing, so the command word was read as the number; or
+    no command) and it prints `bad timeout: ...` or `no command`. Copy it whole: the check stops
+    a bad number from meaning "no limit", and `exec ... or exit 127` stops a missing command from
+    exiting 0. The command runs in its own process group and gets SIGKILL when time is up, so a
+    command that ignores SIGALRM and the processes it started are stopped too.
     Pass the command as separate words after the number, never as one quoted string: perl runs a
     single string with `;`, `|` or `$(...)` in it through `sh -c`.
   - Windows: `timeout` in cmd and PowerShell is a sleep, not a time limit. Use the Bash tool's
