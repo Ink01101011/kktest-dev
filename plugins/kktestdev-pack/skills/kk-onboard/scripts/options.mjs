@@ -413,7 +413,7 @@ const DECL_SCAN = 20000;
 /**
  * the names after the first of `export [declare] const|let|var a: T = x, B: U` (B), from `at` (just past `a`) on: split on commas at
  * depth 0 of ()[]{}<> (an arrow `=>` is not a bracket) and outside strings, up to a `;` at depth 0 or a line end at
- * depth 0 that is not a continuation (the line ends in `,`, `=`, `:`, `|`, `&` or the next starts with `,`).
+ * depth 0 that is not a continuation (the line ends in `,`, `=`, `:`, `|`, `&`, `+`, `?` or the next starts with `,`).
  * Scans at most DECL_SCAN characters. Returns the names and where the scan stopped.
  */
 function declaratorNames(src, at) {
@@ -431,6 +431,7 @@ function declaratorNames(src, at) {
       const q = c; piece += c; i++;
       while (i < limit && src[i] !== q && !(src[i] === '\n' && q !== '`')) { if (src[i] === '\\') { piece += src[i]; i++; } piece += src[i] ?? ''; i++; }
       piece += src[i] ?? '';
+      last = q; // a line that ends in a string is not a continuation (G1-121 #1: it swallowed the next export)
       continue;
     }
     if (c === '(' || c === '[' || c === '{' || c === '<') depth++;
@@ -438,7 +439,7 @@ function declaratorNames(src, at) {
     else if (depth === 0 && c === ';') break;
     else if (depth === 0 && c === ',') { take(); last = ','; continue; }
     else if (depth === 0 && c === '\n') {
-      if (!/[,=:|&]/.test(last)) {
+      if (!/[,=:|&+?]/.test(last)) {
         let k = i + 1;
         while (k < limit && /[ \t\r\n]/.test(src[k])) k++;
         if (src[k] !== ',') break;
@@ -467,8 +468,15 @@ function declaratorNames(src, at) {
 export function exportedValueNames(text) {
   const names = new Set();
   const src = stripComments(text);
-  for (const m of src.matchAll(/(?:^|[;\n])[ \t\r]*export\s+\{([^}]{0,20000})\}/g)) {
-    for (const part of m[1].split(',')) {
+  // `export {` up to the next `}` (at most 20000 chars on): the next `}` is found once and reused until passed, so
+  // many unclosed `export {` cost one scan, not 20000 chars each (G2-121 medium: ~1.7 s per hostile 512 KB file)
+  let close = -1;
+  for (const m of src.matchAll(/(?:^|[;\n])[ \t\r]*export\s+\{/g)) {
+    const open = m.index + m[0].length;
+    if (close < open) close = src.indexOf('}', open);
+    if (close === -1) break;
+    if (close - open > 20000) continue;
+    for (const part of src.slice(open, close).split(',')) {
       const p = part.trim().replace(/^type\s+/, '');
       if (!p || part.trim().startsWith('type ')) continue;
       const as = p.match(/\bas\s+([A-Za-z_$][\w$]*)$/);
@@ -496,13 +504,21 @@ export function exportStarFrom(text) {
 }
 
 /**
+ * a name kept as an option even when the package exports it as a code value: secretKey() names, plus names that carry
+ * a credential inside a URL or connection string (FOO_DSN, FOO_DATABASE_URL, FOO_CONNECTION_STRING, FOO_WEBHOOK_URL),
+ * which secretKey() does not flag. Local on purpose: secretKey() also drives redaction, which this must not widen.
+ */
+const CREDENTIAL_NAME = /(?:^|_)(?:DSN|DATABASE_URL|DB_URL|CONNECTION_STRING|CONN_STRING|CONNECTION_URL|WEBHOOK_URL|WEBHOOK)$/i;
+export const keepAsOption = (n) => secretKey(n) || CREDENTIAL_NAME.test(n);
+
+/**
  * drop from `acc` the names the package exports as code values, except a secret-looking one (FOO_TOKEN): a package
  * could hide a real credential option that way, and asking once too often is the safe side. Returns both lists.
  */
 function leaveOutExported(acc, exported) {
   const hit = [...acc.map.keys()].filter((n) => exported.has(n));
-  const keptSecret = hit.filter((n) => secretKey(n));
-  const notEnv = hit.filter((n) => !secretKey(n));
+  const keptSecret = hit.filter((n) => keepAsOption(n));
+  const notEnv = hit.filter((n) => !keepAsOption(n));
   for (const n of notEnv) acc.map.delete(n);
   return { notEnv, keptSecret };
 }
@@ -529,10 +545,11 @@ function starCandidates(from, spec) {
 }
 
 const STAR_FILES = 20;
+const STAR_SPECS = 200; // specifiers tried at all: a file of 20000 missing `export * from` lines must not cost 50k lstat calls
 
 /**
  * the package's own types entry (package.json types/typings, else index.d.ts or dist/index.d.ts), read bounded, as
- * text only (never run). `export * from './x'` in it is followed one level (at most STAR_FILES files), with the same
+ * text only (never run). `export * from './x'` in it is followed one level (at most STAR_FILES files, from the first STAR_SPECS specifiers), with the same
  * checks. A link (also a linked folder on the way), a path out of the package or a missing file gives no names.
  */
 function packageExports(dir) {
@@ -545,7 +562,7 @@ function packageExports(dir) {
     if (text == null) continue;
     const names = exportedValueNames(text);
     const seen = new Set([f]);
-    for (const spec of exportStarFrom(text)) {
+    for (const spec of exportStarFrom(text).slice(0, STAR_SPECS)) {
       if (seen.size > STAR_FILES) break;
       for (const g of starCandidates(f, spec)) {
         if (seen.has(g)) break;

@@ -250,7 +250,10 @@ test('kk-update: per-command timeout has a macOS fallback (no `timeout` there) t
   assert.match(text, /macOS: there is no `timeout`/);
   assert.ok(PERL_TIMEOUT, 'the perl fallback is a fenced one-liner ending in `120 <cmd>`');
   assert.ok(PERL_TIMEOUT.includes('exec @ARGV or exit 127'), 'perl fallback keeps `or exit 127`');
-  assert.ok(PERL_TIMEOUT.includes('$t=~/^[1-9][0-9]*$/'), '#34: the timeout must be a positive whole number');
+  assert.ok(PERL_TIMEOUT.includes('$t=~/^[1-9][0-9]{0,5}\\z/'), '#34 + G2-121: a whole number of 1 to 6 digits (2^31 and up turn alarm off)');
+  assert.ok(PERL_TIMEOUT.includes('for qw(INT TERM HUP)'), 'G1/G2-121: stopping the wrapper kills the group too');
+  assert.match(text, /143 = the wrapper itself was stopped/);
+  assert.match(text, /For\s+non-interactive commands only/);
   assert.ok(PERL_TIMEOUT.includes('kill KILL=>-$p'), '#34: SIGKILL to the process group, not SIGALRM to one process');
   assert.match(text, /2 = the wrapper was called wrong/);
   assert.match(text, /Windows: `timeout` in cmd and PowerShell is a sleep/);
@@ -268,7 +271,9 @@ test('#34 kk-update perl timeout: a bad or missing number fails loudly; a timeou
     return { ...r, ms: Date.now() - t0 };
   };
   for (const [args, msg] of [[['0', 'true'], /bad timeout: 0/], [['abc', 'true'], /bad timeout: abc/],
-    [['1.5', 'true'], /bad timeout/], [['true'], /bad timeout: true/], [[], /bad timeout/], [['5'], /no command/]]) {
+    [['1.5', 'true'], /bad timeout/], [['true'], /bad timeout: true/], [[], /bad timeout/], [['5'], /no command/],
+    // G2-121: 2^31 and up make perl's alarm() a no-op ("negative argument"): the command would run with no limit
+    [['2147483648', 'true'], /bad timeout/], [['4294967296', 'true'], /bad timeout/], [['1000000', 'true'], /bad timeout/], [['5\n', 'true'], /bad timeout/]]) {
     const r = perl(args);
     assert.equal(r.status, 2, `${JSON.stringify(args)}: exit 2, not a run with no limit or a 127 that reads as "wrapper missing"`);
     assert.match(r.stderr, msg);
@@ -289,7 +294,7 @@ test('#34 kk-update perl timeout: a bad or missing number fails loudly; a timeou
   const dir = mkdtempSync(join(tmpdir(), 'kk-34-'));
   try {
     const pidFile = join(dir, 'child.pid');
-    const r = perl(['1', 'sh', '-c', `sleep 20 & echo $! > ${pidFile}; wait # ${marker}`]);
+    const r = perl(['2', 'sh', '-c', `sleep 20 & echo $! > ${pidFile}; wait # ${marker}`]); // 2 s: room for a slow CI host to write the pid
     assert.equal(r.status, 142);
     const child = Number(readFileSync(pidFile, 'utf8').trim());
     assert.ok(child > 0);
@@ -299,6 +304,25 @@ test('#34 kk-update perl timeout: a bad or missing number fails loudly; a timeou
     }
     if (alive) { try { process.kill(child, 'SIGKILL'); } catch {} }
     assert.equal(alive, false, 'the background child of the timed-out command was killed too');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('G1/G2-121 kk-update perl timeout: TERM to the wrapper (Ctrl-C, the Bash tool giving up) kills the command group, exit 143', { skip: !hasPerl && 'needs perl on macOS/Linux' }, async () => {
+  const { spawn } = await import('node:child_process');
+  const dir = mkdtempSync(join(tmpdir(), 'kk-121-'));
+  try {
+    const pidFile = join(dir, 'child.pid');
+    const w = spawn('perl', ['-e', PERL_SCRIPT, '30', 'sh', '-c', `sleep 30 & echo $! > ${pidFile}; wait`], { stdio: 'ignore' });
+    const exited = new Promise((res) => w.on('exit', (code, sig) => res({ code, sig })));
+    let child = 0;
+    for (let i = 0; i < 100 && !child; i++) { await new Promise((r) => setTimeout(r, 50)); try { child = Number(readFileSync(pidFile, 'utf8').trim()); } catch {} }
+    assert.ok(child > 0, 'the command started');
+    w.kill('SIGTERM');
+    assert.deepEqual(await exited, { code: 143, sig: null });
+    let alive = true;
+    for (let i = 0; i < 50 && alive; i++) { try { process.kill(child, 0); await new Promise((r) => setTimeout(r, 100)); } catch { alive = false; } }
+    if (alive) { try { process.kill(child, 'SIGKILL'); } catch {} }
+    assert.equal(alive, false, 'the command\'s child died with the wrapper');
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
