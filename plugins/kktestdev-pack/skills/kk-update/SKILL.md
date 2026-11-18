@@ -67,11 +67,14 @@ minutes: every step is network-bound.
      Items the pack dropped are no longer updated here: `serena` left the pack in 1.1.0. If it is
      still installed, say so once and point to `/kk-onboard`'s audit (`overlap:code-nav`), which
      asks whether to keep it. Never uninstall it from this skill.
+     `typescript-lsp` (official) left the pack in 0.2.4 for `typescript-native-lsp`: its server needs
+     `tsserver`, which TypeScript 7 does not ship. If it is still installed, say so once and point to
+     `/kk-onboard` (`overlap:lsp-ts`). Never disable or uninstall it from this skill.
    - Global npm packages the pack installs, only the ones already installed globally, in **one**
      command: `npm i -g <pkg>@latest <pkg>@latest ...`. The packages are the `npm i -g` targets in
      `pack.json` (`steps` and `requires[].install`): today `bantamkit-mcp`,
-     `typescript-language-server`, `pyright`. Do not add `typescript`: typescript-language-server
-     uses each project's own `typescript` devDependency.
+     `typescript`, `pyright`. `typescript` here is the language server itself (`tsc --lsp`), so it
+     must stay on 7+: never install it with a version or a tag other than `@latest`.
      After a node upgrade under a version manager (mise, nvm, fnm, asdf, Volta) the new node starts with
      no global packages. If a pack package is missing from `npm ls -g` but an MCP server or hook
      command still runs it from another node version's folder (`node-version-path` in `/kk-onboard`'s

@@ -33,7 +33,7 @@ other tools' documented formats and are skipped with a reason line.
 | memory-keeper | partly Claude-only | 1 | `memory-keeper` (python3) | hooks, slash commands |
 | reflexion | partly Claude-only | 1 | `reflexion` (python3) | slash commands |
 | loop-ledger | Claude-only (its MCP server is portable) | - | `loop-ledger` (node) | Stop hook |
-| focus-notify, tool-metrics | Claude-only | - | - | everything |
+| focus-notify, tool-metrics, typescript-native-lsp | Claude-only | - | - | everything |
 | kktestdev-pack | Claude-only (onboarding pack: its skills install Claude Code plugins) | 2 (not exported) | - | everything |
 
 Skills that name Claude-only tools carry a short **Other agents** section with the plain fallback.

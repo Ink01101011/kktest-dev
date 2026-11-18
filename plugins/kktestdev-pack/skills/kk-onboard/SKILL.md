@@ -114,9 +114,8 @@ The script prints one JSON document, also when something fails:
 On a fresh account every pack item reads `missing`, every count is 0, and `findings`, `notes` and
 `packageManagers` are empty: that is the expected picture, not an error.
 
-If `node` is missing, stop and tell the user Node.js is required: Node 22.22.2+ (or 24+) covers
-every pack component (typescript-language-server needs 22.22.2+; chrome-devtools-mcp, shadcn and
-bantamkit-mcp need 20.19+). The inventory script itself runs on Node 18+.
+If `node` is missing, stop and tell the user Node.js is required: Node 20.19+ covers
+every pack component (chrome-devtools-mcp, shadcn and bantamkit-mcp need it). The inventory script itself runs on Node 18+.
 
 ## Step 2: Show what is already there
 
@@ -154,9 +153,13 @@ For each selected item with `status: missing` (or `disabled`), build the list of
 4. `missingBins`: show the install command and ask before running it. If it has a `note` saying
    the binary is installed off PATH, offer adding that folder to PATH instead of a second install.
    A plugin LSP without its
-   binary loads but does nothing. For `typescript-lsp`: the language server uses each project's
-   own `typescript` (a devDependency, which provides `tsserver`); a project on TypeScript 7
-   (native, no `tsserver`) gets no TS intelligence from it.
+   binary loads but does nothing. For `typescript-native-lsp`: the plugin runs `tsc --lsp --stdio`,
+   so the `tsc` on PATH must be TypeScript 7+. If `tsc` is found, run `tsc -v`; below 7 it has no
+   `--lsp` and the server reports `couldn't start`: offer `npm i -g typescript@latest`.
+   If the official `typescript-lsp` plugin is installed (the pack's item before 0.2.4), the audit
+   reports it as `overlap:lsp-ts` once `typescript-native-lsp` is installed too: say that it cannot start
+   in a TypeScript 7 project or a project without `typescript` (no `tsserver`), and ask before
+   `claude plugin disable typescript-lsp@claude-plugins-official`.
 5. `requiresNotes`: show each `note` as it is. The binary is installed but will not start (jdtls on Java
    17/21 fails with `Unresolved requirement ... osgi.ee`). Offer the change the note names (a JDK 25+
    for `JAVA_HOME`, e.g. through the user's version manager) as a command to show and ask about; never

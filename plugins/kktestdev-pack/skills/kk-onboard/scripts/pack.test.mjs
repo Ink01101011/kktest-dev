@@ -137,3 +137,27 @@ test('#25: README "Who publishes what" names every installable pack item, and no
   const ids = new Set(PACK.items.map((i) => i.id));
   for (const n of named) assert.ok(ids.has(n), `publisher table names ${n}, which is not a pack item`);
 });
+
+// The official typescript-lsp runs typescript-language-server, which needs tsserver; TypeScript 7 ships none, so it
+// fails `initialize` (Claude Code: `Language server "plugin:typescript-lsp:typescript" couldn't start`).
+test('TS LSP: the pack item is the native server plugin, its required bin is the command the plugin runs, and the old plugin is an overlap', async (t) => {
+  const item = PACK.items.find((i) => i.id === 'typescript-native-lsp');
+  assert.ok(item, 'pack item typescript-native-lsp');
+  assert.equal(PACK.items.some((i) => /^typescript-lsp@/.test(i.plugin ?? '')), false, 'typescript-lsp@ needs tsserver: not a pack item');
+  assert.equal(item.plugin, 'typescript-native-lsp@kktest-dev');
+  const root = join(HERE, '..', '..', '..', '..', 'typescript-native-lsp');
+  const manifest = JSON.parse(readFileSync(join(root, '.claude-plugin', 'plugin.json'), 'utf8'));
+  const server = JSON.parse(readFileSync(join(root, manifest.lspServers), 'utf8')).typescript;
+  assert.deepEqual([server.command, ...server.args], ['tsc', '--lsp', '--stdio']);
+  assert.deepEqual(item.requires.map((r) => r.bin), [server.command], 'requires[] must name the binary the plugin starts');
+  assert.match(item.requires[0].install, /typescript@latest$/, 'never pinned: TypeScript 6 and older have no --lsp');
+  for (const g of ['lsp-ts', 'code-nav']) {
+    const grp = PACK.overlapGroups.find((x) => x.id === g);
+    const list = [...(grp.match?.plugins ?? []), ...(grp.with?.plugins ?? [])];
+    for (const id of ['typescript-native-lsp@', 'typescript-lsp@']) assert.ok(list.includes(id), `${g}: ${id}`);
+  }
+  const out = await onboarded(t, ['core'], { plugins: [{ id: 'typescript-lsp@claude-plugins-official', enabled: true, scope: 'user' }] });
+  const f = finding(out, 'overlap:lsp-ts');
+  assert.ok(f, 'a machine that still has typescript-lsp is told about it');
+  assert.deepEqual(f.evidence.filter((l) => !l.startsWith('note: ')).sort(), ['plugin typescript-lsp@claude-plugins-official', 'plugin typescript-native-lsp@kktest-dev [pack item]']);
+});

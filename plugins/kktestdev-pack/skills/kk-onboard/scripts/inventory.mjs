@@ -1146,8 +1146,8 @@ export async function run(argv = [], opts = {}) {
     const pack = opts.pack ?? JSON.parse(readFileSync(nodePath.join(here, '..', 'pack.json'), 'utf8'));
     const data = await collect({ home: opts.home ?? homedir(), cwd: opts.cwd ?? process.cwd(), platform: opts.platform, env: opts.env, execClaude: opts.execClaude, fast, nodeVersion: opts.nodeVersion });
     for (const p of validatePack(pack)) data.ctx.note(p);
-    const major = Number(process.versions.node.split('.')[0]);
-    if (major < 22) data.ctx.note(`Node ${process.versions.node}: some pack servers need Node 22.22+ (typescript-language-server) or 20.19+ (chrome-devtools-mcp, shadcn, bantamkit-mcp)`);
+    const [major, minor] = process.versions.node.split('.').map(Number);
+    if (major < 20 || (major === 20 && minor < 19)) data.ctx.note(`Node ${process.versions.node}: some pack servers need Node 20.19+ (chrome-devtools-mcp, shadcn, bantamkit-mcp)`);
     const findBin = opts.findBin ?? ((b) => findBinDefault(b, { env: opts.env ?? process.env, platform: opts.platform ?? process.platform }));
     const env = opts.env ?? process.env;
     const pmDirs = opts.globalDirs ?? globalPackageDirs({ home: data.ctx.home, env, platform: data.ctx.platform });

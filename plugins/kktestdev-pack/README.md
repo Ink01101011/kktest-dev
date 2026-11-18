@@ -29,11 +29,10 @@ claude plugin install kktestdev-pack@kktest-dev
 
 Then start `claude` and run `/kk-onboard`.
 
-Requirements: Node.js 22.22.2+ or 24+ (`node`, `npx`): typescript-language-server needs
-22.22.2+, and chrome-devtools-mcp, shadcn and bantamkit-mcp need 20.19+ (the inventory script
-alone runs on 18+). Optional per stack: Go (gopls), Java 25+ (jdtls; the JDK in `$JAVA_HOME` if set), `uv` (Jira/Confluence on
-Server/DC). TypeScript projects need `typescript` as a devDependency: the language server uses
-the project's own `tsserver` (TypeScript 7, the native compiler, ships no `tsserver`).
+Requirements: Node.js 20.19+ (`node`, `npx`): chrome-devtools-mcp, shadcn and bantamkit-mcp need
+it (the inventory script alone runs on 18+). Optional per stack: Go (gopls), Java 25+ (jdtls; the JDK in `$JAVA_HOME` if set), `uv` (Jira/Confluence on
+Server/DC). TS/JS code intelligence needs a global TypeScript 7+ (`npm i -g typescript@latest`): the
+`typescript-native-lsp` plugin runs `tsc --lsp --stdio` and needs nothing from the project.
 
 Windows (native): stdio MCP servers are registered through `cmd /c` (each MCP item in
 `pack.json` has `windows` steps, and `/kk-onboard` uses them). WSL and Git Bash work like Linux.
@@ -54,7 +53,7 @@ reads and runs is in [docs/kktestdev-pack/SPEC.md](../../docs/kktestdev-pack/SPE
 
 | Profile | Items |
 |---|---|
-| **core** | `superpowers`, `kkskills-essentials`, `context7`; LSP: `typescript-lsp`, `gopls-lsp`, `pyright-lsp`, `jdtls-lsp`; MCP: `bantamkit`, `playwright` |
+| **core** | `superpowers`, `kkskills-essentials`, `context7`; LSP: `typescript-native-lsp`, `gopls-lsp`, `pyright-lsp`, `jdtls-lsp`; MCP: `bantamkit`, `playwright` |
 | **frontend** | `impeccable`, `chrome-devtools` MCP (perf traces, Lighthouse), `next-devtools` MCP (Next.js 16+), `shadcn` MCP (per project) |
 | **investigate** | `sentry`, `grafana-mcp` |
 | **docs only** | [Jira / Confluence](docs/jira-confluence.md) (your own LDAP login), [Figma](docs/figma.md), [bantamkit hooks](docs/bantamkit-hooks.md) (opt-in) |
@@ -96,7 +95,8 @@ their newest release from the registry on each start (team policy: no pinned ver
 | `kkskills-essentials`, this pack | Ink01101011, `Ink01101011/kktest-dev` marketplace (the pack author) | plugins (skills) |
 | `bantamkit` | Ink01101011 / kktestdev (the pack author), npm `bantamkit-mcp` | global npm bin, stdio MCP |
 | `context7` | Upstash, official plugin catalog | remote MCP: queries go to `mcp.context7.com` |
-| `typescript-lsp`, `gopls-lsp`, `pyright-lsp`, `jdtls-lsp` | Anthropic official plugin catalog | plugins; the language servers come from typescript-language-server (community), Go team (`gopls`), Microsoft (`pyright`), Eclipse Foundation (`jdtls`) |
+| `typescript-native-lsp` | Ink01101011, `Ink01101011/kktest-dev` marketplace (the pack author) | plugin; the language server is Microsoft's TypeScript 7 (`tsc --lsp`, npm `typescript`) |
+| `gopls-lsp`, `pyright-lsp`, `jdtls-lsp` | Anthropic official plugin catalog | plugins; the language servers come from the Go team (`gopls`), Microsoft (`pyright`), Eclipse Foundation (`jdtls`) |
 | `playwright` | Microsoft, npm `@playwright/mcp` | `npx` stdio MCP |
 | `chrome-devtools` | Google (ChromeDevTools), npm `chrome-devtools-mcp` | `npx` stdio MCP |
 | `next-devtools` | Vercel, npm `next-devtools-mcp` | `npx` stdio MCP |

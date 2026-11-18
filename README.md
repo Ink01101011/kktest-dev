@@ -13,6 +13,7 @@ that brings the portable skills and MCP servers to other AI tools.
 | [kkskills-situational](./plugins/kkskills-situational) | 10 generic working skills that are correct but not everyday — additive-first migrations, verify-with-real-data, clean architecture, secret hygiene, concurrency, MCP authoring, timezone & local-LLM selection, plan decomposition & orchestration, plus the meta-skill that folds new learnings back in. Split out of essentials so they can be toggled as a unit. Skills-only. |
 | [kkskills-personal](./plugins/kkskills-personal) | Personal / project-specific skills split out from essentials — a user-profile calibration skill and a dated-filename reference convention. Fork and replace the specifics with your own. Skills-only. |
 | [kktestdev-pack](./plugins/kktestdev-pack) | Team onboarding: `/kk-onboard` inventories what you already have, skips it, installs the missing pack items you pick, and audits existing skills/MCP/plugins/hooks for redundancy and risk with neutral, ask-first choices. `/kk-update` pulls the latest of everything. Installs nothing by itself. |
+| [typescript-native-lsp](./plugins/typescript-native-lsp) | TypeScript/JavaScript code intelligence from TypeScript 7's own language server (`tsc --lsp --stdio`). Needs no `tsserver` and no `typescript` in the project; replaces the official `typescript-lsp` in the team pack. |
 | [infographic-diagram](./plugins/infographic-diagram) | Presentation-ready architecture, layer-stack and tech-stack diagrams (SVG + 2x PNG) from a JSON spec, in three looks, with a layout lint pass. Thai text supported. Skill + stdlib Python script. |
 | [loop-ledger](./plugins/loop-ledger) | A guardrail for agent loops — a deterministic state machine (budget + stall-hash + exit predicate) that decides should-continue per iteration, plus an opt-in Stop hook that enforces it so the agent can neither quit early nor spin forever. Zero-dependency MCP server. |
 | [reflexion](./plugins/reflexion) | Self-improving agent memory built on memory-keeper — recall matching lessons before a task, reflect a new lesson after it, browse the error/success library, and compress recurring lessons into higher-level patterns. Also available in [bantamkit](#memory-keeper-and-reflexion-in-bantamkit). |
@@ -131,7 +132,8 @@ Per-plugin guides live under [`docs/`](./docs), one folder per plugin.
 [infographic-diagram](./docs/infographic-diagram/CONCEPTS.md),
 [kkskills-situational](./docs/kkskills-situational/CONCEPTS.md),
 [kktestdev-pack](./docs/kktestdev-pack/CONCEPTS.md),
-[tool-metrics](./docs/tool-metrics/CONCEPTS.md).
+[tool-metrics](./docs/tool-metrics/CONCEPTS.md),
+[typescript-native-lsp](./docs/typescript-native-lsp/CONCEPTS.md).
 
 **Cross-cutting**
 

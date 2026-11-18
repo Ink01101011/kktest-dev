@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+kktestdev-pack 0.2.4; new plugin typescript-native-lsp 0.1.0.
+
+- **The pack's TS/JS language server starts again** (`Language server
+  "plugin:typescript-lsp:typescript" couldn't start`). The official `typescript-lsp` plugin runs
+  typescript-language-server, which needs `tsserver` from a `typescript` package. TypeScript 7 (npm
+  `latest`) ships none, so the server failed `initialize` with `Could not find a valid TypeScript
+  installation` in a TypeScript 7 project and in a project without `typescript`. New plugin
+  **typescript-native-lsp** registers TypeScript 7's own server, `tsc --lsp --stdio`, for the same
+  eight extensions; it needs a global `typescript` 7+ and nothing from the project. `pack.json` swaps
+  the core item `typescript-lsp` for `typescript-native-lsp` (requires `tsc`, install
+  `npm i -g typescript@latest`), and `overlap:lsp-ts` / `overlap:code-nav` know both ids, so a machine
+  that still has `typescript-lsp` gets asked about it. `/kk-update` now refreshes global `typescript`
+  instead of `typescript-language-server` and names `typescript-lsp` as an item the pack dropped.
+- The inventory's Node note fires below 20.19 (it was below 22, for typescript-language-server's
+  22.22.2 floor, which no longer applies).
+
 ## 1.2.1
 
 Every commit since 1.2.0 (#36, closing #33 and #34). npm package `kktest-dev` 1.2.1; marketplace

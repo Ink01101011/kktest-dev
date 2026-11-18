@@ -30,12 +30,12 @@
       "what": "Current library documentation lookup (Next.js, React, NestJS, Spring, ...) instead of the model's memory. For Next.js docs while a Next.js dev server is running, next-devtools answers instead."
     },
     {
-      "id": "typescript-lsp", "profile": "core", "kind": "plugin",
-      "plugin": "typescript-lsp@claude-plugins-official",
-      "detect": { "plugins": ["typescript-lsp@"] },
-      "options": { "package": "typescript-language-server", "bin": "typescript-language-server", "envPrefix": "TSSERVER_" },
-      "requires": [{ "bin": "typescript-language-server", "install": "npm i -g typescript-language-server" }],
-      "what": "TS/JS code intelligence (go-to-definition, references, diagnostics). typescript-language-server uses the workspace's own typescript (node_modules/typescript, which provides tsserver), so each project needs typescript as a devDependency. typescript 7 (native) ships no tsserver; the server then has nothing to load. Needs Node 22.22.2+."
+      "id": "typescript-native-lsp", "profile": "core", "kind": "plugin",
+      "plugin": "typescript-native-lsp@kktest-dev", "publisher": "Ink01101011 (this pack's author); the language server is Microsoft's TypeScript 7 (npm `typescript`)",
+      "detect": { "plugins": ["typescript-native-lsp@"] },
+      "options": { "package": "typescript", "bin": "tsc" },
+      "requires": [{ "bin": "tsc", "install": "npm i -g typescript@latest" }],
+      "what": "TS/JS code intelligence (go-to-definition, references, diagnostics) from TypeScript 7's own language server: the plugin runs `tsc --lsp --stdio`. Needs a global `tsc` that is TypeScript 7+ (`tsc -v`; an older tsc has no --lsp and the server will not start) and nothing from the project. Replaces the official typescript-lsp, whose typescript-language-server needs tsserver: TypeScript 7 ships none, so it fails with `couldn't start` in a TypeScript 7 project or a project without typescript."
     },
     {
       "id": "gopls-lsp", "profile": "core", "kind": "plugin",
@@ -186,14 +186,14 @@
       "id": "code-nav",
       "label": "Code navigation",
       "match": { "plugins": ["serena@"], "mcpName": ["serena"], "mcpArgs": ["serena", "mcp-language-server"] },
-      "with": { "plugins": ["typescript-lsp@", "vtsls@", "gopls-lsp@", "pyright-lsp@", "jdtls-lsp@", "rust-analyzer-lsp@", "clangd-lsp@", "csharp-lsp@", "kotlin-lsp@", "php-lsp@", "swift-lsp@", "lua-lsp@"] },
+      "with": { "plugins": ["typescript-native-lsp@", "typescript-lsp@", "vtsls@", "gopls-lsp@", "pyright-lsp@", "jdtls-lsp@", "rust-analyzer-lsp@", "clangd-lsp@", "csharp-lsp@", "kotlin-lsp@", "php-lsp@", "swift-lsp@", "lua-lsp@"] },
       "note": "serena (and LSP-over-MCP bridges) run their own language servers. The pack's *-lsp plugins feed the built-in LSP tool the same data, so files are indexed twice. The pack dropped serena in 1.1.0. A plugin and the MCP server it starts are listed separately."
     },
     {
       "id": "lsp-ts",
       "label": "TypeScript language server",
-      "match": { "plugins": ["typescript-lsp@", "vtsls@"] },
-      "note": "Two TS language servers index the same files twice."
+      "match": { "plugins": ["typescript-native-lsp@", "typescript-lsp@", "vtsls@"] },
+      "note": "Two TS language servers index the same files twice. The pack uses typescript-native-lsp since 0.2.4: typescript-lsp (typescript-language-server) needs tsserver, which TypeScript 7 no longer ships, so it cannot start in a TypeScript 7 project or a project without typescript."
     }
   ]
 }

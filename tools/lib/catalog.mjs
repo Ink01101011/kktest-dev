@@ -36,6 +36,7 @@ export const TIERS = {
   'tool-metrics': { tier: 'Claude-only', note: 'Claude Code hooks + transcript format' },
   // Not covered by the P1 audit (lands with PR #12): it installs Claude Code plugins, so treat it as Claude-only.
   'kktestdev-pack': { tier: 'Claude-only', note: 'Claude Code onboarding pack (installs Claude Code plugins)' },
+  'typescript-native-lsp': { tier: 'Claude-only', note: 'Claude Code LSP server registration (tsc --lsp)' },
 };
 
 // Target lists live in providers.mjs; re-exported here for existing importers.

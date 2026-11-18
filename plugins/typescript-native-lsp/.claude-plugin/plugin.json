@@ -1,0 +1,14 @@
+{
+  "name": "typescript-native-lsp",
+  "version": "0.1.0",
+  "description": "TypeScript/JavaScript code intelligence from TypeScript 7's own language server (`tsc --lsp --stdio`). Needs no tsserver and no typescript in the project.",
+  "author": {
+    "name": "Ink",
+    "email": "supakit.kitj@gmail.com"
+  },
+  "homepage": "https://github.com/Ink01101011/kktest-dev/tree/master/plugins/typescript-native-lsp",
+  "repository": "https://github.com/Ink01101011/kktest-dev",
+  "license": "MIT",
+  "keywords": ["lsp", "typescript", "javascript", "language-server", "code-intelligence"],
+  "lspServers": "./.lsp.json"
+}

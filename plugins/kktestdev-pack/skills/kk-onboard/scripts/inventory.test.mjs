@@ -571,7 +571,7 @@ test('O4-F7/F9: the 20k cut and the key=value scan are linear (checked uncapped,
 });
 
 // ------------------------------------------------------------------ #22 / I1 follow-up (I3)
-const LSP = { id: 'typescript-lsp@claude-plugins-official', enabled: true, scope: 'user' };
+const LSP = { id: 'typescript-native-lsp@kktest-dev', enabled: true, scope: 'user' };
 const SERENA_MCP = { serena: { command: 'uvx', args: ['--from', 'git+https://github.com/oraios/serena', 'serena', 'start-mcp-server'] } };
 
 test('I3: code-nav fires for a hand-added serena MCP plus an LSP plugin; serena alone or an LSP plugin alone does not', async (t) => {
@@ -579,7 +579,7 @@ test('I3: code-nav fires for a hand-added serena MCP plus an LSP plugin; serena 
   write(join(fx.home, '.claude.json'), { mcpServers: SERENA_MCP });
   const both = await inv(fx, [], { execClaude: stubClaude({ plugins: [LSP] }) });
   const f = byCat(both, 'overlap:code-nav')[0];
-  assert.ok(f, 'serena MCP + typescript-lsp must report code-nav');
+  assert.ok(f, 'serena MCP + typescript-native-lsp must report code-nav');
   assert.match(f.title, /2 tools/);
   assert.deepEqual(f.evidence.filter((l) => !l.startsWith('note: ')).sort(), ['mcp serena (user (~/.claude.json))', `plugin ${LSP.id} [pack item]`]);
   assert.equal(f.packManaged, undefined);
