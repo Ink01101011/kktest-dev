@@ -1,7 +1,8 @@
 # Changelog
 
-## Unreleased
+## 1.3.0
 
+Every commit since 1.2.1 (4df2313). npm package `kktest-dev` 1.3.0; marketplace `kktest-dev` 1.3.0;
 kktestdev-pack 0.2.4; new plugin typescript-native-lsp 0.1.0.
 
 - **The pack's TS/JS language server starts again** (`Language server
